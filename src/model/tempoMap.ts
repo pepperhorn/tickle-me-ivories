@@ -45,14 +45,14 @@ export function ticksToSec(
   if (setting.mode === 'absolute') return (ticks / ppq) * (60 / setting.bpm)
   const e = segmentAtTicks(map, ticks)
   const base = e.sec + ((ticks - e.ticks) / ppq) * (60 / e.bpm)
-  return base / setting.scale
+  return base / Math.max(0.01, setting.scale)
 }
 
 export function secToTicks(
   map: TempoEvent[], ppq: number, sec: number, setting: TempoSetting,
 ): number {
   if (setting.mode === 'absolute') return (sec * setting.bpm / 60) * ppq
-  const base = sec * setting.scale
+  const base = sec * Math.max(0.01, setting.scale)
   const e = segmentAtSec(map, base)
   return e.ticks + ((base - e.sec) * (e.bpm / 60)) * ppq
 }

@@ -40,7 +40,7 @@ export function visibleNotes(
   notes: NoteEvent[], t: number, fallSeconds: number, maxNoteDur: number,
 ): NoteEvent[] {
   const out: NoteEvent[] = []
-  for (let i = lowerBound(notes, t - maxNoteDur); i < notes.length; i++) {
+  for (let i = lowerBound(notes, t - maxNoteDur - FLASH_TAIL); i < notes.length; i++) {
     const n = notes[i]
     if (n.startSec > t + fallSeconds) break
     if (n.endSec >= t - FLASH_TAIL) out.push(n)

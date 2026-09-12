@@ -127,7 +127,7 @@ export default function App() {
   const seek = useCallback((sec: number) => {
     const now = engine.currentTime
     useTransport.getState().seek(sec, now)
-    schedulerRef.current?.seek(sec)
+    schedulerRef.current?.seek(playheadAt(useTransport.getState(), now))
     engine.stopAll()
   }, [engine])
 

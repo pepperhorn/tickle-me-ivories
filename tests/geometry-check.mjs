@@ -5,7 +5,7 @@ const BLACK = new Set([1,3,6,8,10]);
 const BLACK_OFFSET = {1:-1/6, 3:1/6, 6:-1/4, 8:0, 10:1/4};
 
 function layout(W, {aspect=5.8, blackWRatio=0.5652, trueOffsets=true, stageH=Infinity} = {}) {
-  const whiteW = W/52, blackW = whiteW*blackWRatio;
+  const whiteW = W/52, blackW = Math.max(3, whiteW*blackWRatio);
   const keys = []; let wi = 0;
   for (let p = 21; p <= 108; p++) {
     if (BLACK.has(p%12)) {

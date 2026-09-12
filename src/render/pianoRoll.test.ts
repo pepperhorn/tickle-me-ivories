@@ -35,6 +35,17 @@ describe('visibleNotes', () => {
     expect(got[0].startSec).toBeGreaterThan(99)
   })
 
+  it('keeps a note whose flash is still decaying even when its duration equals maxNoteDur', () => {
+    // Window floor must be a superset of what the inclusion predicate admits
+    // (endSec >= t - FLASH_TAIL), not just t - maxNoteDur -- otherwise a note
+    // exactly maxNoteDur long that ended just inside the flash tail starts
+    // below the search floor and never gets found at all.
+    const maxNoteDur = 0.3
+    const note = n(0, 60, 0, maxNoteDur)        // startSec 0, endSec 0.3
+    const t = note.endSec + 0.2                  // 0.2s into the 0.22s flash tail
+    expect(visibleNotes([note], t, 3, maxNoteDur).map((x) => x.id)).toEqual([0])
+  })
+
   it('keeps a long held note visible past any fixed lookback', () => {
     // A 30s note: still sounding at t=20, long past the old 8s cutoff.
     // Reachable in practice -- at the tempo control's 25% minimum, a 2s

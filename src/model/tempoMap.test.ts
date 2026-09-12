@@ -50,6 +50,12 @@ describe('ticksToSec', () => {
     const flat: TempoSetting = { mode: 'absolute', bpm: 60 }
     expect(ticksToSec(map, PPQ, 8 * PPQ, flat)).toBeCloseTo(8, 9)  // 8 beats @60 = 8s
   })
+
+  it('clamps a zero scale so the result is finite, not Infinity', () => {
+    const map = buildTempoMap([{ ticks: 0, bpm: 120 }], PPQ)
+    const zero: TempoSetting = { mode: 'scale', scale: 0 }
+    expect(Number.isFinite(ticksToSec(map, PPQ, PPQ, zero))).toBe(true)
+  })
 })
 
 describe('secToTicks', () => {
