@@ -111,4 +111,27 @@ describe('setTempo', () => {
     t.setTempo({ mode: 'absolute', bpm: 240 }, 1)
     expect(useTransport.getState().playing).toBe(true)
   })
+
+  it('retimes an incoming score to the tempo already set', () => {
+    const t = useTransport.getState()
+    t.setTempo({ mode: 'scale', scale: 2 }, 0)      // no score yet: just sets tempo
+    t.loadScore(score())                            // fixture is timed at scale 1
+    // note 1 sits at 4s in the fixture; at scale 2 it must land at 2s
+    expect(useTransport.getState().score!.notes[1].startSec).toBeCloseTo(2, 6)
+    expect(useTransport.getState().maxNoteDur).toBeCloseTo(0.25, 6)
+  })
+
+  it('preserves musical position across a switch to absolute tempo', () => {
+    // Two tempo segments: 120bpm for 4 beats, then 240bpm. A seconds-ratio
+    // implementation has no single "old bpm" to scale by and cannot land here;
+    // only a genuine ticks round-trip can.
+    const s = score()
+    s.tempoMap = buildTempoMap([{ ticks: 0, bpm: 120 }, { ticks: 4 * PPQ, bpm: 240 }], PPQ)
+    s.durationSec = 60
+    const t = useTransport.getState()
+    t.loadScore(s)
+    t.seek(2.5, 0)                                   // 2.5s = tick 2880
+    t.setTempo({ mode: 'absolute', bpm: 60 }, 0)     // 2880 ticks @60bpm = 6s
+    expect(playheadAt(useTransport.getState(), 0)).toBeCloseTo(6, 6)
+  })
 })

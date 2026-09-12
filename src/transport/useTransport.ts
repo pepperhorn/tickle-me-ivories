@@ -54,9 +54,16 @@ export const useTransport = create<TransportState & TransportActions>((set, get)
   maxNoteDur: 0,
   mode: 'roll',
 
-  loadScore: (score) => set({
-    score, playing: false, pausedAtSec: 0, originSec: 0,
-    maxNoteDur: longestNoteSec(score),
+  loadScore: (incoming) => set((s) => {
+    // Retime to the live tempo setting so the store is never internally
+    // inconsistent: a score timed at one setting with `tempo` reporting
+    // another makes the next setTempo capture ticks against the wrong
+    // baseline and jump the playhead. Idempotent when already correct.
+    const score = retimeScore(incoming, s.tempo)
+    return {
+      score, playing: false, pausedAtSec: 0, originSec: 0,
+      maxNoteDur: longestNoteSec(score),
+    }
   }),
 
   play: (now) => set((s) => ({ playing: true, originSec: now - s.pausedAtSec })),
