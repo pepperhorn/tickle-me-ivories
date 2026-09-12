@@ -7,6 +7,16 @@ const GRAND_PIANO_ID = 'acoustic_grand_piano'
 /** The instance type produced by either smplr instrument factory we use. */
 type Instrument = ReturnType<typeof SplendidGrandPiano> | ReturnType<typeof Soundfont>
 
+/** Never schedule in the past -- after a seek, originSec + atSec can be behind the clock. */
+export function clampToNow(when: number, now: number): number {
+  return Math.max(when, now)
+}
+
+/** smplr's start() has no per-note gain, so voice volume folds into velocity. */
+export function foldVelocity(velocity: number, volume: number): number {
+  return Math.min(127, Math.max(0, velocity * volume))
+}
+
 /**
  * Owns the AudioContext and a cache of smplr instruments. AudioContext.currentTime
  * is the app's single clock; everything visible derives from it.
@@ -42,6 +52,15 @@ export class AudioEngine {
     return inst
   }
 
+  /** One retry of the same instrument before the caller gives up on it. */
+  private async createInstrumentWithRetry(id: string): Promise<Instrument> {
+    try {
+      return await this.createInstrument(id)
+    } catch {
+      return await this.createInstrument(id)
+    }
+  }
+
   async loadInstrument(id: string): Promise<void> {
     if (this.instruments.has(id)) return
     const existing = this.loading.get(id)
@@ -49,15 +68,16 @@ export class AudioEngine {
 
     const task = (async () => {
       try {
-        this.instruments.set(id, await this.createInstrument(id))
+        this.instruments.set(id, await this.createInstrumentWithRetry(id))
       } catch {
-        // Fall back to the grand piano so a missing soundfont never blocks
+        // Retry-once on the requested instrument already failed twice; fall
+        // back to the grand piano so a missing soundfont never blocks
         // playback or the visuals.
         if (id === GRAND_PIANO_ID) return
         try {
           let fallback = this.instruments.get(GRAND_PIANO_ID)
           if (!fallback) {
-            fallback = await this.createInstrument(GRAND_PIANO_ID)
+            fallback = await this.createInstrumentWithRetry(GRAND_PIANO_ID)
             this.instruments.set(GRAND_PIANO_ID, fallback)
           }
           this.instruments.set(id, fallback)
@@ -81,11 +101,8 @@ export class AudioEngine {
     const inst = this.instruments.get(voice.instrument)
     if (!inst) return
 
-    const when = Math.max(originSec + s.atSec, this.currentTime)
-    // smplr's start() has no per-note gain option, so voice.volume (0-1) is
-    // folded into velocity (0-127) instead -- it drives the same gain curve
-    // (midiVelToGain) smplr would otherwise apply from note velocity alone.
-    const velocity = Math.min(127, Math.max(0, s.note.velocity * voice.volume))
+    const when = clampToNow(originSec + s.atSec, this.currentTime)
+    const velocity = foldVelocity(s.note.velocity, voice.volume)
 
     inst.start({
       note: s.note.pitch,
