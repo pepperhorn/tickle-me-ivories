@@ -12,27 +12,37 @@ describe('visibleNotes', () => {
   const notes = [n(0, 60, 0), n(1, 62, 1), n(2, 64, 2), n(3, 66, 10), n(4, 68, 100)]
 
   it('includes notes inside the fall window', () => {
-    expect(visibleNotes(notes, 0, 3).map((x) => x.id)).toEqual([0, 1, 2])
+    expect(visibleNotes(notes, 0, 3, 3).map((x) => x.id)).toEqual([0, 1, 2])
   })
 
   it('excludes notes beyond the window', () => {
-    expect(visibleNotes(notes, 0, 3).some((x) => x.id === 3)).toBe(false)
+    expect(visibleNotes(notes, 0, 3, 3).some((x) => x.id === 3)).toBe(false)
   })
 
   it('still includes a note that has started but not finished', () => {
-    expect(visibleNotes(notes, 0.2, 3).map((x) => x.id)).toContain(0)
+    expect(visibleNotes(notes, 0.2, 3, 3).map((x) => x.id)).toContain(0)
   })
 
   it('drops notes whose flash has fully decayed', () => {
-    expect(visibleNotes(notes, 5, 3).map((x) => x.id)).toEqual([])
+    expect(visibleNotes(notes, 5, 3, 3).map((x) => x.id)).toEqual([])
   })
 
   it('costs the same for a dense score as a sparse one (windowed, not scanned)', () => {
     const dense: NoteEvent[] = []
     for (let i = 0; i < 20000; i++) dense.push(n(i, 21 + (i % 88), i * 0.01))
-    const got = visibleNotes(dense, 100, 3)
+    const got = visibleNotes(dense, 100, 3, 3)
     expect(got.length).toBeLessThan(400)          // only ~3s worth, not 20000
     expect(got[0].startSec).toBeGreaterThan(99)
+  })
+
+  it('keeps a long held note visible past any fixed lookback', () => {
+    // A 30s note: still sounding at t=20, long past the old 8s cutoff.
+    // Reachable in practice -- at the tempo control's 25% minimum, a 2s
+    // notated note becomes 8s, and slow pedal tones go further.
+    const long = [n(0, 60, 0, 30)]
+    const got = visibleNotes(long, 20, 3, 30)
+    expect(got.map((x) => x.id)).toEqual([0])
+    expect(heldNotes(got, 20).get(60)).toBeDefined()
   })
 })
 
@@ -87,6 +97,7 @@ describe('drawStage', () => {
     }]]),
     layout: computeLayout(1000, 600),
     fallSeconds: 3,
+    maxNoteDur: 3,
     showRoll: true,
     showGrid: true,
     showFlash: true,

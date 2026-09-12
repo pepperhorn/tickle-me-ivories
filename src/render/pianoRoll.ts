@@ -8,13 +8,17 @@ export interface RenderState {
   voices: Map<string, Voice>
   layout: KeyboardLayout
   fallSeconds: number
+  /** Longest note in the score, in seconds, under the CURRENT tempo setting.
+      The window search looks back this far for notes that started earlier and
+      are still sounding. A fixed cutoff is wrong for some score: at the tempo
+      control's 25% minimum, any note over 2s at notated tempo exceeds 8s. */
+  maxNoteDur: number
   showRoll: boolean            // false in keyboard-only mode
   showGrid: boolean
   showFlash: boolean
 }
 
 const BAR_RADIUS = 4
-const MAX_NOTE_DUR = 8         // search back this far for still-sounding notes
 const FLASH_TAIL = FLASH_MS / 1000
 
 function lowerBound(notes: NoteEvent[], startSec: number): number {
@@ -32,9 +36,11 @@ function lowerBound(notes: NoteEvent[], startSec: number): number {
  * ON SCREEN, not notes in the file -- a 20k-note score draws no slower than a
  * 200-note one.
  */
-export function visibleNotes(notes: NoteEvent[], t: number, fallSeconds: number): NoteEvent[] {
+export function visibleNotes(
+  notes: NoteEvent[], t: number, fallSeconds: number, maxNoteDur: number,
+): NoteEvent[] {
   const out: NoteEvent[] = []
-  for (let i = lowerBound(notes, t - MAX_NOTE_DUR); i < notes.length; i++) {
+  for (let i = lowerBound(notes, t - maxNoteDur); i < notes.length; i++) {
     const n = notes[i]
     if (n.startSec > t + fallSeconds) break
     if (n.endSec >= t - FLASH_TAIL) out.push(n)
@@ -69,7 +75,7 @@ export function drawRoll(ctx: CanvasRenderingContext2D, state: RenderState, t: n
   const { layout, voices, fallSeconds } = state
   const pps = layout.hitY / fallSeconds
   const stageH = layout.hitY + layout.keyboardH
-  const vis = visibleNotes(state.notes, t, fallSeconds)
+  const vis = visibleNotes(state.notes, t, fallSeconds, state.maxNoteDur)
 
   // White-key bars first, then black-key bars on top, so accidentals are never
   // hidden behind the naturals beside them.
@@ -98,7 +104,7 @@ export function drawRoll(ctx: CanvasRenderingContext2D, state: RenderState, t: n
 
 function drawImpact(ctx: CanvasRenderingContext2D, state: RenderState, t: number): void {
   const { layout, voices } = state
-  const vis = visibleNotes(state.notes, t, state.fallSeconds)
+  const vis = visibleNotes(state.notes, t, state.fallSeconds, state.maxNoteDur)
 
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
@@ -168,7 +174,7 @@ export function drawStage(
   // so a tiny value turns every held note into a full-height colour column.
   if (state.showRoll) drawRoll(ctx, state, t)
 
-  const vis = visibleNotes(state.notes, t, state.fallSeconds)
+  const vis = visibleNotes(state.notes, t, state.fallSeconds, state.maxNoteDur)
   const held = heldNotes(
     vis.filter((n) => state.voices.get(n.voiceId)?.visible !== false), t,
   )
