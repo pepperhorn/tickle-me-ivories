@@ -81,15 +81,21 @@ src/
 
 - [ ] **Step 1: Scaffold and install**
 
+The repo is **not empty** — it already holds `docs/`, `tools/`, `tests/` and `.superpowers/`, none of which may be deleted. `npm create vite@latest .` prompts interactively in a non-empty directory and will hang. Scaffold into a temp directory and copy in:
+
 ```bash
 cd /home/shaun/tickle-me-ivorys
-npm create vite@latest . -- --template react-ts
+rm -rf /tmp/tmi-scaffold
+npm create vite@latest /tmp/tmi-scaffold -- --template react-ts
+cp -r /tmp/tmi-scaffold/src /tmp/tmi-scaffold/index.html /tmp/tmi-scaffold/package.json .
+cp /tmp/tmi-scaffold/tsconfig*.json /tmp/tmi-scaffold/vite.config.ts .
+rm -rf /tmp/tmi-scaffold
 npm install
 npm install zustand @tonejs/midi smplr @fontsource/poppins
 npm install -D tailwindcss @tailwindcss/vite vitest jsdom @testing-library/react
 ```
 
-If `npm create vite` refuses because the directory is not empty, scaffold into a temp dir and copy in: `npm create vite@latest /tmp/tmi -- --template react-ts && cp -r /tmp/tmi/{src,index.html,vite.config.ts,tsconfig*.json,package.json} .` — then re-add the existing `docs/`, `tools/`, `tests/` which must not be deleted.
+Verify `docs/`, `tools/` and `tests/` still exist afterwards. Do not delete them.
 
 - [ ] **Step 2: Configure Vite for Tailwind, tests, and LAN access**
 
@@ -1469,7 +1475,7 @@ git commit -m "feat: smplr audio engine with instrument cache and fallback"
 **Interfaces:**
 - Consumes: `KeyboardLayout` (Task 3), `noteColor`/`flashIntensity` (Task 4), `NoteEvent`/`Voice` (Task 2)
 - Produces:
-  - `interface RenderState { notes: NoteEvent[]; voices: Map<string, Voice>; layout: KeyboardLayout; fallSeconds: number; showGrid: boolean; showFlash: boolean }`
+  - `interface RenderState { notes: NoteEvent[]; voices: Map<string, Voice>; layout: KeyboardLayout; fallSeconds: number; showRoll: boolean; showGrid: boolean; showFlash: boolean }`
   - `visibleNotes(notes: NoteEvent[], t: number, fallSeconds: number): NoteEvent[]`
   - `heldNotes(visible: NoteEvent[], t: number): Map<number, NoteEvent>`
   - `drawKeyboard(ctx: CanvasRenderingContext2D, layout: KeyboardLayout, voices: Map<string, Voice>, held: Map<number, NoteEvent>): void`
@@ -1570,6 +1576,7 @@ describe('drawStage', () => {
     }]]),
     layout: computeLayout(1000, 600),
     fallSeconds: 3,
+    showRoll: true,
     showGrid: true,
     showFlash: true,
   })
@@ -1585,6 +1592,14 @@ describe('drawStage', () => {
     const full = stubCtx()
     drawStage(full.ctx, state([n(0, 60, 0), n(1, 64, 0.5), n(2, 67, 1)]), 0, 0)
     expect(full.calls.length).toBeGreaterThan(empty.calls.length)
+  })
+
+  it('draws no falling bars when showRoll is false (keyboard-only mode)', () => {
+    const notes = [n(0, 60, 2), n(1, 64, 2.5)]   // both in the future: bars only
+    const withRoll = stubCtx(); drawStage(withRoll.ctx, state(notes), 0, 0)
+    const kbOnly = stubCtx()
+    drawStage(kbOnly.ctx, { ...state(notes), showRoll: false, showGrid: false }, 0, 0)
+    expect(kbOnly.calls.length).toBeLessThan(withRoll.calls.length)
   })
 
   it('skips notes belonging to a hidden voice', () => {
@@ -1671,6 +1686,7 @@ export interface RenderState {
   voices: Map<string, Voice>
   layout: KeyboardLayout
   fallSeconds: number
+  showRoll: boolean            // false in keyboard-only mode
   showGrid: boolean
   showFlash: boolean
 }
@@ -1825,7 +1841,10 @@ export function drawStage(
     }
   }
 
-  drawRoll(ctx, state, t)
+  // Keyboard-only mode suppresses the roll entirely. It must NOT be faked by
+  // shrinking fallSeconds -- drawRoll divides by it (pps = hitY / fallSeconds),
+  // so a tiny value turns every held note into a full-height colour column.
+  if (state.showRoll) drawRoll(ctx, state, t)
 
   const vis = visibleNotes(state.notes, t, state.fallSeconds)
   const held = heldNotes(
@@ -1845,7 +1864,7 @@ export function drawStage(
 - [ ] **Step 5: Run tests to verify they pass**
 
 Run: `npx vitest run src/render/pianoRoll.test.ts`
-Expected: PASS, 12 tests.
+Expected: PASS, 13 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -2282,6 +2301,7 @@ export default function App() {
   const schedulerRef = useRef<Scheduler | null>(null)
   const [playhead, setPlayhead] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const lastTenthRef = useRef(-1)
 
   if (!engineRef.current) engineRef.current = new AudioEngine()
   const engine = engineRef.current
@@ -2316,14 +2336,21 @@ export default function App() {
       const state = useTransport.getState()
       const now = engine.currentTime
       const head = playheadAt(state, now)
-      setPlayhead(head)
+
+      // Throttle the React playhead to 10Hz. The canvas reads the clock every
+      // frame regardless; only the transport bar's readout updates less often.
+      // Calling setState 60x/sec re-renders the tree against a canvas that is
+      // already animating itself, for a mm:ss display nobody can read that fast.
+      const tenth = Math.round(head * 10)
+      if (tenth !== lastTenthRef.current) { lastTenthRef.current = tenth; setPlayhead(head) }
 
       const layout = computeLayout(w, h)
       const rs: RenderState = {
         notes: state.score?.notes ?? [],
         voices: new Map((state.score?.voices ?? []).map((v) => [v.id, v])),
         layout,
-        fallSeconds: state.mode === 'keyboard' ? 0.001 : state.fallSeconds,
+        fallSeconds: state.fallSeconds,
+        showRoll: state.mode === 'roll',
         showGrid: state.mode === 'roll',
         showFlash: true,
       }
@@ -2420,7 +2447,7 @@ Open the Local URL and confirm, in order:
 3. Pressing Play sounds audio and drops notes onto the keys.
 4. Notes flash white on impact and the struck key tints in the voice colour.
 5. Dragging the scrub bar moves the playhead and the visuals follow; audio resumes cleanly.
-6. Switching to `keyboard` mode hides the falling bars but keys still light.
+6. Switching to `keyboard` mode hides the falling bars and the octave grid entirely — the roll area is plain black — but keys still light and flash on strike.
 7. Resizing the window rescales the keyboard with no stretching.
 
 Then open the **Network** URL on a phone in landscape and confirm the keyboard is proportioned like `tools/strike-lab.html`, with middle C's dark border visible.
