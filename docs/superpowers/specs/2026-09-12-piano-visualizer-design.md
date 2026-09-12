@@ -35,6 +35,7 @@ The app is a visualiser and player. It is architected so that practice features 
 | Hand split | Auto-split single-track MIDI at a movable pitch point |
 | Multi-instrument MIDI | All tracks become voices; each voice picks its own smplr instrument |
 | Screen targets | Desktop-first, must work fullscreen in phone landscape |
+| Visual style | SheetMusicBoss / Synthesia "Rush E" treatment: black field, octave grid, bars sustaining into tinted keys, white impact flash on strike |
 | Clock | AudioContext master clock + lookahead scheduler |
 | Stack | Vite + React + TypeScript + Tailwind + Zustand |
 
@@ -210,7 +211,7 @@ color     = hsl(voice.hue, saturation, lightness)
 
 ## 8. Rendering
 
-Two canvases — keyboard and roll — both DPR-aware and redrawn each rAF.
+**One canvas, two passes.** The roll and the keyboard share a single DPR-aware canvas redrawn each rAF, not two stacked canvases. This is required by the visual style in §8.1: note bars must be able to overlap the key surface as they land, and the impact bloom must spill both upward into the roll and downward across the keys. Two canvases would clip both effects at the seam.
 
 **Geometry.** `geometry.ts` computes, once per layout change, the x position and width of all 88 keys: 52 white keys tile the width; the 36 black keys sit at their conventional offsets at ~60% width and ~62% height. All renderers and the hit-testing share this one map.
 
@@ -220,12 +221,50 @@ Two canvases — keyboard and roll — both DPR-aware and redrawn each rAF.
 
 **Highlights.** Lit keys are derived each frame: file notes where `startSec <= t < endSec` on a visible voice, unioned with the live-input active map. No highlight state is stored or toggled.
 
+### 8.1 Visual style
+
+The target look is the SheetMusicBoss / Synthesia "Rush E" treatment: black field, coloured bars falling onto the keys, and a bright flare at the moment of impact.
+
+**Draw order,** back to front:
+
+1. Black field.
+2. Octave grid — a 1 px vertical line at every C boundary, `rgba(255,255,255,0.06)`; the C4 line is drawn at `0.14` so middle C reads as the orientation anchor in the roll as well as on the keys.
+3. White-key note bars.
+4. Black-key note bars, on top, so accidentals are never hidden behind the naturals beside them.
+5. Keyboard: unpressed keys, then pressed keys tinted in their voice colour.
+6. Impact layer — bloom, beam and sparks, drawn with `globalCompositeOperation = 'lighter'` inside a `save()`/`restore()` pair.
+7. Progress line — a 3 px bar along the very bottom edge, filling left to right with playback position.
+
+**Note bars.** Rounded rectangles, corner radius `min(4, width / 3)`, filled with a vertical gradient running from the note's velocity colour to roughly 8% lighter at the leading (lower) edge, plus a 1 px lighter top edge. Black-key bars are drawn at the black key's narrower width so every bar lines up with the key it will strike.
+
+**Sustain into the key.** A bar does not stop at the hit line. While `startSec <= t < endSec` the bar is drawn continuing down over the key it occupies, and the key itself is tinted in the same velocity colour — white keys tinted full height, black keys tinted with a brighter top edge. The bar and the lit key read as one object, which is what makes the strike feel physical.
+
+**Impact flash.** Spawned at note onset and decaying over `FLASH_MS = 220`:
+
+```
+age = t - note.startSec
+a   = max(0, 1 - age / FLASH_MS) ** 2          // eased decay
+i   = a * lerp(0.45, 1.0, velocity / 127)      // soft notes still register
+```
+
+At intensity `i`, centred on the key's horizontal midpoint at the hit line:
+
+- **Bloom** — radial gradient, radius `2.2 * keyWidth * i`, white at `0.9 * i` fading to transparent.
+- **Beam** — the topmost ~18 px of the key and the lowest ~24 px of the bar washed toward white, so the strike point goes white-hot rather than merely glowing.
+- **Sparks** — 5 short rays at roughly ±20° and ±50° from vertical, length `1.6 * keyWidth * i`, 1 px, white, fading with `i`.
+
+**The flash stays a pure function of `t`.** Intensity is computed from `t - note.startSec` on notes already inside the draw window — nothing is spawned, stored, or ticked. This preserves the §3 invariant: scrubbing backwards, pausing mid-flash and changing tempo all produce exactly the right flash state, with no particle pool to reset. Live-input flashes use the same function against the active map's `tStart`.
+
+**Cost.** The impact layer only touches notes whose onset is within 220 ms of `t` — a handful even in the densest passages — so it does not change the windowed-draw performance characteristic.
+
+All three effects are settings: impact flash on/off and intensity, grid lines on/off.
+
 ## 9. Settings dropdown
 
 - **Master BPM** — mode toggle between *Scale %* (25–300, respects the file's tempo map, so ritardandos survive) and *Absolute BPM* (constant, flattens the map). Effective BPM at the playhead is always displayed.
 - **Voices** — per voice: colour swatch with hue picker, editable label, smplr instrument select, visible and audible toggles, volume.
 - **Velocity mapping** — scheme selector, lightness range, gradient stop editor.
-- **Display** — mode (Keyboard / Falling roll / Notation), fall speed, keyboard zoom, note names on keys, middle-C marker.
+- **Display** — mode (Keyboard / Falling roll / Notation), fall speed, keyboard zoom, note names on keys, middle-C marker, impact flash on/off and intensity, octave grid lines on/off.
 - **Audio** — master volume, metronome on/off and volume, MIDI input device, sound-local-input toggle.
 - **Profile** — Export, Import, Reset to defaults.
 
@@ -286,6 +325,7 @@ its colours does not silently rewrite someone's audio settings.
 - `tempoMap` — ticks/seconds round-trip; scale% preserves relative tempo changes; absolute-BPM mode flattens the map; a tempo change mid-playback preserves musical position.
 - `handSplit` — split point assignment, boundary pitches, multi-track files bypass it.
 - `colors` — velocity-to-lightness is monotonic across the full range in both schemes.
+- `flashIntensity(age, velocity)` — 0 before onset, peaks at onset, reaches 0 at `FLASH_MS`, never negative, monotonic in velocity. Being a pure function, the whole impact effect is unit-testable without a canvas.
 - `geometry` — 52 white plus 36 black keys, correct x ordering, black keys land between the right whites, layout is width-proportional.
 - `profile/schema` — export/import round-trip; unknown version rejected.
 - `parseMidi` / `parseMusicXml` — small fixtures covering ties, multi-staff parts, tempo changes, drum channel.
