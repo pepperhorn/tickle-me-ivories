@@ -1,6 +1,6 @@
 import type { DisplayMode } from '../transport/useTransport'
 
-const mmss = (sec: number) => {
+export const mmss = (sec: number) => {
   const s = Math.max(0, Math.floor(sec))
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
@@ -33,6 +33,7 @@ export function TransportBar(props: {
       <input
         id="scrub"
         type="range"
+        aria-label="Seek"
         className="transport-scrub h-1 min-w-40 flex-1 accent-[var(--accent)]"
         min={0}
         max={Math.max(duration, 0.001)}

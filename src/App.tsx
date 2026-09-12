@@ -10,6 +10,7 @@ import { playheadAt, useTransport } from './transport/useTransport'
 import { FileDropZone } from './ui/FileDropZone'
 import { TransportBar } from './ui/TransportBar'
 import type { RenderState } from './render/pianoRoll'
+import type { ScoreDocument, Voice } from './model/types'
 
 export default function App() {
   const t = useTransport()
@@ -18,9 +19,21 @@ export default function App() {
   const [playhead, setPlayhead] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const lastTenthRef = useRef(-1)
+  const voicesRef = useRef<{ score: ScoreDocument | null; map: Map<string, Voice> }>({
+    score: null, map: new Map(),
+  })
 
   if (!engineRef.current) engineRef.current = new AudioEngine()
   const engine = engineRef.current
+
+  // Cached by score identity so the draw loop does not allocate a fresh Map
+  // 60x/sec for data that only changes when the score is replaced.
+  function voicesFor(score: ScoreDocument | null): Map<string, Voice> {
+    if (voicesRef.current.score !== score) {
+      voicesRef.current = { score, map: new Map((score?.voices ?? []).map((v) => [v.id, v])) }
+    }
+    return voicesRef.current.map
+  }
 
   // Rebuild the scheduler whenever the note array is replaced (load or retime).
   useEffect(() => {
@@ -63,7 +76,7 @@ export default function App() {
       const layout = computeLayout(w, h)
       const rs: RenderState = {
         notes: state.score?.notes ?? [],
-        voices: new Map((state.score?.voices ?? []).map((v) => [v.id, v])),
+        voices: voicesFor(state.score),
         layout,
         fallSeconds: state.fallSeconds,
         maxNoteDur: state.maxNoteDur,
@@ -76,18 +89,27 @@ export default function App() {
   )
 
   const loadFile = useCallback(async (file: File) => {
+    let score
     try {
       const bytes = await file.arrayBuffer()
-      const score = parseMidi(bytes, file.name, useTransport.getState().tempo)
+      score = parseMidi(bytes, file.name, useTransport.getState().tempo)
       score.id = await hashFile(bytes)
       if (score.notes.length === 0) { setError(`${file.name} contains no notes.`); return }
-      setError(null)
-      useTransport.getState().loadScore(score)
+    } catch (e) {
+      setError(`Could not read ${file.name}: ${(e as Error).message}`)
+      return
+    }
+
+    setError(null)
+    useTransport.getState().loadScore(score)
+
+    try {
       await engine.resume()
       await Promise.all([...new Set(score.voices.map((v) => v.instrument))]
         .map((i) => engine.loadInstrument(i)))
     } catch (e) {
-      setError(`Could not read ${file.name}: ${(e as Error).message}`)
+      // The score is loaded and visible; only sound is affected.
+      setError(`${file.name} is loaded, but audio could not start: ${(e as Error).message}`)
     }
   }, [engine])
 
