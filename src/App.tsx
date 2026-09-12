@@ -67,6 +67,16 @@ export default function App() {
       if (!state.playing || !s || !state.score) return
       const now = engine.currentTime
       const head = playheadAt(state, now)
+
+      // Playback stop lives here, not in the draw callback -- the render path
+      // stays a pure function of t with no side effects beyond its existing
+      // throttled setState.
+      if (head >= state.score.durationSec) {
+        state.pause(state.originSec + state.score.durationSec)
+        engine.stopAll()
+        return
+      }
+
       for (const sched of s.collect(head)) {
         const voice = state.score.voices.find((v) => v.id === sched.note.voiceId)
         if (voice) engine.play(sched, voice, state.originSec)
@@ -146,6 +156,15 @@ export default function App() {
     engine.stopAll()
   }, [engine])
 
+  const loadAnother = useCallback(() => {
+    // Stop and pause before clearing the model, or the previous file keeps
+    // sounding after the drop zone reappears.
+    const state = useTransport.getState()
+    if (state.playing) state.pause(engine.currentTime)
+    engine.stopAll()
+    state.clearScore()
+  }, [engine])
+
   return (
     <div className="app-shell flex h-full flex-col bg-[var(--ground)]">
       <div className="stage-wrap relative min-h-0 flex-1 bg-[var(--stage)]">
@@ -172,6 +191,7 @@ export default function App() {
           onToggle={toggle}
           onSeek={seek}
           onMode={t.setMode}
+          onLoadAnother={loadAnother}
         />
       )}
     </div>

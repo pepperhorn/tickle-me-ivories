@@ -22,6 +22,7 @@ export interface TransportState {
 
 export interface TransportActions {
   loadScore: (score: ScoreDocument) => void
+  clearScore: () => void
   play: (now: number) => void
   pause: (now: number) => void
   seek: (sec: number, now: number) => void
@@ -64,6 +65,12 @@ export const useTransport = create<TransportState & TransportActions>((set, get)
       score, playing: false, pausedAtSec: 0, originSec: 0,
       maxNoteDur: longestNoteSec(score),
     }
+  }),
+
+  // Returns to the drop zone. Callers must stop audio first (engine.stopAll())
+  // -- this only clears the model.
+  clearScore: () => set({
+    score: null, playing: false, pausedAtSec: 0, originSec: 0, maxNoteDur: 0,
   }),
 
   play: (now) => set((s) => ({ playing: true, originSec: now - s.pausedAtSec })),

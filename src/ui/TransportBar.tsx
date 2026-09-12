@@ -14,6 +14,7 @@ export function TransportBar(props: {
   onToggle: () => void
   onSeek: (sec: number) => void
   onMode: (mode: DisplayMode) => void
+  onLoadAnother: () => void
 }) {
   const { playing, playhead, duration, mode, name } = props
   return (
@@ -59,6 +60,15 @@ export function TransportBar(props: {
       </div>
 
       <span className="transport-filename truncate text-xs text-[var(--ink-dim)]">{name}</span>
+
+      <button
+        type="button"
+        aria-label="Load another file"
+        className="btn-load-another rounded-md border border-[var(--line)] px-3 py-1 text-xs text-[var(--ink-dim)]"
+        onClick={props.onLoadAnother}
+      >
+        Load another file
+      </button>
     </div>
   )
 }
