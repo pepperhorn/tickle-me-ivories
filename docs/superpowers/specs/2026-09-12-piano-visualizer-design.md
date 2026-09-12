@@ -233,11 +233,21 @@ Corroborated three ways:
 2. Measured off all 36 black keys in `docs/reference-sheetmusicboss.png` — agrees to within **0.32 px on a 23.5 px white key**.
 3. Already present in chordl's `BLACK_KEY_OFFSETS`, whose C#, D#, F# and A# entries match the construction to 0.0033 units.
 
-chordl's G# entry is the one exception: `16.25` where the construction gives `16.50`, out by 1.09% of a white key. G# is the only black key that should sit exactly on a boundary. Worth a fix upstream; this app uses the constructed value.
+chordl's G# entry is the one exception: `16.25` where the construction gives `16.50`, out by 1.09% of a white key. Worth a fix upstream; this app uses the constructed value. **G# sitting exactly on the G/A boundary is invariant across every credible source** — DIN 8996 and BDO Normzeichnung 12 both give it as exactly 0, as do all four black-key placement patterns found in production instruments. It is the one position with no legitimate variation.
 
-**Black key width is `0.5652 * whiteW` (13/23), matching chordl** rather than the real instrument's 0.583, so black keys are proportioned identically across both apps. The 3% deviation costs at most 0.25 px against the measured reference.
+**Sources.** The dimensional standards are all withdrawn but agree: DIN 8996:1985 *Klaviatur für Pianos und Flügel; Maße* (withdrawn, no replacement), JIS S 8507:1992 (withdrawn 2025), and the BDO/VOD *Orgelspieltischnormen 2000* Normzeichnung 12 "Pianoteilung", a dimensioned drawing of exactly this layout. DIN gives C/D/E tails of 15.93 mm and F/G/A/B tails of 14.97 mm against a 23.6 mm pitch and 11.5 mm sharp — the equal-tails construction exactly. There is no ISO piano keyboard standard.
 
-**Vertical proportions are true scale and derived from key width, never from the viewport:** `keyboardH = min(whiteW * 6.33, stageH * 0.55)` (a real piano is 150 mm × 23.5 mm, 6.38 : 1; the reference frame measures 6.31 : 1), black key length `0.633 * keyboardH`. Taking height from the viewport instead is a real trap — an earlier prototype used `clamp(stageH * 0.28, 46, 150)`, which yields a correct-looking **6.68 : 1** in phone landscape but **19.50 : 1** in phone portrait, where keys are two and a half times too long. The cap at 55% of stage height only engages on very short windows and leaves the aspect alone otherwise.
+Production instruments do vary — equal-tails is the provable optimum (max tail spread `B/12`), but B/8, B/6 and B/4 patterns all ship. Equal-tails is what the standards, chordl and the reference all use.
+
+**Black key width is `0.5652 * whiteW` (13/23), matching chordl.** This is deliberately wider than a real instrument: DIN 8996 gives a black-key body of 11.5 mm against a 23.586 mm white-key pitch (**0.488**), and the BDO layout slot including clearance is 12.70/23.6 (**0.538**). Narrow black keys read badly at phone scale, so both chordl and the SheetMusicBoss reference draw them wider than life; matching chordl keeps the two apps consistent and costs at most 0.25 px against the measured reference.
+
+> The often-quoted "13.7 mm black key width" is wrong and must not be reintroduced. 13.7 mm is `octave / 12` — the semitone *action spacing* at the rear of the keybed (165.1/12 = 13.76). Black key tops are 9.0–10.5 mm and bodies 11.0–12.5 mm (JIS S 8507, DIN 8996).
+
+**Vertical proportions are true scale and derived from key width, never from the viewport:** `keyboardH = min(whiteW * 6.33, stageH * 0.55)`, black key length `0.655 * keyboardH`.
+
+The 6.33 figure tracks the reference frame (measured **6.31 : 1**) rather than the standard, which is shorter: DIN 8996 gives a 145 mm visible natural against a 23.586 mm pitch, **6.15 : 1**. The reference's slightly longer key is the right target, since matching that look is the point.
+
+The black-key length ratio has two independent confirmations at **0.655**: JIS S 8507's 95 mm sharp against DIN's 145 mm natural gives 0.6552, and the reference frame measures 0.6554. Taking height from the viewport instead is a real trap — an earlier prototype used `clamp(stageH * 0.28, 46, 150)`, which yields a correct-looking **6.68 : 1** in phone landscape but **19.50 : 1** in phone portrait, where keys are two and a half times too long. The cap at 55% of stage height only engages on very short windows and leaves the aspect alone otherwise.
 
 **Windowed draw.** The roll binary-searches the sorted note array for the first note with `endSec >= t`, then iterates forward while `startSec <= t + fallSeconds`, drawing only that slice. Cost scales with notes *on screen*, not notes in the file, so a 10k-note piece draws no slower than a 200-note one. `fallSeconds` is a settings slider, default 3 s.
 

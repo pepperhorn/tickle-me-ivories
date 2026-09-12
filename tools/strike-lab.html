@@ -169,11 +169,11 @@
     <div class="ctl"><label for="c-blackW">Black key width</label><output id="o-blackW"></output>
       <input type="range" id="c-blackW" min="0.35" max="0.85" step="0.0001" value="0.5652"></div>
     <div class="ctl"><label for="c-blackLen">Black key length</label><output id="o-blackLen"></output>
-      <input type="range" id="c-blackLen" min="0.4" max="0.85" step="0.005" value="0.633"></div>
+      <input type="range" id="c-blackLen" min="0.4" max="0.85" step="0.005" value="0.655"></div>
     <div class="toggles">
       <button id="t-trueOffsets" type="button" aria-pressed="true">True black-key offsets</button>
     </div>
-    <p class="lab-sub" style="margin:2px 0 0">Off = naive boundary-centred. chordl uses 0.5652; a real piano is 6.38&nbsp;:&nbsp;1 / 0.583 / 0.633.</p>
+    <p class="lab-sub" style="margin:2px 0 0">Off = naive boundary-centred. DIN&nbsp;8996 is 6.15&nbsp;:&nbsp;1; black length 0.655 (JIS).</p>
   </div>
 
   <div class="out" id="out">
@@ -196,7 +196,7 @@
     sparks:5, sparkLen:1.6, spread:50,
     fall:3, bpm:168, radius:4,
     lMax:78, lMin:38, sat:85,
-    aspect:6.33, blackW:0.5652, blackLen:0.633,
+    aspect:6.33, blackW:0.5652, blackLen:0.655,
     beam:true, flash:true, grid:true, sustain:true, trueOffsets:true
   };
   var HUES = [207, 28];           // left hand, right hand — from the reference
