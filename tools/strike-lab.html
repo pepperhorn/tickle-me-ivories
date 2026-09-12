@@ -165,7 +165,7 @@
   <div class="group">
     <p class="group-name">Keyboard scale</p>
     <div class="ctl"><label for="c-aspect">Key length</label><output id="o-aspect"></output>
-      <input type="range" id="c-aspect" min="2.5" max="9" step="0.01" value="6.33"></div>
+      <input type="range" id="c-aspect" min="2.5" max="9" step="0.01" value="5.8"></div>
     <div class="ctl"><label for="c-blackW">Black key width</label><output id="o-blackW"></output>
       <input type="range" id="c-blackW" min="0.35" max="0.85" step="0.0001" value="0.5652"></div>
     <div class="ctl"><label for="c-blackLen">Black key length</label><output id="o-blackLen"></output>
@@ -173,7 +173,7 @@
     <div class="toggles">
       <button id="t-trueOffsets" type="button" aria-pressed="true">True black-key offsets</button>
     </div>
-    <p class="lab-sub" style="margin:2px 0 0">Off = naive boundary-centred. DIN&nbsp;8996 is 6.15&nbsp;:&nbsp;1; black length 0.655 (JIS).</p>
+    <p class="lab-sub" style="margin:2px 0 0">Off = naive boundary-centred. Reference frame 6.31&nbsp;:&nbsp;1, DIN&nbsp;8996 6.15&nbsp;:&nbsp;1.</p>
   </div>
 
   <div class="out" id="out">
@@ -196,7 +196,7 @@
     sparks:5, sparkLen:1.6, spread:50,
     fall:3, bpm:168, radius:4,
     lMax:78, lMin:38, sat:85,
-    aspect:6.33, blackW:0.5652, blackLen:0.655,
+    aspect:5.8, blackW:0.5652, blackLen:0.655,
     beam:true, flash:true, grid:true, sustain:true, trueOffsets:true
   };
   var HUES = [207, 28];           // left hand, right hand — from the reference
@@ -220,9 +220,11 @@
   function layout(){
     whiteW = W/52;
     blackW = Math.max(3, whiteW*P.blackW);
-    /* true scale: white key length / width. Measured 6.31:1 in the reference,
-       6.38:1 on a real piano (150mm / 23.5mm). Capped so a short window still
-       leaves room for the roll. */
+    /* White key length : width. 5.8:1 is a chosen value -- shorter than the
+       reference frame's measured 6.31:1 and DIN 8996's 6.15:1 -- trading key
+       length for roll height. What matters is that it is derived from key WIDTH,
+       never the viewport: taking it from stage height gave 19.5:1 in portrait.
+       Capped so a short window still leaves room for the roll. */
     keyboardH = Math.min(whiteW*P.aspect, H*0.55);
     blackH = keyboardH*P.blackLen;
     hitY = H - keyboardH;

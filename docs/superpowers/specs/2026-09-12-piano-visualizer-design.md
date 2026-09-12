@@ -243,9 +243,11 @@ Production instruments do vary — equal-tails is the provable optimum (max tail
 
 > The often-quoted "13.7 mm black key width" is wrong and must not be reintroduced. 13.7 mm is `octave / 12` — the semitone *action spacing* at the rear of the keybed (165.1/12 = 13.76). Black key tops are 9.0–10.5 mm and bodies 11.0–12.5 mm (JIS S 8507, DIN 8996).
 
-**Vertical proportions are true scale and derived from key width, never from the viewport:** `keyboardH = min(whiteW * 6.33, stageH * 0.55)`, black key length `0.655 * keyboardH`.
+**Vertical proportions are derived from key width, never from the viewport:** `keyboardH = min(whiteW * 5.8, stageH * 0.55)`, black key length `0.655 * keyboardH`.
 
-The 6.33 figure tracks the reference frame (measured **6.31 : 1**) rather than the standard, which is shorter: DIN 8996 gives a 145 mm visible natural against a 23.586 mm pitch, **6.15 : 1**. The reference's slightly longer key is the right target, since matching that look is the point.
+**5.8 : 1 is a chosen value, not a measured one.** It is shorter than both the reference frame (measured **6.31 : 1**) and the standard (DIN 8996's 145 mm natural against a 23.586 mm pitch, **6.15 : 1**), trading key length for roll height — the falling notes are the main event, and on a phone in landscape every pixel the keyboard gives back is a pixel of lead time. Adjustable in the debug rig (§13) if it wants revisiting.
+
+What is *not* negotiable is that the ratio derives from key **width**. Taking it from stage height instead is the defect this replaced.
 
 The black-key length ratio has two independent confirmations at **0.655**: JIS S 8507's 95 mm sharp against DIN's 145 mm natural gives 0.6552, and the reference frame measures 0.6554. Taking height from the viewport instead is a real trap — an earlier prototype used `clamp(stageH * 0.28, 46, 150)`, which yields a correct-looking **6.68 : 1** in phone landscape but **19.50 : 1** in phone portrait, where keys are two and a half times too long. The cap at 55% of stage height only engages on very short windows and leaves the aspect alone otherwise.
 

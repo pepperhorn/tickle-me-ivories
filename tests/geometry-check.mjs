@@ -4,7 +4,7 @@
 const BLACK = new Set([1,3,6,8,10]);
 const BLACK_OFFSET = {1:-1/6, 3:1/6, 6:-1/4, 8:0, 10:1/4};
 
-function layout(W, {aspect=6.33, blackWRatio=0.583, trueOffsets=true} = {}) {
+function layout(W, {aspect=5.8, blackWRatio=0.5652, trueOffsets=true, stageH=Infinity} = {}) {
   const whiteW = W/52, blackW = whiteW*blackWRatio;
   const keys = []; let wi = 0;
   for (let p = 21; p <= 108; p++) {
@@ -15,7 +15,7 @@ function layout(W, {aspect=6.33, blackWRatio=0.583, trueOffsets=true} = {}) {
       keys.push({p, black:false, x: wi*whiteW, w: whiteW}); wi++;
     }
   }
-  return {keys, whiteW, blackW, keyboardH: whiteW*aspect};
+  return {keys, whiteW, blackW, keyboardH: Math.min(whiteW*aspect, stageH*0.55)};
 }
 
 let fails = 0;
@@ -40,14 +40,42 @@ t('white keys tile the full width with no gap or overhang', () => {
   for (let i=1;i<whites.length;i++) near(whites[i].x, whites[i-1].x+whites[i-1].w, 1e-9, `white ${i} abuts previous`);
 });
 
-t('keyboard height is true piano scale (6.33 : 1)', () => {
-  near(g.keyboardH/g.whiteW, 6.33, 1e-9, 'aspect');
-  near(g.keyboardH, 148.5, 3, 'height vs reference-measured 148px');
+t('keyboard height sits at the chosen 5.8 : 1, and honours any ratio given', () => {
+  near(g.keyboardH/g.whiteW, 5.8, 1e-9, 'default aspect');
+  // 6.15 = DIN 8996, 6.31 = measured from the reference frame. Both must be
+  // reachable from the debug rig without touching the layout code.
+  for (const a of [4, 5.8, 6.15, 6.31, 8]) {
+    const k = layout(1220, {aspect:a});
+    near(k.keyboardH/k.whiteW, a, 1e-9, `aspect ${a} honoured`);
+  }
+});
+
+t('aspect does not move with viewport height (portrait regression)', () => {
+  // The original defect: keyboardH = clamp(stageH*0.28, 46, 150) produced a
+  // passable 6.68:1 in phone landscape but 19.50:1 in phone portrait, keys two
+  // and a half times too long. Height must derive from key WIDTH alone.
+  for (const [W,H,label] of [[400,800,'phone portrait'], [400,2000,'very tall portrait'],
+                             [850,390,'phone landscape'], [1400,800,'desktop'],
+                             [820,1180,'tablet portrait']]) {
+    const k = layout(W, {stageH:H});
+    near(k.keyboardH/k.whiteW, 5.8, 1e-9, `aspect at ${label}`);
+  }
+});
+
+t('the stage-height cap engages only on a genuinely short window', () => {
+  const tall = layout(1400, {stageH:800});
+  near(tall.keyboardH/tall.whiteW, 5.8, 1e-9, 'cap idle at normal heights');
+  const squat = layout(1400, {stageH:200});          // 5.8 would want 156px of 200
+  near(squat.keyboardH, 110, 1e-9, 'cap clamps to 55% of stage');
+  if (squat.keyboardH/squat.whiteW >= 5.8) throw new Error('cap should shorten the keys');
 });
 
 // Oracle measured from the reference screenshot: offset of each black key centre
 // from the white-key boundary, in px, at whiteW = 23.462.
 const MEASURED = {1:-2.08, 3:+1.96, 6:-3.53, 8:-0.07, 10:+3.42};
+// Tolerance is 0.5px: the app uses chordl's b = 0.5652 rather than the reference's
+// own ~0.58, which shifts the predicted offsets by up to 0.25px. Well inside the
+// margin, and far inside the 2.27px mean error of the boundary-centred bug.
 t('black key offsets match the reference frame within 0.5px', () => {
   let wi = 0; const boundary = {};
   for (let p=21;p<=108;p++){ if (BLACK.has(p%12)) boundary[p] = wi*g.whiteW; else wi++; }
