@@ -12,8 +12,11 @@ export interface ScheduledNote { note: NoteEvent; atSec: number }
  */
 export class Scheduler {
   private cursor = 0
+  private notes: NoteEvent[]
 
-  constructor(private notes: NoteEvent[]) {}
+  constructor(notes: NoteEvent[]) {
+    this.notes = notes
+  }
 
   /** Re-seat the cursor after a seek. Works in both directions. */
   seek(playheadSec: number): void {
