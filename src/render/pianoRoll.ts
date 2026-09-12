@@ -71,11 +71,12 @@ function roundRect(
   }
 }
 
-export function drawRoll(ctx: CanvasRenderingContext2D, state: RenderState, t: number): void {
+export function drawRoll(
+  ctx: CanvasRenderingContext2D, state: RenderState, t: number, vis: NoteEvent[],
+): void {
   const { layout, voices, fallSeconds } = state
   const pps = layout.hitY / fallSeconds
   const stageH = layout.hitY + layout.keyboardH
-  const vis = visibleNotes(state.notes, t, fallSeconds, state.maxNoteDur)
 
   // White-key bars first, then black-key bars on top, so accidentals are never
   // hidden behind the naturals beside them.
@@ -102,9 +103,10 @@ export function drawRoll(ctx: CanvasRenderingContext2D, state: RenderState, t: n
   }
 }
 
-function drawImpact(ctx: CanvasRenderingContext2D, state: RenderState, t: number): void {
+function drawImpact(
+  ctx: CanvasRenderingContext2D, state: RenderState, t: number, vis: NoteEvent[],
+): void {
   const { layout, voices } = state
-  const vis = visibleNotes(state.notes, t, state.fallSeconds, state.maxNoteDur)
 
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
@@ -169,18 +171,21 @@ export function drawStage(
     }
   }
 
+  // Computed once per frame and threaded through to drawRoll/drawImpact below
+  // -- identical arguments were producing the same window three times a frame.
+  const vis = visibleNotes(state.notes, t, state.fallSeconds, state.maxNoteDur)
+
   // Keyboard-only mode suppresses the roll entirely. It must NOT be faked by
   // shrinking fallSeconds -- drawRoll divides by it (pps = hitY / fallSeconds),
   // so a tiny value turns every held note into a full-height colour column.
-  if (state.showRoll) drawRoll(ctx, state, t)
+  if (state.showRoll) drawRoll(ctx, state, t, vis)
 
-  const vis = visibleNotes(state.notes, t, state.fallSeconds, state.maxNoteDur)
   const held = heldNotes(
     vis.filter((n) => state.voices.get(n.voiceId)?.visible !== false), t,
   )
   drawKeyboard(ctx, layout, state.voices, held)
 
-  if (state.showFlash) drawImpact(ctx, state, t)
+  if (state.showFlash) drawImpact(ctx, state, t, vis)
 
   ctx.fillStyle = 'rgba(255,255,255,0.06)'
   ctx.fillRect(0, stageH - 3, stageW, 3)

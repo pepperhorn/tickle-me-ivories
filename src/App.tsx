@@ -10,6 +10,7 @@ import { playheadAt, useTransport } from './transport/useTransport'
 import { FileDropZone } from './ui/FileDropZone'
 import { TransportBar } from './ui/TransportBar'
 import type { RenderState } from './render/pianoRoll'
+import type { KeyboardLayout } from './render/geometry'
 import type { ScoreDocument, Voice } from './model/types'
 
 export default function App() {
@@ -22,6 +23,7 @@ export default function App() {
   const voicesRef = useRef<{ score: ScoreDocument | null; map: Map<string, Voice> }>({
     score: null, map: new Map(),
   })
+  const layoutRef = useRef<{ w: number; h: number; layout: KeyboardLayout } | null>(null)
 
   if (!engineRef.current) engineRef.current = new AudioEngine()
   const engine = engineRef.current
@@ -33,6 +35,19 @@ export default function App() {
       voicesRef.current = { score, map: new Map((score?.voices ?? []).map((v) => [v.id, v])) }
     }
     return voicesRef.current.map
+  }
+
+  // Cached by (w, h) so the draw loop does not allocate 88 KeyRects, an
+  // array, and an 88-entry Map 60x/sec for a layout that only changes on
+  // resize -- the same rule that keeps voicesFor() out of this hot path.
+  function layoutFor(w: number, h: number): KeyboardLayout {
+    const cached = layoutRef.current
+    if (!cached || cached.w !== w || cached.h !== h) {
+      const layout = computeLayout(w, h)
+      layoutRef.current = { w, h, layout }
+      return layout
+    }
+    return cached.layout
   }
 
   // Rebuild the scheduler whenever the note array is replaced (load or retime).
@@ -73,7 +88,7 @@ export default function App() {
       const tenth = Math.round(head * 10)
       if (tenth !== lastTenthRef.current) { lastTenthRef.current = tenth; setPlayhead(head) }
 
-      const layout = computeLayout(w, h)
+      const layout = layoutFor(w, h)
       const rs: RenderState = {
         notes: state.score?.notes ?? [],
         voices: voicesFor(state.score),
