@@ -1,0 +1,23 @@
+@import "tailwindcss";
+@import "@fontsource/poppins/400.css";
+@import "@fontsource/poppins/500.css";
+@import "@fontsource/poppins/600.css";
+@import "@fontsource/poppins/700.css";
+
+:root {
+  --stage: #000000;
+  --ground: #07070a;
+  --panel: #101119;
+  --line: #22232e;
+  --ink: #e9eaf2;
+  --ink-dim: #9698ad;
+  --accent: #ff9c1a;
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: 'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
