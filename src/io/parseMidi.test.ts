@@ -73,11 +73,28 @@ describe('parseMidi', () => {
     const midi = new Midi()
     midi.header.setTempo(120)
     midi.addTrack().name = 'Empty'
-    const t = midi.addTrack(); t.name = 'Real'
-    t.addNote({ midi: 60, time: 0, duration: 1, velocity: 0.8 })
+    const a = midi.addTrack(); a.name = 'Right'
+    a.addNote({ midi: 72, time: 0, duration: 1, velocity: 0.8 })
+    const b = midi.addTrack(); b.name = 'Left'
+    b.addNote({ midi: 40, time: 0, duration: 1, velocity: 0.8 })
     const s = parseMidi(midi.toArray().buffer as ArrayBuffer, 'a.mid', SCALE_1)
-    expect(s.voices).toHaveLength(1)
-    expect(s.voices[0].label).toBe('Real')
+    expect(s.voices).toHaveLength(2)
+    expect(s.voices.map((v) => v.label)).toEqual(['Right', 'Left'])
+  })
+
+  it('hand-splits a file whose only pitched track sits behind a conductor track', () => {
+    // Type 1 MIDI almost always has a meta-only track 0. That must not stop
+    // the hand split: the file still has exactly one PITCHED track.
+    const midi = new Midi()
+    midi.header.setTempo(120)
+    midi.addTrack().name = 'Conductor'          // tempo/meta only, no notes
+    const piano = midi.addTrack(); piano.name = 'Piano'
+    piano.addNote({ midi: 40, time: 0, duration: 1, velocity: 0.8 })
+    piano.addNote({ midi: 72, time: 0, duration: 1, velocity: 0.8 })
+    const s = parseMidi(midi.toArray().buffer as ArrayBuffer, 'a.mid', SCALE_1)
+    expect(s.voices.map((v) => v.id).sort()).toEqual([LEFT_VOICE, RIGHT_VOICE].sort())
+    expect(s.notes.find((n) => n.pitch === 40)!.voiceId).toBe(LEFT_VOICE)
+    expect(s.notes.find((n) => n.pitch === 72)!.voiceId).toBe(RIGHT_VOICE)
   })
 })
 

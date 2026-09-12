@@ -24,21 +24,22 @@ export function parseMidi(
     midi.header.tempos.map((t) => ({ ticks: t.ticks, bpm: t.bpm })), ppq,
   )
 
+  const played = midi.tracks.filter((t) => t.notes.length > 0)
   const notes: NoteEvent[] = []
   let voices: Voice[] = []
   let id = 0
 
-  // The hand-split decision is made on the file's own track layout, not on
-  // the post-filter count: a file that ships one real track plus an empty
-  // placeholder track is still a "several tracks" file for labelling
-  // purposes, it just happens to have one track worth keeping.
-  if (midi.tracks.length === 1) {
-    // One track: split into two hands so the roll is legible.
+  // The hand-split decision is made on the count of PITCHED tracks (tracks
+  // with at least one note), not the raw track count: Type 1 MIDI files
+  // almost always carry a conductor track (tempo/meta only, no notes) ahead
+  // of the piano track, and that must not stop the hand split from firing.
+  if (played.length === 1) {
+    // One pitched track: split into two hands so the roll is legible.
     voices = [
       makeVoice(LEFT_VOICE, 'Left hand', 0, 2),
       makeVoice(RIGHT_VOICE, 'Right hand', 1, 2),
     ]
-    const raw = midi.tracks[0].notes.map((n) => ({
+    const raw = played[0].notes.map((n) => ({
       id: id++, pitch: n.midi, startTicks: n.ticks, durTicks: n.durationTicks,
       startSec: 0, endSec: 0, velocity: Math.round(n.velocity * 127), voiceId: LEFT_VOICE,
     }))
@@ -46,7 +47,6 @@ export function parseMidi(
     raw.forEach((n, i) => { n.voiceId = assign[i].voiceId })
     notes.push(...raw)
   } else {
-    const played = midi.tracks.filter((t) => t.notes.length > 0)
     voices = played.map((t, i) =>
       makeVoice(`track-${i}`, t.name?.trim() || `Track ${i + 1}`, i, played.length))
     played.forEach((t, i) => {
