@@ -225,15 +225,29 @@ The 52 white keys tile the width exactly: `whiteW = width / 52`. Black keys are 
 | G# | `0` (the only one actually on a boundary) |
 | A# | `+b/4` |
 
-Verified against the reference frame in `docs/reference-sheetmusicboss.png`: all 36 black-key centres agree with this rule to within **0.32 px on a 23.5 px white key**. Centring them on the boundaries instead — the naive approach — misplaces F# and A# by 0.146 white-key widths, which is the single most visible tell that a rendered keyboard is not to scale.
+The offsets are expressed **as multiples of `b`, not as a fixed table**, so the rule holds for any black-key width. This is deliberate: it is the same construction chordl uses in `chordl-core/src/engine/svg-constants.ts`, but parameterised, so the two apps agree on the rule while choosing their own proportions.
 
-Proportions are likewise true scale rather than viewport-derived: `keyboardH = whiteW * 6.33` (a real piano is 150 mm × 23.5 mm, 6.38 : 1; the reference frame measures 6.31 : 1), black key width `0.583 * whiteW`, black key length `0.633 * keyboardH`. Keyboard height is capped at 55% of the stage so a short window still leaves room for the roll.
+Corroborated three ways:
+
+1. Derived from the equal-tails construction.
+2. Measured off all 36 black keys in `docs/reference-sheetmusicboss.png` — agrees to within **0.32 px on a 23.5 px white key**.
+3. Already present in chordl's `BLACK_KEY_OFFSETS`, whose C#, D#, F# and A# entries match the construction to 0.0033 units.
+
+chordl's G# entry is the one exception: `16.25` where the construction gives `16.50`, out by 1.09% of a white key. G# is the only black key that should sit exactly on a boundary. Worth a fix upstream; this app uses the constructed value.
+
+**Black key width is `0.5652 * whiteW` (13/23), matching chordl** rather than the real instrument's 0.583, so black keys are proportioned identically across both apps. The 3% deviation costs at most 0.25 px against the measured reference.
+
+**Vertical proportions are true scale and derived from key width, never from the viewport:** `keyboardH = min(whiteW * 6.33, stageH * 0.55)` (a real piano is 150 mm × 23.5 mm, 6.38 : 1; the reference frame measures 6.31 : 1), black key length `0.633 * keyboardH`. Taking height from the viewport instead is a real trap — an earlier prototype used `clamp(stageH * 0.28, 46, 150)`, which yields a correct-looking **6.68 : 1** in phone landscape but **19.50 : 1** in phone portrait, where keys are two and a half times too long. The cap at 55% of stage height only engages on very short windows and leaves the aspect alone otherwise.
 
 **Windowed draw.** The roll binary-searches the sorted note array for the first note with `endSec >= t`, then iterates forward while `startSec <= t + fallSeconds`, drawing only that slice. Cost scales with notes *on screen*, not notes in the file, so a 10k-note piece draws no slower than a 200-note one. `fallSeconds` is a settings slider, default 3 s.
 
-**Keyboard zoom.** On load, the keyboard auto-fits to the piece's pitch range so simple pieces get large readable keys. Overridable to full-88 or a manual range. Because the phone-landscape full-88 case yields ~16 px keys, **middle C always carries a distinct dark border and a `C4` label** so orientation never depends on counting keys.
+**Keyboard zoom.** On load, the keyboard auto-fits to the piece's pitch range so simple pieces get large readable keys. Overridable to full-88 or a manual range.
+
+The fitted range is then widened so it never cuts through the middle of a black-key group — a keyboard ending between C# and D#, or between F# and G#, reads as broken. chordl already solves this in `chordl-core/src/resolver/auto-layout.ts` (`ensureFullBlackKeyGroups`): extend the start down to C when it lands on D, to F when it lands on G or A; extend the end up to E when it lands on D, to B when it lands on G or A. Port that rule rather than reinventing it. Because the phone-landscape full-88 case yields ~16 px keys, **middle C always carries a distinct dark border and a `C4` label** so orientation never depends on counting keys.
 
 **Highlights.** Lit keys are derived each frame: file notes where `startSec <= t < endSec` on a visible voice, unioned with the live-input active map. No highlight state is stored or toggled.
+
+**Shared geometry with chordl.** chordl (`/home/shaun/chordl`) is the house source for piano-keyboard geometry, exported from `@pepperhorn/chordl-core`. This app does not depend on the package — chordl's two presets are SVG chord-card illustrations at 2.83 : 1 (compact) and 4.74 : 1 (exact/full), far squatter than a performance keyboard needs — but it shares chordl's black-key **rule** and its black-key **width ratio**. If the rule is ever corrected in one place it should be corrected in both.
 
 ### 8.1 Visual style
 
