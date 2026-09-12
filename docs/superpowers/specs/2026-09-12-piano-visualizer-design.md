@@ -1,0 +1,307 @@
+# Tickle Me Ivorys — Design Spec
+
+**Date:** 2026-09-12
+**Status:** Approved for planning
+**Scope:** v1 application design
+
+## 1. Purpose
+
+A browser app that displays a full 88-key piano keyboard and visualises music on it, from two sources:
+
+- **Live MIDI input** — keys pressed on a connected controller light up, coloured by velocity.
+- **File playback** — a MIDI or MusicXML file drives the display and audio.
+
+The app is a visualiser and player. It is architected so that practice features (wait-for-note, hit scoring) can be added in phase 2 without reworking the note model or the clock, but none of that ships in v1.
+
+### Success criteria
+
+1. A dense file (Rush E scale, 10k+ notes) plays at 60 fps with audio that does not audibly drift from the visuals.
+2. Live controller input lights the correct key within one frame, with velocity legible from colour alone.
+3. Reopening a previously loaded file restores its voice colours, tempo setting and display mode with no user action.
+4. Usable fullscreen in phone landscape.
+
+## 2. Decisions taken
+
+| Question | Decision |
+|---|---|
+| Product scope | Visualiser/player now; practice features are phase 2 but the model must accommodate them |
+| Audio | smplr for file playback, live input sounding, and a metronome |
+| Notation | Verovio, MusicXML only in v1; MIDI transcription deferred to phase 2 |
+| Voice model | Auto-detected from tracks/channels/parts, user-renameable and recolourable |
+| Roll renderer | Canvas 2D, windowed draw |
+| Persistence | Settings + song reference (content hash), autosaved, exportable as JSON |
+| Live velocity colour | Both schemes ship; user-selectable |
+| Master BPM | Both tempo-scale % and absolute-BPM override, toggleable |
+| Hand split | Auto-split single-track MIDI at a movable pitch point |
+| Multi-instrument MIDI | All tracks become voices; each voice picks its own smplr instrument |
+| Screen targets | Desktop-first, must work fullscreen in phone landscape |
+| Clock | AudioContext master clock + lookahead scheduler |
+| Stack | Vite + React + TypeScript + Tailwind + Zustand |
+
+### Known platform constraints
+
+- **Web MIDI is Chromium-only.** Firefox and Safari have no Web MIDI API. Live input is Chrome/Edge/Opera only; file playback works everywhere.
+- **Verovio cannot import MIDI.** Its importers are MEI, MusicXML, Humdrum, ABC, PAE, DARMS and MuseData. Notation mode is therefore MusicXML-only in v1.
+- **AudioContext requires a user gesture** before it will produce sound.
+
+## 3. Architecture
+
+Four layers, one direction of flow:
+
+```
+INPUT                MODEL              TRANSPORT           RENDER
+-----                -----              ---------           ------
+.mid  --parseMidi--+
+.xml/.mxl -parseXml-+-> ScoreDocument --> scheduler --> smplr (audio)
+                   |    (notes, voices,       |
+Web MIDI ----------+     tempo map)      AudioContext
+  (live)                                  .currentTime
+                                               |
+                                               +--> keyboard canvas
+                                               +--> piano-roll canvas
+                                               +--> Verovio cursor
+```
+
+`AudioContext.currentTime` is the single source of truth for time.
+
+- The **scheduler** ticks on a ~25 ms interval, walks the time-sorted note array, and hands smplr every note starting within the next ~150 ms with an exact `time` argument. Web Audio then plays them sample-accurately regardless of main-thread jitter.
+- The **draw loop** runs on `requestAnimationFrame`, reads the same clock, and derives everything visible as a **pure function of `t`**: which keys are lit, which rectangles are falling, where the notation cursor sits.
+
+Because the display is derived rather than event-driven, seeking, pausing and tempo changes cannot cause visual desync — there is no accumulated visual state to correct.
+
+### Clock math
+
+```
+playheadSec = audioCtx.currentTime - originSec     (while playing)
+playheadSec = pausedAtSec                          (while paused)
+```
+
+Seeking sets `originSec = audioCtx.currentTime - targetSec`. Changing tempo captures the current position in **ticks**, recomputes every note's seconds from the tempo map under the new setting, then sets `originSec` so that the same musical position is preserved. The playhead never jumps.
+
+## 4. Data model
+
+Musical time (ticks) is the truth; seconds are derived. This is what allows the BPM control to re-time the piece repeatedly without degrading the source data.
+
+```ts
+type VoiceId = string;
+
+interface NoteEvent {
+  id: number;
+  pitch: number;          // MIDI 0-127; 21-108 are on the keyboard
+  startTicks: number;
+  durTicks: number;
+  startSec: number;       // derived from tempoMap + tempo setting
+  endSec: number;
+  velocity: number;       // 0-127
+  voiceId: VoiceId;
+}
+
+interface Voice {
+  id: VoiceId;
+  label: string;                  // "Right hand", user-editable
+  source:
+    | { kind: 'midi-track'; index: number; channel: number }
+    | { kind: 'xml-part'; partId: string; staff: number };
+  hue: number;                    // 0-360
+  instrument: string;             // smplr instrument identifier
+  visible: boolean;
+  audible: boolean;
+  volume: number;                 // 0-1
+}
+
+interface TempoEvent { ticks: number; sec: number; bpm: number; }
+interface TimeSigEvent { ticks: number; numerator: number; denominator: number; }
+
+interface ScoreDocument {
+  id: string;                     // SHA-256 of file bytes; the profile key
+  name: string;
+  ppq: number;
+  tempoMap: TempoEvent[];
+  timeSignatures: TimeSigEvent[];
+  voices: Voice[];
+  notes: NoteEvent[];             // sorted ascending by startSec
+  durationSec: number;
+  sourceFormat: 'midi' | 'musicxml';
+  rawXml?: string;                // retained verbatim for Verovio
+}
+```
+
+**Invariants**
+
+- `notes` is always sorted by `startSec`. Both the scheduler cursor and the renderer's window search depend on it.
+- Every `NoteEvent.voiceId` resolves to a member of `voices`.
+- `tempoMap` is sorted by `ticks` and always contains an entry at tick 0.
+
+## 5. Modules
+
+```
+src/
+  main.tsx
+  App.tsx
+  model/
+    types.ts             the interfaces above
+    tempoMap.ts          ticksToSec / secToTicks; scale% and absolute-BPM modes
+  io/
+    loadFile.ts          dispatch by extension, with content sniffing fallback
+    parseMidi.ts         @tonejs/midi -> ScoreDocument
+    parseMusicXml.ts     XML (and .mxl unzip) -> ScoreDocument, retains raw text
+    handSplit.ts         single-track MIDI -> two voices at a movable split point
+    hashFile.ts          SHA-256 of the ArrayBuffer via SubtleCrypto
+  audio/
+    engine.ts            AudioContext ownership, smplr instrument cache
+    scheduler.ts         lookahead loop; clock injected for testability
+    metronome.ts         click derived from tempoMap + timeSignatures
+  transport/
+    useTransport.ts      play / pause / seek / tempo; origin math
+  midi-input/
+    useMidiInput.ts      Web MIDI -> Map<pitch, { velocity, tStart }>
+  render/
+    geometry.ts          pitch -> x / width for 52 white + 36 black keys
+    keyboard.ts          canvas draw
+    pianoRoll.ts         canvas draw, windowed
+    colors.ts            (hue, velocity) -> css colour
+    useCanvasStage.ts    rAF loop, devicePixelRatio, resize observer
+  notation/
+    VerovioPanel.tsx     MusicXML only in v1
+  state/
+    useSettingsStore.ts  zustand, persisted
+    useScoreStore.ts     current ScoreDocument
+  profile/
+    schema.ts            versioned profile shape + validation
+    exportImport.ts      download / file-pick / drag-drop
+  ui/
+    TransportBar.tsx  SettingsMenu.tsx  VoiceRow.tsx
+    FileDropZone.tsx  ModeSwitch.tsx    Toast.tsx
+```
+
+Each module has one job and a narrow interface. `render/*` is pure drawing given `(ctx, state, t)` and holds no state of its own; `audio/scheduler.ts` takes its clock as a parameter so it can be driven by a fake clock in tests.
+
+## 6. Input paths
+
+### 6.1 MIDI file
+
+Parsed with `@tonejs/midi`. Each track (excluding channel 10 drums from the keyboard, though still listed as a voice) becomes a `Voice`. If the file has exactly one pitched track, `handSplit.ts` splits it into two voices at a default of middle C (MIDI 60), exposed as a draggable split-point control. Tempo and time-signature meta events build the `tempoMap`.
+
+### 6.2 MusicXML file
+
+`.xml`, `.musicxml` and `.mxl` (zipped, unpacked with `fflate`). Each `part` + `staff` combination becomes a `Voice`. Note durations come from `<duration>` against `<divisions>`; ties are merged into single `NoteEvent`s; `<sound tempo>` and metronome directions build the `tempoMap`. The raw XML text is retained on the document so Verovio can render the original engraving rather than a round-trip.
+
+### 6.3 Live MIDI input
+
+`navigator.requestMIDIAccess()`. `noteon` with velocity > 0 adds to an active-note map; `noteon` with velocity 0 and `noteoff` remove. The keyboard renderer reads that map each frame. When "sound local input" is enabled, each `noteon` also triggers smplr immediately (no lookahead — latency matters more than jitter here). Device selection and hot-plug (`statechange`) are handled in the hook.
+
+## 7. Colour system
+
+**File playback.** Each voice owns a hue. Velocity drives lightness within that hue — soft notes light, hard notes dark and saturated:
+
+```
+lightness = lerp(Lmax, Lmin, velocity / 127)    // Lmax 78%, Lmin 38% by default
+color     = hsl(voice.hue, saturation, lightness)
+```
+
+`Lmax`, `Lmin` and saturation are settings. The mapping is monotonic by construction, which is asserted in tests.
+
+**Live input.** Two schemes ship, selectable in settings:
+
+1. *Single-hue lightness ramp* — same formula as above against a dedicated live-input hue. Consistent with the file-playback language.
+2. *Multi-stop gradient* — editable stops (default blue to green to yellow to red) interpolated across the velocity range. More immediately readable as attack strength.
+
+**Default palette.** Voice hues are assigned evenly around the wheel (`i * 360 / n`, offset to start at a pleasant blue) so any voice count stays distinguishable without manual assignment.
+
+## 8. Rendering
+
+Two canvases — keyboard and roll — both DPR-aware and redrawn each rAF.
+
+**Geometry.** `geometry.ts` computes, once per layout change, the x position and width of all 88 keys: 52 white keys tile the width; the 36 black keys sit at their conventional offsets at ~60% width and ~62% height. All renderers and the hit-testing share this one map.
+
+**Windowed draw.** The roll binary-searches the sorted note array for the first note with `endSec >= t`, then iterates forward while `startSec <= t + fallSeconds`, drawing only that slice. Cost scales with notes *on screen*, not notes in the file, so a 10k-note piece draws no slower than a 200-note one. `fallSeconds` is a settings slider, default 3 s.
+
+**Keyboard zoom.** On load, the keyboard auto-fits to the piece's pitch range so simple pieces get large readable keys. Overridable to full-88 or a manual range. Because the phone-landscape full-88 case yields ~16 px keys, **middle C always carries a distinct dark border and a `C4` label** so orientation never depends on counting keys.
+
+**Highlights.** Lit keys are derived each frame: file notes where `startSec <= t < endSec` on a visible voice, unioned with the live-input active map. No highlight state is stored or toggled.
+
+## 9. Settings dropdown
+
+- **Master BPM** — mode toggle between *Scale %* (25–300, respects the file's tempo map, so ritardandos survive) and *Absolute BPM* (constant, flattens the map). Effective BPM at the playhead is always displayed.
+- **Voices** — per voice: colour swatch with hue picker, editable label, smplr instrument select, visible and audible toggles, volume.
+- **Velocity mapping** — scheme selector, lightness range, gradient stop editor.
+- **Display** — mode (Keyboard / Falling roll / Notation), fall speed, keyboard zoom, note names on keys, middle-C marker.
+- **Audio** — master volume, metronome on/off and volume, MIDI input device, sound-local-input toggle.
+- **Profile** — Export, Import, Reset to defaults.
+
+## 10. Persistence
+
+Settings autosave to `localStorage` keyed by the file's content hash, so reopening a piece restores its colours, tempo setting and display mode with no user action. Global preferences (velocity scheme, default fall speed, audio levels) are stored separately and apply to every file.
+
+**Export Profile** downloads `<song>.tmi.json`:
+
+```jsonc
+{
+  "schemaVersion": 1,
+  "song": { "id": "<sha256>", "name": "rush-e.mid", "format": "midi" },
+  "voices": [{ "id": "t0", "label": "Right hand", "hue": 210,
+               "instrument": "acoustic_grand_piano",
+               "visible": true, "audible": true, "volume": 1 }],
+  "tempo": { "mode": "scale", "scale": 1.0, "absoluteBpm": null },
+  "display": { "mode": "roll", "fallSeconds": 3, "zoom": "fit",
+               "showNoteNames": false },
+  "global": {
+    "velocityScheme": { "kind": "lightness", "lMax": 78, "lMin": 38 },
+    "masterVolume": 0.8, "metronome": false
+  }
+}
+```
+
+Song-scoped keys (`voices`, `tempo`, `display`) always apply on import. The
+`global` block is a snapshot of the app-wide preferences at export time; import
+offers to apply it or leave the current globals alone, so sharing a profile for
+its colours does not silently rewrite someone's audio settings.
+
+**Import** accepts the file via picker or drag-and-drop onto the window. Song data is referenced by hash rather than embedded, so importing a profile on a machine without the source file prompts you to re-pick it; the profile then reattaches by hash.
+
+## 11. Error handling
+
+| Condition | Behaviour |
+|---|---|
+| Unparseable or corrupt file | Toast naming the reason; the previously loaded score stays intact |
+| `.mxl` that is not a valid zip | Treated as a parse failure, same path |
+| No Web MIDI (Firefox, Safari) | Device picker hidden, replaced by a one-line explanation; file playback unaffected |
+| AudioContext suspended | "Click to enable audio" overlay; browsers require a gesture before any sound |
+| smplr sample load failure | Retry once, then fall back to a basic oscillator voice so visuals are never blocked by audio |
+| Unknown profile `schemaVersion` | Refuse the import and keep current settings, rather than half-applying it |
+| Notation mode with a MIDI file | Tab disabled with "requires MusicXML in this version" |
+| Note outside 21–108 | Kept in the model and audible; drawn clamped at the keyboard edge with an off-range marker |
+
+## 12. UI conventions
+
+- **Typography:** Poppins throughout, loaded via `@fontsource/poppins` (self-hosted, so the app works offline).
+- **Styling:** Tailwind utilities, with a contextual semantic class name on every element alongside them — `className="voice-row flex items-center gap-3"`, `className="btn-play rounded-full px-4 py-2"` — so elements are identifiable in the DOM inspector and available as hooks for tests and style overrides.
+- **Dev server:** bound to `0.0.0.0` (`npm run dev -- --host 0.0.0.0`) so the phone-landscape layout can be tested on a real device on the LAN.
+- **Transport bar:** play/pause, a scrub bar showing elapsed and total time that seeks on drag, the effective-BPM readout, mode switch, and the settings dropdown trigger. It collapses to icon-only in phone landscape.
+
+## 13. Testing
+
+**Unit (Vitest)**
+
+- `tempoMap` — ticks/seconds round-trip; scale% preserves relative tempo changes; absolute-BPM mode flattens the map; a tempo change mid-playback preserves musical position.
+- `handSplit` — split point assignment, boundary pitches, multi-track files bypass it.
+- `colors` — velocity-to-lightness is monotonic across the full range in both schemes.
+- `geometry` — 52 white plus 36 black keys, correct x ordering, black keys land between the right whites, layout is width-proportional.
+- `profile/schema` — export/import round-trip; unknown version rejected.
+- `parseMidi` / `parseMusicXml` — small fixtures covering ties, multi-staff parts, tempo changes, drum channel.
+
+**Scheduler** — driven by an injected fake clock, no AudioContext. Asserts each note is scheduled exactly once, within the lookahead window, and that seeking re-seats the cursor correctly.
+
+**Render** — draw functions called against a recording stub `CanvasRenderingContext2D`; assert the culling window draws only on-screen notes and that off-screen notes cost nothing.
+
+**End-to-end (Playwright)** — load a fixture file, press play, screenshot at a fixed time offset, assert no console errors.
+
+## 14. Scope
+
+**v1**
+
+88-key keyboard · live MIDI input with velocity colour · MIDI and MusicXML loading · keyboard-highlight mode · falling-roll mode · Verovio notation mode for MusicXML · settings dropdown · profile JSON save/load.
+
+**Phase 2 (designed for, not built)**
+
+MIDI-to-notation transcription (quantise, spell, split, beam) · practice/wait mode and hit scoring · loop regions · rising trails for live input · recording and video export.
