@@ -213,7 +213,21 @@ color     = hsl(voice.hue, saturation, lightness)
 
 **One canvas, two passes.** The roll and the keyboard share a single DPR-aware canvas redrawn each rAF, not two stacked canvases. This is required by the visual style in §8.1: note bars must be able to overlap the key surface as they land, and the impact bloom must spill both upward into the roll and downward across the keys. Two canvases would clip both effects at the seam.
 
-**Geometry.** `geometry.ts` computes, once per layout change, the x position and width of all 88 keys: 52 white keys tile the width; the 36 black keys sit at their conventional offsets at ~60% width and ~62% height. All renderers and the hit-testing share this one map.
+**Geometry.** `geometry.ts` computes, once per layout change, the x position and width of all 88 keys. All renderers and hit-testing share this one map.
+
+The 52 white keys tile the width exactly: `whiteW = width / 52`. Black keys are **not** centred on the boundaries between white keys — a real piano is built so the white-key *tails* behind the black keys are equal width, three equal tails across C–D–E and four across F–G–A–B. That construction reduces to a fixed offset of each black key's centre from the white-key boundary, in units of the black-key width `b`:
+
+| key | offset from boundary |
+|---|---|
+| C# | `-b/6` |
+| D# | `+b/6` |
+| F# | `-b/4` |
+| G# | `0` (the only one actually on a boundary) |
+| A# | `+b/4` |
+
+Verified against the reference frame in `docs/reference-sheetmusicboss.png`: all 36 black-key centres agree with this rule to within **0.32 px on a 23.5 px white key**. Centring them on the boundaries instead — the naive approach — misplaces F# and A# by 0.146 white-key widths, which is the single most visible tell that a rendered keyboard is not to scale.
+
+Proportions are likewise true scale rather than viewport-derived: `keyboardH = whiteW * 6.33` (a real piano is 150 mm × 23.5 mm, 6.38 : 1; the reference frame measures 6.31 : 1), black key width `0.583 * whiteW`, black key length `0.633 * keyboardH`. Keyboard height is capped at 55% of the stage so a short window still leaves room for the roll.
 
 **Windowed draw.** The roll binary-searches the sorted note array for the first note with `endSec >= t`, then iterates forward while `startSec <= t + fallSeconds`, drawing only that slice. Cost scales with notes *on screen*, not notes in the file, so a 10k-note piece draws no slower than a 200-note one. `fallSeconds` is a settings slider, default 3 s.
 
@@ -318,7 +332,15 @@ its colours does not silently rewrite someone's audio settings.
 - **Dev server:** bound to `0.0.0.0` (`npm run dev -- --host 0.0.0.0`) so the phone-landscape layout can be tested on a real device on the LAN.
 - **Transport bar:** play/pause, a scrub bar showing elapsed and total time that seeks on drag, the effective-BPM readout, mode switch, and the settings dropdown trigger. It collapses to icon-only in phone landscape.
 
-## 13. Testing
+## 13. Debug mode
+
+`tools/strike-lab.html` is a standalone, dependency-free rig that renders the roll and keyboard with every visual constant exposed as a live control: flash decay, bloom radius and alpha, velocity floor, spark count/length/spread, fall window, bar radius, velocity lightness endpoints, saturation, and the keyboard scale constants (key aspect, black-key width and length, true-vs-naive black-key offsets). A **Constants** button dumps the current values as JSON.
+
+This is not throwaway. It ships as the app's **admin/debug mode**, reached by a route the normal UI does not link to, and it is where visual constants are set: tune in the rig, export the JSON, paste into `render/flash.ts` and `render/geometry.ts`. Its defaults and the spec's published constants must stay in step — if they diverge, the rig is right and the spec needs updating.
+
+It also carries the naive-geometry toggle, which reproduces the boundary-centred bug on demand. That stays in permanently: it is the fastest way to confirm the keyboard is still drawn to scale after any layout change.
+
+## 14. Testing
 
 **Unit (Vitest)**
 
@@ -326,7 +348,7 @@ its colours does not silently rewrite someone's audio settings.
 - `handSplit` — split point assignment, boundary pitches, multi-track files bypass it.
 - `colors` — velocity-to-lightness is monotonic across the full range in both schemes.
 - `flashIntensity(age, velocity)` — 0 before onset, peaks at onset, reaches 0 at `FLASH_MS`, never negative, monotonic in velocity. Being a pure function, the whole impact effect is unit-testable without a canvas.
-- `geometry` — 52 white plus 36 black keys, correct x ordering, black keys land between the right whites, layout is width-proportional.
+- `geometry` — 52 white plus 36 black keys; whites tile the width with no gap or overhang; black-key centres match the measured reference offsets within 0.5 px; G# is the only black key on a boundary; white tails are equal within each group; keyboard height holds the true-scale aspect. Seeded by `tests/geometry-check.mjs`, which runs against centres measured from `docs/reference-sheetmusicboss.png`.
 - `profile/schema` — export/import round-trip; unknown version rejected.
 - `parseMidi` / `parseMusicXml` — small fixtures covering ties, multi-staff parts, tempo changes, drum channel.
 
@@ -336,11 +358,11 @@ its colours does not silently rewrite someone's audio settings.
 
 **End-to-end (Playwright)** — load a fixture file, press play, screenshot at a fixed time offset, assert no console errors.
 
-## 14. Scope
+## 15. Scope
 
 **v1**
 
-88-key keyboard · live MIDI input with velocity colour · MIDI and MusicXML loading · keyboard-highlight mode · falling-roll mode · Verovio notation mode for MusicXML · settings dropdown · profile JSON save/load.
+88-key keyboard at true piano scale · live MIDI input with velocity colour · MIDI and MusicXML loading · keyboard-highlight mode · falling-roll mode · Verovio notation mode for MusicXML · settings dropdown · profile JSON save/load · admin/debug mode (§13).
 
 **Phase 2 (designed for, not built)**
 
