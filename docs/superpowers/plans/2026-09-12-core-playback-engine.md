@@ -15,7 +15,7 @@
 - **Typography:** Poppins, self-hosted via `@fontsource/poppins`. Never a CDN font link.
 - **CSS:** Tailwind utilities, and **every element carries a contextual semantic class name alongside them** — `className="voice-row flex items-center gap-3"`. Non-negotiable; it is how elements are found in the inspector and in tests.
 - **Dev server:** always `--host 0.0.0.0`. The phone-landscape layout must be testable on a real device.
-- **Keyboard geometry is fixed by the spec and measured against `docs/reference-sheetmusicboss.png`.** Do not adjust these while implementing:
+- **Keyboard geometry is fixed by the spec and measured against a SheetMusicBoss reference frame.** Do not adjust these while implementing:
   - White key width `= stageWidth / 52`. 52 white keys tile the width exactly.
   - Black key width `= 0.5652 * whiteW` (matches chordl).
   - Black key centre offsets from the white-key boundary, in units of black-key width `b`: **C# `-b/6`, D# `+b/6`, F# `-b/4`, G# `0`, A# `+b/4`**. G# is the only one on a boundary.
@@ -81,15 +81,21 @@ src/
 
 - [ ] **Step 1: Scaffold and install**
 
+The repo is **not empty** — it already holds `docs/`, `tools/`, `tests/` and `.superpowers/`, none of which may be deleted. `npm create vite@latest .` prompts interactively in a non-empty directory and will hang. Scaffold into a temp directory and copy in:
+
 ```bash
 cd /home/shaun/tickle-me-ivorys
-npm create vite@latest . -- --template react-ts
+rm -rf /tmp/tmi-scaffold
+npm create vite@latest /tmp/tmi-scaffold -- --template react-ts
+cp -r /tmp/tmi-scaffold/src /tmp/tmi-scaffold/index.html /tmp/tmi-scaffold/package.json .
+cp /tmp/tmi-scaffold/tsconfig*.json /tmp/tmi-scaffold/vite.config.ts .
+rm -rf /tmp/tmi-scaffold
 npm install
 npm install zustand @tonejs/midi smplr @fontsource/poppins
 npm install -D tailwindcss @tailwindcss/vite vitest jsdom @testing-library/react
 ```
 
-If `npm create vite` refuses because the directory is not empty, scaffold into a temp dir and copy in: `npm create vite@latest /tmp/tmi -- --template react-ts && cp -r /tmp/tmi/{src,index.html,vite.config.ts,tsconfig*.json,package.json} .` — then re-add the existing `docs/`, `tools/`, `tests/` which must not be deleted.
+Verify `docs/`, `tools/` and `tests/` still exist afterwards. Do not delete them.
 
 - [ ] **Step 2: Configure Vite for Tailwind, tests, and LAN access**
 
@@ -450,7 +456,7 @@ git commit -m "feat: note model types and tempo map with scale/absolute modes"
 
 - [ ] **Step 1: Write the failing tests**
 
-`src/render/geometry.test.ts`. This ports `tests/geometry-check.mjs`, whose oracle is 36 black-key centres measured from `docs/reference-sheetmusicboss.png`.
+`src/render/geometry.test.ts`. This ports `tests/geometry-check.mjs`, whose oracle is 36 black-key centres measured from a SheetMusicBoss reference frame.
 
 ```ts
 import { describe, it, expect } from 'vitest'
@@ -460,7 +466,7 @@ const BLACK_PC = new Set([1, 3, 6, 8, 10])
 const REF_W = 1220          // reference frame width; whiteW = 23.462
 
 /** Offset of each black key centre from the white-key boundary, in px at REF_W.
- *  Measured from all 36 black keys in docs/reference-sheetmusicboss.png. */
+ *  Measured from all 36 black keys of a SheetMusicBoss reference frame. */
 const MEASURED: Record<number, number> = { 1: -2.08, 3: 1.96, 6: -3.53, 8: -0.07, 10: 3.42 }
 
 function boundaries(whiteW: number): Record<number, number> {
@@ -1469,7 +1475,7 @@ git commit -m "feat: smplr audio engine with instrument cache and fallback"
 **Interfaces:**
 - Consumes: `KeyboardLayout` (Task 3), `noteColor`/`flashIntensity` (Task 4), `NoteEvent`/`Voice` (Task 2)
 - Produces:
-  - `interface RenderState { notes: NoteEvent[]; voices: Map<string, Voice>; layout: KeyboardLayout; fallSeconds: number; showGrid: boolean; showFlash: boolean }`
+  - `interface RenderState { notes: NoteEvent[]; voices: Map<string, Voice>; layout: KeyboardLayout; fallSeconds: number; maxNoteDur: number; showRoll: boolean; showGrid: boolean; showFlash: boolean }`
   - `visibleNotes(notes: NoteEvent[], t: number, fallSeconds: number): NoteEvent[]`
   - `heldNotes(visible: NoteEvent[], t: number): Map<number, NoteEvent>`
   - `drawKeyboard(ctx: CanvasRenderingContext2D, layout: KeyboardLayout, voices: Map<string, Voice>, held: Map<number, NoteEvent>): void`
@@ -1570,6 +1576,7 @@ describe('drawStage', () => {
     }]]),
     layout: computeLayout(1000, 600),
     fallSeconds: 3,
+    showRoll: true,
     showGrid: true,
     showFlash: true,
   })
@@ -1585,6 +1592,14 @@ describe('drawStage', () => {
     const full = stubCtx()
     drawStage(full.ctx, state([n(0, 60, 0), n(1, 64, 0.5), n(2, 67, 1)]), 0, 0)
     expect(full.calls.length).toBeGreaterThan(empty.calls.length)
+  })
+
+  it('draws no falling bars when showRoll is false (keyboard-only mode)', () => {
+    const notes = [n(0, 60, 2), n(1, 64, 2.5)]   // both in the future: bars only
+    const withRoll = stubCtx(); drawStage(withRoll.ctx, state(notes), 0, 0)
+    const kbOnly = stubCtx()
+    drawStage(kbOnly.ctx, { ...state(notes), showRoll: false, showGrid: false }, 0, 0)
+    expect(kbOnly.calls.length).toBeLessThan(withRoll.calls.length)
   })
 
   it('skips notes belonging to a hidden voice', () => {
@@ -1671,6 +1686,12 @@ export interface RenderState {
   voices: Map<string, Voice>
   layout: KeyboardLayout
   fallSeconds: number
+  /** Longest note in the score, in seconds, under the CURRENT tempo setting.
+      The window search looks back this far for notes that started earlier and
+      are still sounding. A fixed cutoff is wrong for some score: at the tempo
+      control's 25% minimum, any note over 2s at notated tempo exceeds 8s. */
+  maxNoteDur: number
+  showRoll: boolean            // false in keyboard-only mode
   showGrid: boolean
   showFlash: boolean
 }
@@ -1825,7 +1846,10 @@ export function drawStage(
     }
   }
 
-  drawRoll(ctx, state, t)
+  // Keyboard-only mode suppresses the roll entirely. It must NOT be faked by
+  // shrinking fallSeconds -- drawRoll divides by it (pps = hitY / fallSeconds),
+  // so a tiny value turns every held note into a full-height colour column.
+  if (state.showRoll) drawRoll(ctx, state, t)
 
   const vis = visibleNotes(state.notes, t, state.fallSeconds)
   const held = heldNotes(
@@ -1845,7 +1869,7 @@ export function drawStage(
 - [ ] **Step 5: Run tests to verify they pass**
 
 Run: `npx vitest run src/render/pianoRoll.test.ts`
-Expected: PASS, 12 tests.
+Expected: PASS, 13 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -1865,7 +1889,7 @@ git commit -m "feat: windowed piano roll, keyboard renderer and impact flash"
 **Interfaces:**
 - Consumes: `ScoreDocument`, `TempoSetting` (Task 2); `retimeScore` (Task 5); `secToTicks`, `ticksToSec` (Task 2)
 - Produces:
-  - `interface TransportState { score: ScoreDocument | null; playing: boolean; originSec: number; pausedAtSec: number; tempo: TempoSetting; fallSeconds: number; mode: 'keyboard' | 'roll' }`
+  - `interface TransportState { score: ScoreDocument | null; playing: boolean; originSec: number; pausedAtSec: number; tempo: TempoSetting; fallSeconds: number; maxNoteDur: number; mode: 'keyboard' | 'roll' }`
   - `useTransport` Zustand store with actions `loadScore`, `play(now)`, `pause(now)`, `seek(sec, now)`, `setTempo(setting, now)`, `setMode`, `setFallSeconds`
   - `playheadAt(state: TransportState, now: number): number` — pure selector
 
@@ -1944,6 +1968,25 @@ describe('seek', () => {
   })
 })
 
+describe('maxNoteDur', () => {
+  it('is the longest note in seconds after loading', () => {
+    useTransport.getState().loadScore(score())
+    expect(useTransport.getState().maxNoteDur).toBeCloseTo(0.5, 6)
+  })
+
+  it('is recomputed when the tempo changes, because durations move', () => {
+    const t = useTransport.getState()
+    t.loadScore(score())
+    t.setTempo({ mode: 'scale', scale: 0.5 }, 0)    // half speed: notes twice as long
+    expect(useTransport.getState().maxNoteDur).toBeCloseTo(1, 6)
+  })
+
+  it('is zero for a score with no notes', () => {
+    useTransport.getState().loadScore({ ...score(), notes: [], durationSec: 0 })
+    expect(useTransport.getState().maxNoteDur).toBe(0)
+  })
+})
+
 describe('setTempo', () => {
   it('retimes the score', () => {
     const t = useTransport.getState()
@@ -1995,6 +2038,11 @@ export interface TransportState {
   pausedAtSec: number
   tempo: TempoSetting
   fallSeconds: number
+  /** Longest note in the loaded score, in seconds, under the current tempo.
+      The renderer's window search looks back this far for notes that started
+      earlier and are still sounding. Recomputed on load and on every tempo
+      change, because retiming changes note durations in seconds. */
+  maxNoteDur: number
   mode: DisplayMode
 }
 
@@ -2013,6 +2061,12 @@ export function playheadAt(s: TransportState, now: number): number {
   return s.playing ? now - s.originSec : s.pausedAtSec
 }
 
+/** Longest note in seconds. A fixed cutoff is wrong for some score: at the
+    tempo control's 25% minimum, any note over 2s at notated tempo exceeds 8s. */
+export function longestNoteSec(score: ScoreDocument): number {
+  return score.notes.reduce((m, n) => Math.max(m, n.endSec - n.startSec), 0)
+}
+
 const clampToScore = (s: TransportState, sec: number) =>
   Math.min(Math.max(0, sec), s.score?.durationSec ?? 0)
 
@@ -2023,9 +2077,13 @@ export const useTransport = create<TransportState & TransportActions>((set, get)
   pausedAtSec: 0,
   tempo: { mode: 'scale', scale: 1 },
   fallSeconds: 3,
+  maxNoteDur: 0,
   mode: 'roll',
 
-  loadScore: (score) => set({ score, playing: false, pausedAtSec: 0, originSec: 0 }),
+  loadScore: (score) => set({
+    score, playing: false, pausedAtSec: 0, originSec: 0,
+    maxNoteDur: longestNoteSec(score),
+  }),
 
   play: (now) => set((s) => ({ playing: true, originSec: now - s.pausedAtSec })),
 
@@ -2053,6 +2111,7 @@ export const useTransport = create<TransportState & TransportActions>((set, get)
       tempo: setting, score,
       pausedAtSec: target,
       originSec: s.playing ? now - target : s.originSec,
+      maxNoteDur: longestNoteSec(score),   // retiming changed durations in seconds
     })
   },
 
@@ -2064,7 +2123,7 @@ export const useTransport = create<TransportState & TransportActions>((set, get)
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run src/transport/useTransport.test.ts`
-Expected: PASS, 8 tests.
+Expected: PASS, 11 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -2282,6 +2341,7 @@ export default function App() {
   const schedulerRef = useRef<Scheduler | null>(null)
   const [playhead, setPlayhead] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const lastTenthRef = useRef(-1)
 
   if (!engineRef.current) engineRef.current = new AudioEngine()
   const engine = engineRef.current
@@ -2316,14 +2376,22 @@ export default function App() {
       const state = useTransport.getState()
       const now = engine.currentTime
       const head = playheadAt(state, now)
-      setPlayhead(head)
+
+      // Throttle the React playhead to 10Hz. The canvas reads the clock every
+      // frame regardless; only the transport bar's readout updates less often.
+      // Calling setState 60x/sec re-renders the tree against a canvas that is
+      // already animating itself, for a mm:ss display nobody can read that fast.
+      const tenth = Math.round(head * 10)
+      if (tenth !== lastTenthRef.current) { lastTenthRef.current = tenth; setPlayhead(head) }
 
       const layout = computeLayout(w, h)
       const rs: RenderState = {
         notes: state.score?.notes ?? [],
         voices: new Map((state.score?.voices ?? []).map((v) => [v.id, v])),
         layout,
-        fallSeconds: state.mode === 'keyboard' ? 0.001 : state.fallSeconds,
+        fallSeconds: state.fallSeconds,
+        maxNoteDur: state.maxNoteDur,
+        showRoll: state.mode === 'roll',
         showGrid: state.mode === 'roll',
         showFlash: true,
       }
@@ -2401,29 +2469,35 @@ export default function App() {
 - [ ] **Step 5: Verify the whole suite and type-check**
 
 ```bash
-npx tsc --noEmit
+npm run build
 npm test
 node tests/geometry-check.mjs
 ```
-Expected: no type errors; all Vitest suites pass; `all passed` from the rig check.
+Expected: the build succeeds; all Vitest suites pass; `all passed` from the rig check.
 
-- [ ] **Step 6: Verify in the browser**
+**Use `npm run build`, not `npx tsc --noEmit`.** The latter reads the root tsconfig and skips `tsconfig.app.json`, which sets `"erasableSyntaxOnly": true`. A build breakage hid behind that gap earlier in this plan: the suite stayed green on code that would not ship.
+
+- [ ] **Step 6: Verify the app starts, then hand the visual checklist over**
 
 ```bash
 npm run dev -- --host 0.0.0.0
 ```
 
-Open the Local URL and confirm, in order:
+Confirm the server starts and prints **both** a `Local:` and a `Network:` URL, then stop it. The Network line is what makes phone testing possible.
+
+The checklist below needs human eyes — it is about whether the thing *looks* right, which no automated check settles. Do not claim these as verified; reproduce the list in your report as a handover so the reviewer knows what remains unconfirmed:
 
 1. The drop zone is visible on a black stage.
 2. Dropping a `.mid` file replaces it with the keyboard and transport bar.
 3. Pressing Play sounds audio and drops notes onto the keys.
 4. Notes flash white on impact and the struck key tints in the voice colour.
 5. Dragging the scrub bar moves the playhead and the visuals follow; audio resumes cleanly.
-6. Switching to `keyboard` mode hides the falling bars but keys still light.
+6. Switching to `keyboard` mode hides the falling bars and the octave grid entirely — the roll area is plain black — but keys still light and flash on strike.
 7. Resizing the window rescales the keyboard with no stretching.
 
 Then open the **Network** URL on a phone in landscape and confirm the keyboard is proportioned like `tools/strike-lab.html`, with middle C's dark border visible.
+
+If Playwright is available in this repo, a headless smoke check is worth adding to your verification: load the page, assert no console errors, and confirm a canvas element is present and sized. Do not install Playwright just for this — if it is not already a dependency, skip it and say so.
 
 If audio does not sound, check the console for an AudioContext warning — browsers require a user gesture, which `engine.resume()` inside the click handler provides; loading a file via drag-drop alone is not a gesture.
 
