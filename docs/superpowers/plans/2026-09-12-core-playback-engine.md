@@ -15,7 +15,7 @@
 - **Typography:** Poppins, self-hosted via `@fontsource/poppins`. Never a CDN font link.
 - **CSS:** Tailwind utilities, and **every element carries a contextual semantic class name alongside them** — `className="voice-row flex items-center gap-3"`. Non-negotiable; it is how elements are found in the inspector and in tests.
 - **Dev server:** always `--host 0.0.0.0`. The phone-landscape layout must be testable on a real device.
-- **Keyboard geometry is fixed by the spec and measured against `docs/reference-sheetmusicboss.png`.** Do not adjust these while implementing:
+- **Keyboard geometry is fixed by the spec and measured against a SheetMusicBoss reference frame.** Do not adjust these while implementing:
   - White key width `= stageWidth / 52`. 52 white keys tile the width exactly.
   - Black key width `= 0.5652 * whiteW` (matches chordl).
   - Black key centre offsets from the white-key boundary, in units of black-key width `b`: **C# `-b/6`, D# `+b/6`, F# `-b/4`, G# `0`, A# `+b/4`**. G# is the only one on a boundary.
@@ -456,7 +456,7 @@ git commit -m "feat: note model types and tempo map with scale/absolute modes"
 
 - [ ] **Step 1: Write the failing tests**
 
-`src/render/geometry.test.ts`. This ports `tests/geometry-check.mjs`, whose oracle is 36 black-key centres measured from `docs/reference-sheetmusicboss.png`.
+`src/render/geometry.test.ts`. This ports `tests/geometry-check.mjs`, whose oracle is 36 black-key centres measured from a SheetMusicBoss reference frame.
 
 ```ts
 import { describe, it, expect } from 'vitest'
@@ -466,7 +466,7 @@ const BLACK_PC = new Set([1, 3, 6, 8, 10])
 const REF_W = 1220          // reference frame width; whiteW = 23.462
 
 /** Offset of each black key centre from the white-key boundary, in px at REF_W.
- *  Measured from all 36 black keys in docs/reference-sheetmusicboss.png. */
+ *  Measured from all 36 black keys of a SheetMusicBoss reference frame. */
 const MEASURED: Record<number, number> = { 1: -2.08, 3: 1.96, 6: -3.53, 8: -0.07, 10: 3.42 }
 
 function boundaries(whiteW: number): Record<number, number> {

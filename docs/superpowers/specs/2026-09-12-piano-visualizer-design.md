@@ -225,12 +225,12 @@ The 52 white keys tile the width exactly: `whiteW = width / 52`. Black keys are 
 | G# | `0` (the only one actually on a boundary) |
 | A# | `+b/4` |
 
-The offsets are expressed **as multiples of `b`, not as a fixed table**, so the rule holds for any black-key width. This is deliberate: it is the same construction chordl uses in `chordl-core/src/engine/svg-constants.ts`, but parameterised, so the two apps agree on the rule while choosing their own proportions.
+The offsets are expressed **as multiples of `b`, not as a fixed table**, so the rule holds for any black-key width. This is deliberate: it is the same construction chordl uses in `@pepperhorn/chordl-core`'s `svg-constants.ts`, but parameterised, so the two apps agree on the rule while choosing their own proportions.
 
 Corroborated three ways:
 
 1. Derived from the equal-tails construction.
-2. Measured off all 36 black keys in `docs/reference-sheetmusicboss.png` — agrees to within **0.32 px on a 23.5 px white key**.
+2. Measured off all 36 black keys in a SheetMusicBoss piano-roll reference frame (1220 px wide, whiteW 23.462 px) — agrees to within **0.32 px on a 23.5 px white key**. The frame is not committed; the measured centres in `tests/geometry-check.mjs` are the durable record.
 3. Already present in chordl's `BLACK_KEY_OFFSETS`, whose C#, D#, F# and A# entries match the construction to 0.0033 units.
 
 chordl's G# entry is the one exception: `16.25` where the construction gives `16.50`, out by 1.09% of a white key. Worth a fix upstream; this app uses the constructed value. **G# sitting exactly on the G/A boundary is invariant across every credible source** — DIN 8996 and BDO Normzeichnung 12 both give it as exactly 0, as do all four black-key placement patterns found in production instruments. It is the one position with no legitimate variation.
@@ -255,11 +255,11 @@ The black-key length ratio has two independent confirmations at **0.655**: JIS S
 
 **Keyboard zoom.** On load, the keyboard auto-fits to the piece's pitch range so simple pieces get large readable keys. Overridable to full-88 or a manual range.
 
-The fitted range is then widened so it never cuts through the middle of a black-key group — a keyboard ending between C# and D#, or between F# and G#, reads as broken. chordl already solves this in `chordl-core/src/resolver/auto-layout.ts` (`ensureFullBlackKeyGroups`): extend the start down to C when it lands on D, to F when it lands on G or A; extend the end up to E when it lands on D, to B when it lands on G or A. Port that rule rather than reinventing it. Because the phone-landscape full-88 case yields ~16 px keys, **middle C always carries a distinct dark border and a `C4` label** so orientation never depends on counting keys.
+The fitted range is then widened so it never cuts through the middle of a black-key group — a keyboard ending between C# and D#, or between F# and G#, reads as broken. chordl already solves this in `@pepperhorn/chordl-core`'s `auto-layout.ts` (`ensureFullBlackKeyGroups`): extend the start down to C when it lands on D, to F when it lands on G or A; extend the end up to E when it lands on D, to B when it lands on G or A. Port that rule rather than reinventing it. Because the phone-landscape full-88 case yields ~16 px keys, **middle C always carries a distinct dark border and a `C4` label** so orientation never depends on counting keys.
 
 **Highlights.** Lit keys are derived each frame: file notes where `startSec <= t < endSec` on a visible voice, unioned with the live-input active map. No highlight state is stored or toggled.
 
-**Shared geometry with chordl.** chordl (`/home/shaun/chordl`) is the house source for piano-keyboard geometry, exported from `@pepperhorn/chordl-core`. This app does not depend on the package — chordl's two presets are SVG chord-card illustrations at 2.83 : 1 (compact) and 4.74 : 1 (exact/full), far squatter than a performance keyboard needs — but it shares chordl's black-key **rule** and its black-key **width ratio**. If the rule is ever corrected in one place it should be corrected in both.
+**Shared geometry with chordl.** chordl ([github.com/pepperhorn/chordl](https://github.com/pepperhorn/chordl), published as `@pepperhorn/chordl-core`) is the house source for piano-keyboard geometry. This app does not depend on the package — chordl's two presets are SVG chord-card illustrations at 2.83 : 1 (compact) and 4.74 : 1 (exact/full), far squatter than a performance keyboard needs — but it shares chordl's black-key **rule** and its black-key **width ratio**. If the rule is ever corrected in one place it should be corrected in both.
 
 ### 8.1 Visual style
 
@@ -374,7 +374,7 @@ It also carries the naive-geometry toggle, which reproduces the boundary-centred
 - `handSplit` — split point assignment, boundary pitches, multi-track files bypass it.
 - `colors` — velocity-to-lightness is monotonic across the full range in both schemes.
 - `flashIntensity(age, velocity)` — 0 before onset, peaks at onset, reaches 0 at `FLASH_MS`, never negative, monotonic in velocity. Being a pure function, the whole impact effect is unit-testable without a canvas.
-- `geometry` — 52 white plus 36 black keys; whites tile the width with no gap or overhang; black-key centres match the measured reference offsets within 0.5 px; G# is the only black key on a boundary; white tails are equal within each group; keyboard height holds the true-scale aspect. Seeded by `tests/geometry-check.mjs`, which runs against centres measured from `docs/reference-sheetmusicboss.png`.
+- `geometry` — 52 white plus 36 black keys; whites tile the width with no gap or overhang; black-key centres match the measured reference offsets within 0.5 px; G# is the only black key on a boundary; white tails are equal within each group; keyboard height holds the true-scale aspect. Seeded by `tests/geometry-check.mjs`, which runs against the measured black-key centres recorded in that file.
 - `profile/schema` — export/import round-trip; unknown version rejected.
 - `parseMidi` / `parseMusicXml` — small fixtures covering ties, multi-staff parts, tempo changes, drum channel.
 

@@ -5,7 +5,7 @@ const BLACK_PC = new Set([1, 3, 6, 8, 10])
 const REF_W = 1220          // reference frame width; whiteW = 23.462
 
 /** Offset of each black key centre from the white-key boundary, in px at REF_W.
- *  Measured from all 36 black keys in docs/reference-sheetmusicboss.png. */
+ *  Measured from all 36 black keys of a SheetMusicBoss reference frame. */
 const MEASURED: Record<number, number> = { 1: -2.08, 3: 1.96, 6: -3.53, 8: -0.07, 10: 3.42 }
 
 function boundaries(whiteW: number): Record<number, number> {
