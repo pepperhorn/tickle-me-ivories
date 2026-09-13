@@ -1,6 +1,6 @@
 # Core Playback Engine — Build Handover
 
-**Branch:** `feat/core-playback-engine` · 21 commits from `d8f19f6`
+**Branch:** `feat/core-playback-engine`, branched from `master` at the plan commit.
 **State:** 94 tests passing, `npm run build` clean, geometry oracle passing.
 **Plan:** `docs/superpowers/plans/2026-09-12-core-playback-engine.md` (plan 1 of 4)
 
