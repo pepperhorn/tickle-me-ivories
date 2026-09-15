@@ -4,6 +4,8 @@ A browser piano visualiser. Load a MIDI file and watch it play on a full 88-key
 keyboard with a falling piano roll and a white note-strike flash — the
 SheetMusicBoss / Synthesia treatment, drawn to real piano proportions.
 
+![Falling piano roll](docs/screenshots/falling-roll.png)
+
 **Status:** the core playback engine is built and merged. The settings layer,
 notation view and live MIDI input are scoped and not yet started — see
 [Scoped for v2](#scoped-for-v2).
@@ -45,6 +47,31 @@ Then drop a `.mid` file onto the page.
 - **Two display modes** — falling roll, or keyboard highlight only.
 - **Transport** — play/pause, scrub, and a keyboard that lights in time.
 - **Middle C marker** so orientation survives phone-width keys.
+
+## Screenshots
+
+**Falling roll** — the default mode, above. Left hand blue, right hand orange;
+velocity drives lightness within each hue. Bars keep drawing down over a key
+while its note is held, and each strike throws a bloom, a beam and five sparks.
+
+**Keyboard only** — same clock, no roll. Keys light and flash in time.
+
+![Keyboard-only mode](docs/screenshots/keyboard-mode.png)
+
+**Phone landscape** — 88 keys at ~16 px per white key, with middle C's dark
+border and `C4` label carrying orientation.
+
+![Phone landscape](docs/screenshots/phone-landscape.png)
+
+**Empty state** — the keyboard is drawn before anything is loaded.
+
+![Drop zone](docs/screenshots/drop-zone.png)
+
+**Tuning rig** (`tools/strike-lab.html`) — every visual constant as a live
+control, with a Constants button that exports the tuned values as JSON. No build
+step, no dependencies.
+
+![Strike lab tuning rig](docs/screenshots/strike-lab.png)
 
 ## How it works
 
@@ -107,7 +134,14 @@ regions, rising trails for live input, and recording or video export.
 npm test                      # 94 tests
 npm run build                 # tsc -b && vite build
 node tests/geometry-check.mjs # independent geometry oracle
+
+node scripts/make-demo-midi.mjs  # regenerate docs/demo.mid
+node scripts/screenshots.mjs     # regenerate every screenshot in this README
 ```
+
+`docs/demo.mid` is a generated two-track fixture — a left hand of bass octaves
+and chords, a right hand of 16th-note arpeggios — used for the screenshots and
+handy for manual testing.
 
 Use `npm run build` rather than `npx tsc --noEmit` — the latter reads the root
 tsconfig and skips `tsconfig.app.json`, which is where `strict` and
