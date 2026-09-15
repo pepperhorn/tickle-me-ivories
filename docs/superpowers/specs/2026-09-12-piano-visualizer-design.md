@@ -245,7 +245,7 @@ Production instruments do vary — equal-tails is the provable optimum (max tail
 
 **Vertical proportions are derived from key width, never from the viewport:** `keyboardH = min(whiteW * 5.8, stageH * 0.55)`, black key length `0.655 * keyboardH`.
 
-**5.8 : 1 is a chosen value, not a measured one.** It is shorter than both the reference frame (measured **6.31 : 1**) and the standard (DIN 8996's 145 mm natural against a 23.586 mm pitch, **6.15 : 1**), trading key length for roll height — the falling notes are the main event, and on a phone in landscape every pixel the keyboard gives back is a pixel of lead time. Adjustable in the debug rig (§13) if it wants revisiting.
+**5.8 : 1 is a chosen value, not a measured one.** It is shorter than both the reference frame (measured **6.31 : 1**) and the standard (DIN 8996's 145 mm natural against a 23.586 mm pitch, **6.15 : 1**), trading key length for roll height — the falling notes are the main event, and on a phone in landscape every pixel the keyboard gives back is a pixel of lead time. Adjustable in the debug rig (§16) if it wants revisiting.
 
 What is *not* negotiable is that the ratio derives from key **width**. Taking it from stage height instead is the defect this replaced.
 
@@ -358,7 +358,201 @@ its colours does not silently rewrite someone's audio settings.
 - **Dev server:** bound to `0.0.0.0` (`npm run dev -- --host 0.0.0.0`) so the phone-landscape layout can be tested on a real device on the LAN.
 - **Transport bar:** play/pause, a scrub bar showing elapsed and total time that seeks on drag, the effective-BPM readout, mode switch, and the settings dropdown trigger. It collapses to icon-only in phone landscape.
 
-## 13. Debug mode
+## 13. Stage transparency and video compositing
+
+The falling-notes area — the **stage** — can render fully transparent so live video
+shows through behind it while the keyboard, text and chord readout stay drawn on
+top. The driving case is playing a MIDI controller live with camera or capture
+footage behind the notes.
+
+**Alpha, not chroma key.** We own every pixel, so the correct primitive is a
+transparent canvas, not a green fill we later throw away. Chroma keying is
+actively worse here: the impact layer draws with `globalCompositeOperation =
+'lighter'`, so an additive white bloom over green produces desaturated fringing at
+the brightest and most visually important moment of every note. Alpha preserves
+the bloom's soft edge exactly.
+
+Three separate capabilities, in increasing cost:
+
+**13.1 Transparent stage.** `drawStage` clears rather than fills when
+`--tmi-stage-bg` resolves to `transparent`. The `body` and app ground must also
+resolve transparent in this mode or the host page paints behind the canvas. The
+keyboard remains opaque. The canvas context is already created with alpha
+(the default), so nothing changes in `useCanvasStage`.
+
+For the stated goal this is sufficient and needs no export at all: **an OBS
+browser source composites page alpha natively.** Point OBS at the dev or built
+URL, put your footage on a layer beneath, and the notes float over it live.
+
+**13.2 Solid key colour.** `--tmi-stage-bg` set to a flat colour for workflows
+that genuinely require a keyed matte rather than alpha — some hardware switchers
+and older NLE paths. Ships with a green (`#00b140`) and a magenta (`#ff00ff`)
+preset because those are the standard keying primaries, but any colour is valid.
+The settings UI must warn that the strike flash keys poorly, per the reasoning
+above.
+
+**13.3 Alpha-preserving export.** Recording the canvas with its alpha intact.
+This is its own project and is deliberately *not* bundled with the two above.
+Browser support for alpha in `MediaRecorder` WebM output is uneven and cannot be
+relied on; the fallback is a PNG frame sequence via `canvas.toBlob()`, rendered
+offline rather than in real time. Decide the approach against a real editing
+workflow rather than in advance.
+
+**In live mode the stage stays empty.** Playing a controller produces no future
+notes to fall, and the chosen behaviour is that the stage shows nothing at all —
+the video reads through cleanly and only the keyboard, note labels and chord
+readout are drawn. Rising trails remain a later idea, not part of this.
+
+## 14. Theming and the CSS token system
+
+**Every colour, radius, line width and line style is a CSS custom property.** A
+`<canvas>` has no DOM, so CSS selectors cannot reach anything drawn on it — the
+token system is what makes class-based theming real. A class on the stage wrapper
+(`.theme-neon`, `.theme-print`, `.theme-transparent`) redefines tokens, and the
+renderers pick them up.
+
+**How tokens reach the canvas.** `readTheme(wrapperEl)` resolves every token with
+`getComputedStyle` into a plain object, which is passed to the render functions
+alongside the layout. It runs **once per layout or theme change, never per
+frame** — `getComputedStyle` forces a style recalculation and would cost more
+than the drawing does. The renderers stay pure functions of `(ctx, state, t)`;
+the theme simply becomes part of `state`.
+
+### 14.1 Token set
+
+These replace the sixteen colour literals currently hardcoded across
+`keyboard.ts` and `pianoRoll.ts`.
+
+| Token | Default | Controls |
+|---|---|---|
+| `--tmi-stage-bg` | `#000000` | Stage fill; `transparent` enables §13.1 |
+| `--tmi-key-white` | `#f6f2e4` | Unpressed white keys |
+| `--tmi-key-black` | `#0c0c10` | Unpressed black keys |
+| `--tmi-key-border` | `rgba(255,255,255,0.16)` | Hit line along the keyboard top |
+| `--tmi-key-border-width` | `1px` | Its thickness |
+| `--tmi-key-radius` | `0px` | Key corner rounding |
+| `--tmi-key-gap` | `1px` | Gap between white keys |
+| `--tmi-middle-c-mark` | `rgba(0,0,0,0.55)` | Middle C's orientation border |
+| `--tmi-black-key-top` | `rgba(255,255,255,0.35)` | Lit black key's top edge |
+| `--tmi-grid-line` | `rgba(255,255,255,0.06)` | Octave grid |
+| `--tmi-grid-line-c4` | `rgba(255,255,255,0.14)` | The C4 grid line |
+| `--tmi-grid-line-width` | `1px` | Grid thickness |
+| `--tmi-grid-line-style` | `solid` | `solid` \| `dashed` \| `dotted` — via `setLineDash` |
+| `--tmi-bar-radius` | `4px` | Falling note corner rounding |
+| `--tmi-flash-core` | `rgba(255,255,255,…)` | Bloom centre |
+| `--tmi-flash-warm` | `rgba(255,242,214,…)` | Bloom mid-stop |
+| `--tmi-progress-track` | `rgba(255,255,255,0.06)` | Progress bar track |
+| `--tmi-progress-fill` | `#e8384f` | Progress bar fill |
+
+Voice hues stay in the profile rather than in CSS — they are per-song data the
+user assigns, not a theme.
+
+**Line style on canvas.** `--tmi-grid-line-style` maps to `setLineDash`:
+`solid` → `[]`, `dashed` → `[6, 4]`, `dotted` → `[1, 3]`, scaled by line width.
+The dash array must be reset inside a `save()`/`restore()` pair so it cannot leak
+into later drawing, exactly as the impact layer's composite op already does.
+
+### 14.2 Keyboard style presets
+
+Shipped themes are ordinary CSS classes, so a user or a stylesheet can add more
+without touching code: **Classic** (the current ivory-and-black default),
+**Outline** (transparent keys with visible borders, for compositing over video),
+**High contrast**, and **Transparent stage** (§13.1). Each is a block of token
+overrides and nothing else.
+
+## 15. On-stage text: note names, chords and roman numerals
+
+All on-stage text is **real DOM**, absolutely positioned in an overlay above the
+canvas with `pointer-events: none`. That is what gives it Google Fonts, per-element
+IDs and classes, and full CSS control — the thing a canvas cannot offer. Positions
+come from the same `computeLayout` geometry the canvas uses, so text and keys
+cannot drift apart.
+
+Only currently-sounding notes get a label, so the overlay holds a handful of
+elements rather than 88.
+
+### 15.1 Note labels
+
+- **Content:** pitch name (`C4`), MIDI number (`60`), both, or off.
+- **Placement:** above the keys (in the stage area) or below (over the key face).
+- **Markup:** `<span class="note-label note-label--white" id="note-label-60"
+  data-pitch="C4" data-midi="60">` — so a stylesheet can target one pitch, all
+  accidentals, or every label.
+
+### 15.2 Chord identification
+
+Uses **`tonal`**, not chordl. chordl has no general chord identifier: its
+published `matchChord` is an audio-chroma template matcher over 13 hardcoded
+qualities that is explicitly octave- and bass-agnostic, and its exact
+pitch-class speller is unpublished. tonal — which chordl itself depends on —
+handles inversions, slash chords, extensions and ranked ambiguity, and costs
+about 5.5 KB gzipped for detection (about 9 KB including roman numerals).
+
+```ts
+Chord.detect(notes: string[], { assumePerfectFifth: true }): string[]
+```
+
+Notes are passed **absolute and lowest-first**, because tonal treats the first
+element as the bass — that is what produces `CM/E` rather than `Em#5`. Take the
+first result; keep the rest for a settings-level "show alternates" option.
+
+**The chord window.** A piano arpeggio sounds one note at a time, so identifying
+only simultaneously-held pitches would produce nonsense on most real music. The
+detector accumulates every pitch struck within a rolling window (default
+**600 ms**, configurable) and identifies that set, so a broken chord resolves to
+the chord it outlines. A new symbol is only committed when the set actually
+changes, and a committed symbol is held for a minimum display time so the readout
+does not flicker.
+
+**Markup:** `<div id="chord-readout" class="chord-readout" data-symbol="Cmaj7">`,
+placement configurable (stage top-left, top-centre, or directly above the keys).
+
+### 15.3 Roman numerals
+
+```ts
+Progression.toRomanNumerals(tonic: string, chords: string[]): string[]
+```
+
+Displayed **instead of or alongside** the chord symbol and the note labels, in any
+combination.
+
+**The key has to come from somewhere** — tonal does not infer it. In order:
+
+1. The MIDI file's key-signature meta event, which `@tonejs/midi` exposes as
+   `header.keySignatures`.
+2. A user override in settings, which is the only option for live playing.
+3. Default C major.
+
+Two caveats worth building around rather than discovering: tonal returns
+**uppercase** numerals (`IIm7`, not `ii`), so minor and diminished qualities need
+lowercasing in a post-process; and it **ignores inversions**, so a slash chord's
+figured-bass notation is not available from this call.
+
+### 15.4 Typography
+
+Any **Google Font**, loaded by injecting a stylesheet link for the chosen family,
+with family, weight, size, letter-spacing, colour and opacity all settings. Size
+is expressed relative to white-key width so labels scale with the keyboard rather
+than fighting it.
+
+**Text over video needs an outline.** Against arbitrary footage, flat text becomes
+illegible the moment the background matches its colour. All on-stage text follows
+the house note-text treatment — a white fill over a dark stroke with
+`paint-order: stroke fill` — which is exactly the problem that style exists to
+solve:
+
+```css
+.note-label, .chord-readout {
+  color: #fff;
+  -webkit-text-stroke: 3px rgba(0, 0, 0, 0.35);
+  paint-order: stroke fill;
+}
+```
+
+Stroke width and colour are themselves tokens, and the stroke can be turned off
+for use over a known flat background.
+
+## 16. Debug mode
 
 `tools/strike-lab.html` is a standalone, dependency-free rig that renders the roll and keyboard with every visual constant exposed as a live control: flash decay, bloom radius and alpha, velocity floor, spark count/length/spread, fall window, bar radius, velocity lightness endpoints, saturation, and the keyboard scale constants (key aspect, black-key width and length, true-vs-naive black-key offsets). A **Constants** button dumps the current values as JSON.
 
@@ -366,7 +560,7 @@ This is not throwaway. It ships as the app's **admin/debug mode**, reached by a 
 
 It also carries the naive-geometry toggle, which reproduces the boundary-centred bug on demand. That stays in permanently: it is the fastest way to confirm the keyboard is still drawn to scale after any layout change.
 
-## 14. Testing
+## 17. Testing
 
 **Unit (Vitest)**
 
@@ -384,11 +578,11 @@ It also carries the naive-geometry toggle, which reproduces the boundary-centred
 
 **End-to-end (Playwright)** — load a fixture file, press play, screenshot at a fixed time offset, assert no console errors.
 
-## 15. Scope
+## 18. Scope
 
 **v1**
 
-88-key keyboard at true piano scale · live MIDI input with velocity colour · MIDI and MusicXML loading · keyboard-highlight mode · falling-roll mode · Verovio notation mode for MusicXML · settings dropdown · profile JSON save/load · admin/debug mode (§13).
+88-key keyboard at true piano scale · live MIDI input with velocity colour · MIDI and MusicXML loading · keyboard-highlight mode · falling-roll mode · Verovio notation mode for MusicXML · settings dropdown · profile JSON save/load · admin/debug mode (§16).
 
 **Phase 2 (designed for, not built)**
 

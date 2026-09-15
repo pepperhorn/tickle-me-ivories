@@ -108,6 +108,32 @@ Three tranches, each shipping working software on its own.
 - [ ] Metronome driven by the tempo map
 - [ ] Admin/debug route carrying the tuning rig in `tools/strike-lab.html`
 
+### Video compositing and theming
+
+- [ ] Transparent stage — the falling-notes area renders with alpha so live video
+      shows through behind it, for playing a controller over camera or capture
+      footage. An OBS browser source composites this natively, so no export is
+      needed for the live case
+- [ ] Solid key colour (`#00b140` green, magenta) for workflows that need a flat
+      matte instead of alpha — with the caveat that the additive strike flash keys
+      poorly, which is why alpha is preferred
+- [ ] Alpha-preserving export (WebM/VP9 with alpha, or a PNG frame sequence) —
+      its own project; browser support is uneven
+- [ ] CSS custom property token system replacing the 16 hardcoded colour literals,
+      so a class on the stage wrapper rethemes everything from a stylesheet
+- [ ] Keyboard themes — corner rounding, border colour, thickness and line style
+      (solid/dashed/dotted), shipped as Classic, Outline, High contrast and
+      Transparent presets
+- [ ] Note labels on played keys — pitch name, MIDI number, both or off; above or
+      below the keys; real DOM elements with per-pitch IDs
+- [ ] Chord identification via `tonal` — inversions and slash chords from the bass
+      note, with a rolling window so arpeggios resolve to the chord they outline
+- [ ] Configurable on-stage chord readout, with alternates
+- [ ] Roman numerals, instead of or alongside chord symbols and note labels — key
+      taken from the MIDI key signature, a user override, or C major
+- [ ] Google Fonts for all on-stage text, with weight, size, spacing, colour, and
+      a dark stroke so text stays legible over arbitrary footage
+
 ### MusicXML and notation
 
 - [ ] `.xml`, `.musicxml` and `.mxl` loading, with ties merged and parts/staves
