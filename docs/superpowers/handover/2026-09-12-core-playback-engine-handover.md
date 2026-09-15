@@ -68,3 +68,44 @@ dispatching ONE fix wave covering the 2 named fixes plus 11 cheap findings. Incl
 deferring finding 5 (setTempo has no engine.stopAll counterpart) to plan 2 rather than fixing blind — there is no tempo UI in this plan, so the path is unreachable and untestable here. Recorded below as a carry-forward so plan 2 does not rediscover it.
 ### Pre-flight
 four residual test-coverage gaps parked rather than triggering a second fix wave, which the process does not allow and which they do not warrant — all four are missing tests over code the reviewer verified by reading, not suspected defects. Parked: (1) end-of-playback stop untested, the most behaviourally significant, though its pause math was hand-verified; (2) clearScore untested; (3) the seek clamp contract untested at the useTransport level; (4) the C4 label's 14px threshold untested, in a file with no render tests at all. Cost if wrong: a regression in one of these four would not be caught by CI. All are cheap to add and belong in plan 2's test pass.
+
+---
+
+## Session state — 2026-09-15
+
+**Shipped and merged:** plan 1, the core playback engine. `master` at parity with
+`origin/master`. 94 tests, `npm run build` clean, geometry oracle passing.
+
+**Repo is public:** github.com/pepperhorn/tickle-me-ivorys. Before publishing, the
+reference screenshot was purged from git history with `git filter-repo` (it was a
+full phone screenshot, committed only as a measurement oracle — the oracle that
+matters is the 36 measured black-key centres in `tests/geometry-check.mjs`), and
+chordl is cited by package rather than by local path.
+
+**Added after merge:** README with feature list and a 25-item v2 checklist; five
+regenerable screenshots (`node scripts/screenshots.mjs`) driven by a generated
+two-track fixture (`node scripts/make-demo-midi.mjs` → `docs/demo.mid`);
+playwright as a devDependency reusing the cached Chromium.
+
+**Specced but not built** — spec §13–15, added 2026-09-15:
+- §13 Stage transparency for video compositing (alpha, not chroma key)
+- §14 CSS custom property token system and keyboard themes
+- §15 On-stage note labels, chord identification and roman numerals
+
+**Decisions taken in that spec work, not re-derivable from the text:**
+- Theming reaches the canvas through CSS custom properties read once per layout
+  via `getComputedStyle`, with text as real DOM above the canvas. The alternative
+  — moving the keyboard to SVG/DOM for direct CSS control — was rejected because
+  it breaks two shipped behaviours the one-canvas decision exists for: bars
+  sustaining down over the key, and the strike bloom spilling across the hit line.
+- In transparent/live mode the stage shows **nothing** (no rising trails). Chosen
+  so live video reads through cleanly.
+- Chord identification uses `tonal`, not chordl. See the memory note; chordl has
+  no general identifier and no chord→numeral direction.
+
+**Not verified by anyone:** the seven-point visual checklist above. Needs a human
+running `npm run dev -- --host 0.0.0.0` against real MIDI files, and the Network
+URL on a phone in landscape.
+
+**Next plan to write:** plan 2. Its scope is the "Settings, voices and profiles"
+and "Video compositing and theming" tranches in the README checklist.
