@@ -8,6 +8,7 @@ import { drawStage } from './render/pianoRoll'
 import { useCanvasStage } from './render/useCanvasStage'
 import { playheadAt, useTransport } from './transport/useTransport'
 import { FileDropZone } from './ui/FileDropZone'
+import { SettingsPanel, SettingsSection } from './ui/SettingsPanel'
 import { TransportBar } from './ui/TransportBar'
 import type { RenderState } from './render/pianoRoll'
 import type { KeyboardLayout } from './render/geometry'
@@ -19,6 +20,7 @@ export default function App() {
   const schedulerRef = useRef<Scheduler | null>(null)
   const [playhead, setPlayhead] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const lastTenthRef = useRef(-1)
   const voicesRef = useRef<{ score: ScoreDocument | null; map: Map<string, Voice> }>({
     score: null, map: new Map(),
@@ -192,6 +194,26 @@ export default function App() {
           onSeek={seek}
           onMode={t.setMode}
           onLoadAnother={loadAnother}
+          settings={
+            <>
+              <button
+                type="button"
+                aria-label="Settings"
+                aria-expanded={settingsOpen}
+                className="btn-settings rounded-md border border-[var(--line)] px-3 py-1 text-xs text-[var(--ink-dim)]"
+                onClick={() => setSettingsOpen((v) => !v)}
+              >
+                Settings
+              </button>
+              <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)}>
+                <SettingsSection id="placeholder" title="Settings" defaultOpen>
+                  <p className="settings-placeholder text-xs text-[var(--ink-dim)]">
+                    Controls arrive in the following tasks.
+                  </p>
+                </SettingsSection>
+              </SettingsPanel>
+            </>
+          }
         />
       )}
     </div>
