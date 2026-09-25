@@ -9,9 +9,15 @@ import { drawStage } from './render/pianoRoll'
 import { useCanvasStage } from './render/useCanvasStage'
 import { effectiveBpmAt } from './model/tempoMap'
 import { playheadAt, useTransport } from './transport/useTransport'
-import { useSettings } from './settings/useSettings'
+import { currentSettings, useSettings } from './settings/useSettings'
+import {
+  buildProfile, decodeProfile, encodeProfile, loadGlobals, loadProfile, mergeVoices,
+  saveGlobals, saveProfile,
+} from './settings/profile'
+import { DEFAULT_SETTINGS } from './settings/types'
 import { DisplaySettings } from './ui/DisplaySettings'
 import { FileDropZone } from './ui/FileDropZone'
+import { ProfileSettings } from './ui/ProfileSettings'
 import { SettingsPanel, SettingsRow, SettingsSection } from './ui/SettingsPanel'
 import { TempoControl } from './ui/TempoControl'
 import { TransportBar } from './ui/TransportBar'
@@ -32,6 +38,7 @@ export default function App() {
   const [playhead, setPlayhead] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
   const lastTenthRef = useRef(-1)
   const voicesRef = useRef<{ score: ScoreDocument | null; map: Map<string, Voice> }>({
     score: null, map: new Map(),
@@ -194,7 +201,25 @@ export default function App() {
     const token = ++loadTokenRef.current
 
     setError(null)
+
+    // Restore this piece's autosaved profile, matched by content hash.
+    const saved = loadProfile(score.id)
+    if (saved) {
+      score.voices = mergeVoices(score.voices, saved.voices)
+      // Set tempo BEFORE loadScore: loadScore retimes the incoming score to the
+      // live tempo setting, so the setting has to be right first.
+      useTransport.setState({ tempo: saved.tempo })
+      useSettings.getState().replaceAll({
+        ...currentSettings(), theme: saved.theme, text: saved.text,
+        ...(saved.display.settings ? { display: saved.display.settings } : {}),
+      })
+    }
+
     useTransport.getState().loadScore(score)
+    if (saved) {
+      useTransport.getState().setMode(saved.display.mode)
+      useTransport.getState().setFallSeconds(saved.display.fallSeconds)
+    }
 
     try {
       await engine.resume()
@@ -260,6 +285,83 @@ export default function App() {
     state.clearScore()
     loadTokenRef.current++ // invalidate any in-flight loadFile's retainVoices
     engine.retainVoices([])
+  }, [engine])
+
+  // Globals follow the user, not the song: restore them once at startup.
+  useEffect(() => {
+    const g = loadGlobals()
+    if (!g) return
+    useSettings.getState().setVelocity(g.velocity)
+    useSettings.getState().setAudio(g.audio)
+    engine.setMasterVolume(g.audio.masterVolume)
+  }, [engine])
+
+  // Autosave, debounced so a slider drag writes once rather than sixty times.
+  useEffect(() => {
+    const id = setTimeout(() => {
+      const st = useSettings.getState()
+      saveGlobals({ velocity: st.velocity, audio: st.audio })
+      const tr = useTransport.getState()
+      if (!tr.score?.id) return
+      saveProfile(buildProfile({
+        song: { id: tr.score.id, name: tr.score.name, format: tr.score.sourceFormat },
+        voices: tr.score.voices,
+        tempo: tr.tempo,
+        mode: tr.mode,
+        fallSeconds: tr.fallSeconds,
+        settings: currentSettings(),
+      }))
+    }, 400)
+    return () => clearTimeout(id)
+  }, [t.score, t.tempo, t.mode, t.fallSeconds, settings])
+
+  const exportProfile = useCallback(() => {
+    const tr = useTransport.getState()
+    if (!tr.score) return
+    const p = buildProfile({
+      song: { id: tr.score.id, name: tr.score.name, format: tr.score.sourceFormat },
+      voices: tr.score.voices, tempo: tr.tempo, mode: tr.mode,
+      fallSeconds: tr.fallSeconds, settings: currentSettings(),
+    })
+    const url = URL.createObjectURL(new Blob([encodeProfile(p)], { type: 'application/json' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${tr.score.name.replace(/\.[^.]+$/, '')}.tmi.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [])
+
+  const importProfile = useCallback(async (file: File, applyGlobals: boolean) => {
+    let p
+    try {
+      p = decodeProfile(await file.text())
+    } catch (e) {
+      // Refused outright -- current settings are untouched.
+      setProfileError((e as Error).message)
+      return
+    }
+    setProfileError(null)
+    const tr = useTransport.getState()
+    useSettings.getState().replaceAll({
+      ...currentSettings(), theme: p.theme, text: p.text,
+      ...(p.display.settings ? { display: p.display.settings } : {}),
+      ...(applyGlobals ? { velocity: p.global.velocity, audio: p.global.audio } : {}),
+    })
+    if (applyGlobals) engine.setMasterVolume(p.global.audio.masterVolume)
+    if (tr.score) {
+      const voices = mergeVoices(tr.score.voices, p.voices)
+      useTransport.setState({ score: { ...tr.score, voices } })
+      for (const v of voices) { engine.setVoiceVolume(v.id, v.volume); void engine.loadVoice(v) }
+      changeTempo(p.tempo)
+      tr.setMode(p.display.mode)
+      tr.setFallSeconds(p.display.fallSeconds)
+    }
+  }, [engine, changeTempo])
+
+  // Reset reaches the engine too, or the master gain stays at the old level.
+  const resetSettings = useCallback(() => {
+    useSettings.getState().reset()
+    engine.setMasterVolume(DEFAULT_SETTINGS.audio.masterVolume)
   }, [engine])
 
   const effectiveBpm = t.score ? effectiveBpmAt(t.score.tempoMap, playhead, t.tempo) : 120
@@ -355,6 +457,14 @@ export default function App() {
                       onChange={(e) => settings.setAudio({ metronomeVolume: Number(e.target.value) })}
                     />
                   </SettingsRow>
+                </SettingsSection>
+                <SettingsSection id="profile" title="Profile">
+                  <ProfileSettings
+                    onExport={exportProfile}
+                    onImport={(f, g) => void importProfile(f, g)}
+                    onReset={resetSettings}
+                    error={profileError}
+                  />
                 </SettingsSection>
               </SettingsPanel>
             </>

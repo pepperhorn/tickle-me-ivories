@@ -310,7 +310,7 @@ All three effects are settings: impact flash on/off and intensity, grid lines on
 
 ## 10. Persistence
 
-Settings autosave to `localStorage` keyed by the file's content hash, so reopening a piece restores its colours, tempo setting and display mode with no user action. Global preferences (velocity scheme, default fall speed, audio levels) are stored separately and apply to every file.
+Settings autosave to `localStorage` keyed by the file's content hash (`tmi.profile.<sha256>`), so reopening a piece restores its colours, tempo setting, display mode, display settings, theme and text settings with no user action. Global preferences (velocity scheme, audio levels) are stored separately under `tmi.globals` and apply to every file.
 
 **Export Profile** downloads `<song>.tmi.json`:
 
@@ -321,22 +321,35 @@ Settings autosave to `localStorage` keyed by the file's content hash, so reopeni
   "voices": [{ "id": "t0", "label": "Right hand", "hue": 210,
                "instrument": "acoustic_grand_piano",
                "visible": true, "audible": true, "volume": 1 }],
-  "tempo": { "mode": "scale", "scale": 1.0, "absoluteBpm": null },
-  "display": { "mode": "roll", "fallSeconds": 3, "zoom": "fit",
-               "showNoteNames": false },
+  // A TempoSetting union: { "mode": "scale", "scale": 0.25-3 }
+  // or { "mode": "absolute", "bpm": 20-300 }. Out-of-range values are clamped on import.
+  "tempo": { "mode": "scale", "scale": 1.0 },
+  "display": { "mode": "roll", "fallSeconds": 3,
+               "settings": { "zoom": "fit", "showGrid": true, "showFlash": true,
+                             "flashScale": 1, "showMiddleC": true } },
+  "theme": { "name": "classic", "stageBgOverride": null },
+  "text": { "labels": "off", "chord": "off", /* ...the full TextSettings block (§15) */ },
   "global": {
-    "velocityScheme": { "kind": "lightness", "lMax": 78, "lMin": 38 },
-    "masterVolume": 0.8, "metronome": false
+    "velocity": { "kind": "lightness", "lMax": 78, "lMin": 38, "sat": 85 },
+    "audio": { "masterVolume": 0.8, "metronome": false, "metronomeVolume": 0.5 }
   }
 }
 ```
 
-Song-scoped keys (`voices`, `tempo`, `display`) always apply on import. The
-`global` block is a snapshot of the app-wide preferences at export time; import
-offers to apply it or leave the current globals alone, so sharing a profile for
-its colours does not silently rewrite someone's audio settings.
+Song-scoped keys (`voices`, `tempo`, `display`, `theme`, `text`) always apply on
+import. The `global` block is a snapshot of the app-wide preferences at export
+time; import applies it only when the user ticks "Also apply the file's global
+preferences", so sharing a profile for its colours does not silently rewrite
+someone's audio settings. A file missing `song`, `voices`, `tempo`, `display`,
+`theme`, `text` or `global` is refused, like an unknown `schemaVersion` (§11).
 
-**Import** accepts the file via picker or drag-and-drop onto the window. Song data is referenced by hash rather than embedded, so importing a profile on a machine without the source file prompts you to re-pick it; the profile then reattaches by hash.
+**Import** accepts the file via the Profile section's picker and applies it to the currently loaded piece; voices are matched by id, and saved voices that no longer exist in the file are ignored.
+
+**Deferred** (not built in v1):
+
+- Drag-and-drop of a profile file onto the window (the picker is the only import path).
+- The re-pick prompt: importing a profile whose song is not loaded does not ask for the source file, and a profile does not reattach itself by hash when the file is later opened (the autosave does, independently).
+- A global default fall speed: fall speed is song-scoped only, inside `display`.
 
 ## 11. Error handling
 
