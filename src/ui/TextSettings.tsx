@@ -1,6 +1,8 @@
 import { SettingsRow } from './SettingsPanel'
+import { KEY_OPTIONS } from '../music/keyOf'
 import type {
-  NoteLabelContent, NoteLabelPlacement, TextSettings as TextSettingsType, TextStyle,
+  ChordDisplay, ChordPlacement, NoteLabelContent, NoteLabelPlacement,
+  TextSettings as TextSettingsType, TextStyle,
 } from '../settings/types'
 
 /** Suggestions only, offered through a datalist: any Google family name is valid. */
@@ -10,6 +12,19 @@ const GOOGLE_FONT_SUGGESTIONS = [
 
 /** A colour input only accepts #rrggbb; anything else (the default rgba outline) shows as black. */
 const HEX6 = /^#[0-9a-f]{6}$/i
+
+const CHORD_DISPLAY: [ChordDisplay, string][] = [
+  ['off', 'Off'],
+  ['symbol', 'Chord symbol'],
+  ['numeral', 'Roman numeral'],
+  ['both', 'Both'],
+]
+
+const CHORD_PLACEMENT: [ChordPlacement, string][] = [
+  ['stage-left', 'Stage top-left'],
+  ['stage-centre', 'Stage top-centre'],
+  ['above-keys', 'Above the keys'],
+]
 
 const LABEL_CONTENT: [NoteLabelContent, string][] = [
   ['off', 'Off'],
@@ -57,6 +72,65 @@ export function TextSettings(props: {
             </button>
           ))}
         </div>
+      </SettingsRow>
+
+      <SettingsRow label="Chord readout">
+        <select
+          aria-label="Chord readout"
+          className="chord-display-select rounded border border-[var(--line)] bg-[var(--panel)] px-1 py-0.5 text-[11px] text-[var(--ink)]"
+          value={text.chord}
+          onChange={(e) => onChange({ chord: e.target.value as ChordDisplay })}
+        >
+          {CHORD_DISPLAY.map(([id, label]) => (
+            <option key={id} className="chord-display-option" value={id}>{label}</option>
+          ))}
+        </select>
+      </SettingsRow>
+
+      <SettingsRow label="Chord position">
+        <select
+          aria-label="Chord position"
+          className="chord-placement-select rounded border border-[var(--line)] bg-[var(--panel)] px-1 py-0.5 text-[11px] text-[var(--ink)]"
+          value={text.chordPlacement}
+          onChange={(e) => onChange({ chordPlacement: e.target.value as ChordPlacement })}
+        >
+          {CHORD_PLACEMENT.map(([id, label]) => (
+            <option key={id} className="chord-placement-option" value={id}>{label}</option>
+          ))}
+        </select>
+      </SettingsRow>
+
+      <SettingsRow label="Show alternates">
+        <input
+          type="checkbox" aria-label="Show alternates"
+          className="chord-alternates-toggle accent-[var(--accent)]"
+          checked={text.chordAlternates}
+          onChange={(e) => onChange({ chordAlternates: e.target.checked })}
+        />
+      </SettingsRow>
+
+      <SettingsRow label="Chord window" htmlFor="chord-window">
+        <input
+          id="chord-window" type="range" aria-label="Chord window"
+          className="chord-window-slider h-1 w-28 accent-[var(--accent)]"
+          min={100} max={2000} step={50} value={text.chordWindowMs}
+          onChange={(e) => onChange({ chordWindowMs: Number(e.target.value) })}
+        />
+        <span className="chord-window-value w-12 text-right font-mono text-[10px] tabular-nums text-[var(--ink-dim)]">
+          {text.chordWindowMs}ms
+        </span>
+      </SettingsRow>
+
+      <SettingsRow label="Key">
+        <select
+          aria-label="Key"
+          className="key-override-select rounded border border-[var(--line)] bg-[var(--panel)] px-1 py-0.5 text-[11px] text-[var(--ink)]"
+          value={text.keyOverride ?? ''}
+          onChange={(e) => onChange({ keyOverride: e.target.value || null })}
+        >
+          <option className="key-override-option" value="">From the file (C major if absent)</option>
+          {KEY_OPTIONS.map((k) => <option key={k} className="key-override-option" value={k}>{k}</option>)}
+        </select>
       </SettingsRow>
 
       <SettingsRow label="Font" htmlFor="text-family">

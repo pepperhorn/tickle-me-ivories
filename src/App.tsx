@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { AudioEngine } from './audio/engine'
 import { BeatCursor, MetronomeVoice, beatTimes } from './audio/metronome'
@@ -11,6 +11,8 @@ import { DEFAULT_THEME, readTheme } from './render/theme'
 import { useCanvasStage } from './render/useCanvasStage'
 import { effectiveBpmAt } from './model/tempoMap'
 import { keyOfScore } from './music/keyOf'
+import { ChordFeed } from './music/chordFeed'
+import { toRomanNumeral } from './music/romanNumerals'
 import { playheadAt, useTransport } from './transport/useTransport'
 import { currentSettings, useSettings } from './settings/useSettings'
 import {
@@ -18,6 +20,7 @@ import {
   saveGlobals, saveProfile,
 } from './settings/profile'
 import { DEFAULT_SETTINGS } from './settings/types'
+import { ChordReadout } from './ui/ChordReadout'
 import { DisplaySettings } from './ui/DisplaySettings'
 import { FileDropZone } from './ui/FileDropZone'
 import { StageText, samePitches } from './ui/StageText'
@@ -32,8 +35,14 @@ import { VoicePanel } from './ui/VoicePanel'
 import type { RenderState } from './render/pianoRoll'
 import type { KeyboardLayout } from './render/geometry'
 import type { Theme } from './render/theme'
+import type { ChordReading } from './music/chords'
+import type { KeyContext } from './music/spell'
+import type { ChordDisplayValue } from './ui/ChordReadout'
 import type { ScoreDocument, TempoSetting, Voice } from './model/types'
 import type { ThemeName, ZoomMode } from './settings/types'
+
+/** Shared by identity so the labels-off overlay state never allocates. */
+const NO_PITCHES: number[] = []
 
 export default function App() {
   const t = useTransport()
@@ -68,9 +77,20 @@ export default function App() {
   // prune the CURRENT score's voice buses out from under it once it finally
   // resolves (voice ids like 'hand-left'/'hand-right' repeat across files).
   const loadTokenRef = useRef(0)
+  // The chord readout (spec §15.2). The feed is the draw loop's stateful chord
+  // step; lastReadingRef is the last reading pushed to React, compared by
+  // identity so a steady chord costs no re-render. `undefined` means "nothing
+  // pushed" (readout off), so switching it back on always pushes once.
+  const chordFeedRef = useRef<ChordFeed | null>(null)
+  const lastReadingRef = useRef<ChordReading | null | undefined>(undefined)
+  const lastReadingKeyRef = useRef<KeyContext | null>(null)
+  const [chord, setChord] = useState<ChordDisplayValue | null>(null)
+  const keyRef = useRef<{ sig: ScoreDocument['keySignature'] | null; override: string | null; key: KeyContext } | null>(null)
 
   if (!engineRef.current) engineRef.current = new AudioEngine()
   const engine = engineRef.current
+  if (!chordFeedRef.current) chordFeedRef.current = new ChordFeed()
+  const chordFeed = chordFeedRef.current
 
   // Cached by score identity so the draw loop does not allocate a fresh Map
   // 60x/sec for data that only changes when the score is replaced.
@@ -120,6 +140,20 @@ export default function App() {
       themeRef.current = { key, layout, theme: readTheme(stageWrapRef.current) }
     }
     return themeRef.current.theme
+  }
+
+  // keyOfScore parses a key string into a fresh object; cache it by the key
+  // signature and override so the draw loop neither allocates it per frame nor
+  // hands the chord feed a new key identity (which would force a tonal re-detect
+  // every frame). Keyed on keySignature, not score: updateVoice replaces the
+  // score object but carries the same signature across.
+  function keyFor(score: ScoreDocument | null, override: string | null): KeyContext {
+    const sig = score?.keySignature ?? null
+    const c = keyRef.current
+    if (c && c.sig === sig && c.override === override) return c.key
+    const key = keyOfScore(score, override)
+    keyRef.current = { sig, override, key }
+    return key
   }
 
   // Rebuild the scheduler whenever the note array is REPLACED (load or retime).
@@ -216,14 +250,49 @@ export default function App() {
       // The overlay is DOM, so it must not re-render per frame. Push only when
       // the sounding set or the layout actually changes -- the same discipline
       // as the 10Hz playhead readout. samePitches allocates nothing; the new
-      // array is built only on an actual change (F38).
+      // array is built only on an actual change (F38). While labels are off the
+      // held set is not tracked (nothing shows it): the pitches are emptied once
+      // and then left alone, so a note change costs no App re-render. The layout
+      // is still tracked, because the chord readout places itself from it.
+      // Switching labels back on finds the empty set differs and pushes once.
       const shown = stageTextRef.current
-      if (layout !== shown.layout || !samePitches(held, shown.pitches)) {
-        const next = { layout, pitches: [...held.keys()].sort((a, b) => a - b) }
+      const labelsOn = st.text.labels !== 'off'
+      const pitchesStale = labelsOn ? !samePitches(held, shown.pitches) : shown.pitches !== NO_PITCHES
+      if (layout !== shown.layout || pitchesStale) {
+        const next = {
+          layout,
+          pitches: labelsOn ? [...held.keys()].sort((a, b) => a - b) : NO_PITCHES,
+        }
         stageTextRef.current = next
         setStageText(next)
       }
-    }, [engine]),
+
+      // Chord readout (F41): the feed runs every frame while the readout is on,
+      // so a held block chord gets the frames its hysteresis needs to confirm.
+      // React hears about it only when the committed reading (or the key its
+      // numeral is relative to) changes. Nothing runs, and no state is pushed,
+      // while the readout is off.
+      if (st.text.chord === 'off') {
+        if (lastReadingRef.current !== undefined) {
+          lastReadingRef.current = undefined
+          chordFeed.reset()
+          setChord(null)
+        }
+      } else {
+        const key = keyFor(state.score, st.text.keyOverride)
+        const reading = chordFeed.update(
+          state.score?.notes ?? [], head, st.text.chordWindowMs / 1000, state.maxNoteDur,
+          key, performance.now(),
+        )
+        if (reading !== lastReadingRef.current || key !== lastReadingKeyRef.current) {
+          lastReadingRef.current = reading
+          lastReadingKeyRef.current = key
+          setChord(reading
+            ? { symbol: reading.symbol, alternates: reading.alternates, numeral: toRomanNumeral(reading.symbol, key) }
+            : null)
+        }
+      }
+    }, [engine, chordFeed]),
   )
 
   const loadFile = useCallback(async (file: File) => {
@@ -261,6 +330,7 @@ export default function App() {
     }
 
     useTransport.getState().loadScore(score)
+    chordFeed.reset()
     if (saved) {
       useTransport.getState().setMode(saved.display.mode)
       useTransport.getState().setFallSeconds(saved.display.fallSeconds)
@@ -275,7 +345,7 @@ export default function App() {
       // The score is loaded and visible; only sound is affected.
       setError(`${file.name} is loaded, but audio could not start: ${(e as Error).message}`)
     }
-  }, [engine])
+  }, [engine, chordFeed])
 
   const toggle = useCallback(async () => {
     await engine.resume()
@@ -296,7 +366,8 @@ export default function App() {
     beatsRef.current?.seek(playheadAt(useTransport.getState(), now))
     engine.stopAll()
     metronomeRef.current?.stop()
-  }, [engine])
+    chordFeed.reset()
+  }, [engine, chordFeed])
 
   // setTempo replaces score.notes, so the score-identity effect above rebuilds
   // and re-seats the scheduler on its own. What it CANNOT undo is the notes
@@ -328,9 +399,11 @@ export default function App() {
     engine.stopAll()
     metronomeRef.current?.stop()
     state.clearScore()
+    // Silence holds the last chord, so a cleared score would keep showing it.
+    chordFeed.reset()
     loadTokenRef.current++ // invalidate any in-flight loadFile's retainVoices
     engine.retainVoices([])
-  }, [engine])
+  }, [engine, chordFeed])
 
   // The canvas has alpha, but the page behind it does not. Without this the host
   // page paints its own ground and an OBS browser source composites only black.
@@ -430,6 +503,13 @@ export default function App() {
     engine.setMasterVolume(DEFAULT_SETTINGS.audio.masterVolume)
   }, [engine])
 
+  // Memoised: keyOfScore builds a fresh object, and StageText would otherwise
+  // receive a new keyContext on every App render.
+  const keyContext = useMemo(
+    () => keyOfScore(t.score, settings.text.keyOverride),
+    [t.score, settings.text.keyOverride],
+  )
+
   const effectiveBpm = t.score ? effectiveBpmAt(t.score.tempoMap, playhead, t.tempo) : 120
 
   // Master volume has an audio-side effect (the engine's gain node) as well as
@@ -456,8 +536,9 @@ export default function App() {
           layout={stageText.layout}
           pitches={stageText.pitches}
           text={settings.text}
-          keyContext={keyOfScore(t.score, settings.text.keyOverride)}
+          keyContext={keyContext}
         />
+        <ChordReadout layout={stageText.layout} value={chord} text={settings.text} />
         {!t.score && (
           <div className="stage-empty absolute inset-0 flex items-center justify-center p-4">
             <FileDropZone onFile={loadFile} />
