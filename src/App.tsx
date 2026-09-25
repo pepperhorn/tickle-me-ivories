@@ -28,6 +28,10 @@ export default function App() {
     score: null, map: new Map(),
   })
   const layoutRef = useRef<{ w: number; h: number; layout: KeyboardLayout } | null>(null)
+  // Bumped on every loadFile/loadAnother so a slow, now-superseded load can't
+  // prune the CURRENT score's voice buses out from under it once it finally
+  // resolves (voice ids like 'hand-left'/'hand-right' repeat across files).
+  const loadTokenRef = useRef(0)
 
   if (!engineRef.current) engineRef.current = new AudioEngine()
   const engine = engineRef.current
@@ -129,13 +133,20 @@ export default function App() {
       return
     }
 
+    // Claim this load's slot before the first await below. If a newer
+    // loadFile or loadAnother runs before this one's instruments finish
+    // loading, the token no longer matches and this call's retainVoices is
+    // skipped -- otherwise a slow file A resolving after file B is already
+    // current would prune B's voices right back out.
+    const token = ++loadTokenRef.current
+
     setError(null)
     useTransport.getState().loadScore(score)
 
     try {
       await engine.resume()
       await Promise.all(score.voices.map((v) => engine.loadVoice(v)))
-      engine.retainVoices(score.voices.map((v) => v.id))
+      if (loadTokenRef.current === token) engine.retainVoices(score.voices.map((v) => v.id))
     } catch (e) {
       // The score is loaded and visible; only sound is affected.
       setError(`${file.name} is loaded, but audio could not start: ${(e as Error).message}`)
@@ -177,6 +188,7 @@ export default function App() {
     if (state.playing) state.pause(engine.currentTime)
     engine.stopAll()
     state.clearScore()
+    loadTokenRef.current++ // invalidate any in-flight loadFile's retainVoices
     engine.retainVoices([])
   }, [engine])
 

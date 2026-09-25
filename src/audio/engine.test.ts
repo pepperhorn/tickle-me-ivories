@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { AudioEngine, clampToNow, volumeToGain } from './engine'
+import type { InstrumentFactoryFn } from './engine'
 import type { Voice } from '../model/types'
 import type { ScheduledNote } from './scheduler'
 
@@ -139,12 +140,76 @@ describe('AudioEngine voice bus', () => {
     expect(h.made[0].dispose).not.toHaveBeenCalled()
   })
 
+  // Fix round 1, issue 1 (F7 follow-up): with a naive "await the one pending
+  // load, then re-check once" guard, 3+ overlapping loadVoice calls for the
+  // SAME voice can each pass a now-stale re-check and each build their own
+  // instrument: the requested instrument ends up built twice (one leaked)
+  // and the pre-existing instrument disposed twice. The fix must instead
+  // keep re-reading the loading map and chain onto whatever load is
+  // CURRENTLY in flight, so a third caller discovers and waits on the second
+  // caller's build instead of starting a competing one.
+  it('re-checks against the latest in-flight load, so 3+ overlapping loadVoice calls never leak or double-build', async () => {
+    const ctx = fakeContext()
+    const made: FakeInstrument[] = []
+    const gates: Array<() => void> = []
+    const makeInstrument: InstrumentFactoryFn = (_c, id, destination) => {
+      return new Promise((resolve) => {
+        gates.push(() => {
+          const inst = { id, destination, start: vi.fn(), stop: vi.fn(), dispose: vi.fn() }
+          made.push(inst)
+          resolve(inst as never)
+        })
+      })
+    }
+    const engine = new AudioEngine({
+      makeContext: () => ctx as unknown as AudioContext,
+      makeInstrument,
+    })
+
+    const p0 = engine.loadVoice(voice('v1', { instrument: 'acoustic_grand_piano' }))
+    const p1 = engine.loadVoice(voice('v1', { instrument: 'harpsichord' }))
+    const p2 = engine.loadVoice(voice('v1', { instrument: 'harpsichord' }))
+
+    expect(gates).toHaveLength(1) // only the piano build has started so far
+    gates[0]()                    // let the piano finish
+    await p0
+
+    // p1 and p2's continuations both run before our `await p0` settles (they
+    // registered on the same promise first) -- p2 must discover p1's build
+    // already in flight and chain onto it rather than starting its own.
+    expect(gates).toHaveLength(2) // exactly ONE harpsichord build started
+    gates[1]()                    // let it finish
+    await Promise.all([p1, p2])
+
+    expect(gates).toHaveLength(2)                          // never a third build
+    expect(made).toHaveLength(2)                           // piano + one harpsichord instance
+    expect(made[0].dispose).toHaveBeenCalledTimes(1)        // piano disposed exactly once
+    expect(made[1].dispose).not.toHaveBeenCalled()          // the live harpsichord instance stays
+  })
+
   it('retainVoices disposes and disconnects voices no longer in the score', async () => {
     await h.engine.loadVoice(voice('v1'))
     await h.engine.loadVoice(voice('v2'))
     h.engine.retainVoices(['v2'])
     expect(h.made[0].dispose).toHaveBeenCalled()
     expect(h.made[1].dispose).not.toHaveBeenCalled()
+    h.engine.play(sched(60, 0), voice('v1'), 0)
+    expect(h.made[0].start).not.toHaveBeenCalled()
+  })
+
+  // Fix round 1, issue 2: retainVoices removes the voice's bus from the map,
+  // but a loadVoice already in flight closed over that SAME bus object and
+  // keeps writing into it regardless. Nothing else can ever reach an
+  // instrument built into an orphaned bus, so it must be disposed the moment
+  // the build notices its bus is no longer live -- otherwise it leaks.
+  it('disposes an instrument built for a voice that was retired (retainVoices) while its load was in flight', async () => {
+    const p = h.engine.loadVoice(voice('v1')) // not yet awaited
+    h.engine.retainVoices([])                 // retire v1 before the load resolves
+    await p
+
+    expect(h.made).toHaveLength(1)
+    expect(h.made[0].dispose).toHaveBeenCalledTimes(1)
+    // And it must not resurrect the bus: v1 is still gone.
     h.engine.play(sched(60, 0), voice('v1'), 0)
     expect(h.made[0].start).not.toHaveBeenCalled()
   })

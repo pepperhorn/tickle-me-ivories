@@ -144,19 +144,25 @@ export class AudioEngine {
     bus.gain.gain.value = volumeToGain(voice.volume)
     if (bus.instrumentId === voice.instrument && bus.instrument) return
 
-    const pending = this.loading.get(voice.id)
-    if (pending) {
+    // Wait out any in-flight load(s) for this voice, re-checking the LOADING
+    // MAP itself (not a stale reference) on every lap: with 3+ overlapping
+    // calls, a newer load can supersede the one we started waiting on before
+    // we resume, and we must chain onto that newer one instead of racing it
+    // -- otherwise two callers can both pass a single stale re-check and each
+    // build their own instance, leaking one and double-disposing `previous`.
+    let pending: Promise<void> | undefined
+    while ((pending = this.loading.get(voice.id))) {
       await pending
-      // Re-check: the pending load may have already landed this exact
-      // instrument, in which case a second build would create a duplicate
-      // instance instead of reusing the one the other caller just made.
       if (bus.instrumentId === voice.instrument && bus.instrument) return
     }
 
-    const task = (async () => {
+    let task: Promise<void>
+    task = (async () => {
       const previous = bus.instrument
+      let built: Instrument | null = null
       try {
-        bus.instrument = await this.createWithRetry(voice.instrument, bus.gain)
+        built = await this.createWithRetry(voice.instrument, bus.gain)
+        bus.instrument = built
         bus.instrumentId = voice.instrument
       } catch {
         // Retry-once on the requested instrument already failed twice; fall
@@ -164,15 +170,30 @@ export class AudioEngine {
         // or the visuals.
         if (voice.instrument === GRAND_PIANO_ID) return
         try {
-          bus.instrument = await this.createWithRetry(GRAND_PIANO_ID, bus.gain)
+          built = await this.createWithRetry(GRAND_PIANO_ID, bus.gain)
+          bus.instrument = built
           bus.instrumentId = GRAND_PIANO_ID
         } catch {
           /* leave the voice silent; play() becomes a no-op for it */
         }
       } finally {
-        if (previous && previous !== bus.instrument) previous.dispose()
+        // The voice may have been retired (retainVoices) while this load was
+        // in flight. `bus` is a reference closed over at call time, so it is
+        // no longer reachable from `this.buses` in that case -- retainVoices
+        // already disposed whatever `previous` was, so disposing it again
+        // here would double-dispose it. Instead dispose the instance we just
+        // built, or it leaks: nothing else can ever reach it to clean it up.
+        if (this.buses.get(voice.id) === bus) {
+          if (previous && previous !== bus.instrument) previous.dispose()
+        } else if (built) {
+          built.dispose()
+        }
       }
-    })().finally(() => this.loading.delete(voice.id))
+    })().finally(() => {
+      // Only remove our OWN entry: a newer load for this voice may already
+      // have replaced it in the map by the time we get here.
+      if (this.loading.get(voice.id) === task) this.loading.delete(voice.id)
+    })
 
     this.loading.set(voice.id, task)
     return task
