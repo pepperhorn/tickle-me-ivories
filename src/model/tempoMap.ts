@@ -57,6 +57,12 @@ export function secToTicks(
   return e.ticks + ((base - e.sec) * (e.bpm / 60)) * ppq
 }
 
+/** Two tempo settings are the same when a retime between them would change nothing. */
+export function sameTempo(a: TempoSetting, b: TempoSetting): boolean {
+  if (a.mode === 'scale') return b.mode === 'scale' && a.scale === b.scale
+  return b.mode === 'absolute' && a.bpm === b.bpm
+}
+
 /** The tempo slider's bounds. 0 must never reach ticksToSec's divisor. */
 export const MIN_TEMPO_SCALE = 0.25
 export const MAX_TEMPO_SCALE = 3

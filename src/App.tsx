@@ -9,7 +9,7 @@ import { computeLayout, fitRange, FIRST_PITCH, LAST_PITCH } from './render/geome
 import { drawStage } from './render/pianoRoll'
 import { DEFAULT_THEME, readTheme } from './render/theme'
 import { useCanvasStage } from './render/useCanvasStage'
-import { effectiveBpmAt } from './model/tempoMap'
+import { effectiveBpmAt, sameTempo } from './model/tempoMap'
 import { keyOfScore } from './music/keyOf'
 import { ChordFeed } from './music/chordFeed'
 import { displayChordSymbol } from './music/chords'
@@ -379,7 +379,10 @@ export default function App() {
   // and re-seats the scheduler on its own. What it CANNOT undo is the notes
   // already handed to smplr at their old times -- those keep sounding across
   // the change unless we cancel them here, exactly as seek and pause do.
+  // A setting equal to the current one is a no-op: retiming to it would change
+  // nothing but still cut every sustained note.
   const changeTempo = useCallback((setting: TempoSetting) => {
+    if (sameTempo(setting, useTransport.getState().tempo)) return
     const now = engine.currentTime
     useTransport.getState().setTempo(setting, now)
     engine.stopAll()

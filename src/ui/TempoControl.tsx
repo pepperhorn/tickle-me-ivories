@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { MAX_TEMPO_SCALE, MIN_TEMPO_SCALE } from '../model/tempoMap'
+import { MAX_TEMPO_SCALE, MIN_TEMPO_SCALE, sameTempo } from '../model/tempoMap'
 import { SettingsRow } from './SettingsPanel'
 import type { TempoSetting } from '../model/types'
 
@@ -23,9 +23,14 @@ export function TempoControl(props: {
   // calls onChange, so this never clobbers an in-progress edit.
   useEffect(() => { setBpmDraft(String(bpm)) }, [bpm])
 
+  // Every change retimes the score and stops sounding notes, so nothing that
+  // leaves the setting as it was may reach onChange: a blur with no edit, or a
+  // click on the mode that is already active.
+  const change = (next: TempoSetting) => { if (!sameTempo(next, tempo)) onChange(next) }
+
   const commitBpm = () => {
     const v = Number(bpmDraft)
-    if (Number.isFinite(v) && v >= 20 && v <= 300) onChange({ mode: 'absolute', bpm: v })
+    if (Number.isFinite(v) && v >= 20 && v <= 300) change({ mode: 'absolute', bpm: v })
     else setBpmDraft(String(bpm))
   }
 
@@ -44,7 +49,7 @@ export function TempoControl(props: {
                   : 'border-[var(--line)] text-[var(--ink-dim)]'
               }`}
               onClick={() =>
-                onChange(m === 'scale' ? { mode: 'scale', scale } : { mode: 'absolute', bpm })
+                change(m === 'scale' ? { mode: 'scale', scale } : { mode: 'absolute', bpm })
               }
             >
               {m === 'scale' ? 'Scale %' : 'Absolute'}
@@ -83,12 +88,9 @@ export function TempoControl(props: {
             value={bpmDraft}
             onChange={(e) => setBpmDraft(e.target.value)}
             onBlur={commitBpm}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                commitBpm()
-                ;(e.target as HTMLInputElement).blur()
-              }
-            }}
+            // Enter only blurs: the blur commits. Committing here as well
+            // would retime (and cut sounding notes) twice.
+            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
           />
         </SettingsRow>
       )}

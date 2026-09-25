@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildTempoMap, ticksToSec, secToTicks, effectiveBpmAt } from './tempoMap'
+import { buildTempoMap, ticksToSec, secToTicks, effectiveBpmAt, sameTempo } from './tempoMap'
 import type { TempoSetting } from './types'
 
 const PPQ = 480
@@ -117,5 +117,15 @@ describe('effectiveBpmAt', () => {
 
   it('does not divide by zero if a scale of 0 ever reaches it', () => {
     expect(Number.isFinite(effectiveBpmAt(map, 1, { mode: 'scale', scale: 0 }))).toBe(true)
+  })
+})
+
+describe('sameTempo', () => {
+  it('compares mode and value', () => {
+    expect(sameTempo({ mode: 'scale', scale: 1 }, { mode: 'scale', scale: 1 })).toBe(true)
+    expect(sameTempo({ mode: 'scale', scale: 1 }, { mode: 'scale', scale: 0.5 })).toBe(false)
+    expect(sameTempo({ mode: 'absolute', bpm: 90 }, { mode: 'absolute', bpm: 90 })).toBe(true)
+    expect(sameTempo({ mode: 'absolute', bpm: 90 }, { mode: 'absolute', bpm: 91 })).toBe(false)
+    expect(sameTempo({ mode: 'scale', scale: 1 }, { mode: 'absolute', bpm: 120 })).toBe(false)
   })
 })
