@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { visibleNotes, heldNotes, drawStage } from './pianoRoll'
-import { computeLayout } from './geometry'
-import { DEFAULT_SCHEME } from './colors'
+import { visibleNotes, heldNotes, drawStage, drawRoll } from './pianoRoll'
+import { drawKeyboard } from './keyboard'
+import { noteColor } from './colors'
 import { DEFAULT_THEME } from './theme'
-import type { NoteEvent, Voice } from '../model/types'
+import { stubCtx, state } from './pianoRoll.test-helpers'
+import type { NoteEvent } from '../model/types'
 
 const n = (id: number, pitch: number, startSec: number, dur = 0.4): NoteEvent => ({
   id, pitch, startTicks: 0, durTicks: 480,
@@ -82,44 +83,6 @@ describe('heldNotes', () => {
 })
 
 describe('drawStage', () => {
-  /** Records calls so we can assert what was drawn without a real canvas. */
-  function stubCtx() {
-    const calls: string[] = []
-    const rec = (name: string) => (...args: unknown[]) => { calls.push(`${name}(${args.length})`) }
-    return {
-      calls,
-      ctx: new Proxy({} as CanvasRenderingContext2D, {
-        get(_t, prop: string) {
-          if (prop === 'createLinearGradient' || prop === 'createRadialGradient') {
-            return () => ({ addColorStop() {} })
-          }
-          if (prop === 'canvas') return { width: 1000, height: 600 }
-          if (typeof prop === 'string' && prop.startsWith('global')) return 'source-over'
-          return rec(prop)
-        },
-        set() { return true },
-      }),
-    }
-  }
-
-  const state = (notes: NoteEvent[]) => ({
-    notes,
-    voices: new Map<string, Voice>([['v', {
-      id: 'v', label: 'V', hue: 207, instrument: 'acoustic_grand_piano',
-      visible: true, audible: true, volume: 1,
-    }]]),
-    layout: computeLayout(1000, 600),
-    velocity: DEFAULT_SCHEME,
-    fallSeconds: 3,
-    maxNoteDur: 3,
-    showRoll: true,
-    showGrid: true,
-    showFlash: true,
-    flashScale: 1,
-    showMiddleC: true,
-    theme: DEFAULT_THEME,
-  })
-
   it('draws without throwing on an empty score', () => {
     const { ctx } = stubCtx()
     expect(() => drawStage(ctx, state([]), 0, 0)).not.toThrow()
@@ -198,5 +161,24 @@ describe('drawStage', () => {
     expect(strokeRects(off.calls)).toBe(0)
     // Full 88-key range: 52 white + 36 black keys, one stroke each.
     expect(strokeRects(on.calls)).toBe(88)
+  })
+})
+
+describe('fill colours', () => {
+  it('fills a bar with the gradient stops noteColor produces for its voice', () => {
+    const { ctx, gradientStops } = stubCtx()
+    const st = state([n(0, 60, 0)])          // one note, voice hue 207, velocity 100
+    drawRoll(ctx, st, 0, st.notes)
+
+    expect(gradientStops).toContain(noteColor(207, 100, st.velocity))
+    expect(gradientStops).toContain(noteColor(207, 86, st.velocity))   // the -14 top stop
+  })
+
+  it("uses the theme's key colours for unheld keys", () => {
+    const { ctx, fillStyles } = stubCtx()
+    const theme = { ...DEFAULT_THEME, keyWhite: '#111111', keyBlack: '#222222' }
+    drawKeyboard(ctx, { ...state([]), theme }, new Map())
+    expect(fillStyles).toContain('#111111')
+    expect(fillStyles).toContain('#222222')
   })
 })

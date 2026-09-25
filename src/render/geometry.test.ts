@@ -3,20 +3,26 @@ import {
   computeLayout, pitchAt, ensureFullBlackKeyGroups, fitRange, whiteKeyCount,
   FIRST_PITCH, LAST_PITCH,
 } from './geometry'
+import type { KeyboardLayout } from './geometry'
 
-const BLACK_PC = new Set([1, 3, 6, 8, 10])
 const REF_W = 1220          // reference frame width; whiteW = 23.462
 
 /** Offset of each black key centre from the white-key boundary, in px at REF_W.
  *  Measured from all 36 black keys of a SheetMusicBoss reference frame. */
 const MEASURED: Record<number, number> = { 1: -2.08, 3: 1.96, 6: -3.53, 8: -0.07, 10: 3.42 }
 
-function boundaries(whiteW: number): Record<number, number> {
+/**
+ * F44: the boundary before a black key is the x + w of the white key that
+ * precedes it, read off the produced layout's own keys -- not re-derived by
+ * replaying computeLayout's `wi` accumulation, which would let a shared
+ * indexing bug hide from every test that used it.
+ */
+function boundaries(l: KeyboardLayout): Record<number, number> {
   const out: Record<number, number> = {}
-  let wi = 0
-  for (let p = 21; p <= 108; p++) {
-    if (BLACK_PC.has(p % 12)) out[p] = wi * whiteW
-    else wi++
+  let edge = 0
+  for (const k of l.keys) {
+    if (k.black) out[k.pitch] = edge
+    else edge = k.x + k.w
   }
   return out
 }
@@ -41,7 +47,7 @@ describe('computeLayout', () => {
 
   it('places black key centres to match the reference frame within 0.5px', () => {
     const l = computeLayout(REF_W, 600)
-    const b = boundaries(l.whiteW)
+    const b = boundaries(l)
     for (const k of l.keys.filter((k) => k.black)) {
       const centre = k.x + k.w / 2
       expect(Math.abs(centre - b[k.pitch] - MEASURED[k.pitch % 12])).toBeLessThan(0.5)
@@ -50,7 +56,7 @@ describe('computeLayout', () => {
 
   it('puts G# alone exactly on the boundary', () => {
     const l = computeLayout(REF_W, 600)
-    const b = boundaries(l.whiteW)
+    const b = boundaries(l)
     for (const k of l.keys.filter((k) => k.black)) {
       const d = Math.abs(k.x + k.w / 2 - b[k.pitch])
       if (k.pitch % 12 === 8) expect(d).toBeCloseTo(0, 9)

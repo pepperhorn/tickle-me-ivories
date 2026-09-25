@@ -184,3 +184,50 @@ describe('updateVoice', () => {
     expect(useTransport.getState().score!.voices).toEqual(before)
   })
 })
+
+describe('parked plan 1 gaps', () => {
+  it('pausing at the end leaves the playhead exactly at the duration', () => {
+    const s = makeScore()
+    useTransport.getState().loadScore(s)
+    const dur = useTransport.getState().score!.durationSec
+    useTransport.getState().play(100)
+    // This is what App's scheduler tick does when head >= durationSec.
+    useTransport.getState().pause(100 + dur)
+    expect(useTransport.getState().playing).toBe(false)
+    expect(useTransport.getState().pausedAtSec).toBeCloseTo(dur, 9)
+  })
+
+  it('clearScore returns the store to its empty state', () => {
+    useTransport.getState().loadScore(makeScore())
+    useTransport.getState().play(10)
+    useTransport.getState().clearScore()
+    const s = useTransport.getState()
+    expect(s.score).toBeNull()
+    expect(s.playing).toBe(false)
+    expect(s.pausedAtSec).toBe(0)
+    expect(s.originSec).toBe(0)
+    expect(s.maxNoteDur).toBe(0)
+  })
+
+  it('seek clamps to the score at both ends, paused and playing', () => {
+    useTransport.getState().loadScore(makeScore())
+    const dur = useTransport.getState().score!.durationSec
+
+    useTransport.getState().seek(-5, 0)
+    expect(useTransport.getState().pausedAtSec).toBe(0)
+
+    useTransport.getState().seek(dur + 99, 0)
+    expect(useTransport.getState().pausedAtSec).toBeCloseTo(dur, 9)
+
+    useTransport.getState().play(50)
+    useTransport.getState().seek(dur + 99, 50)
+    expect(useTransport.getState().pausedAtSec).toBeCloseTo(dur, 9)
+    expect(useTransport.getState().originSec).toBeCloseTo(50 - dur, 9)
+  })
+
+  it('seek on an empty store clamps to zero rather than to NaN', () => {
+    useTransport.getState().clearScore()
+    useTransport.getState().seek(10, 0)
+    expect(useTransport.getState().pausedAtSec).toBe(0)
+  })
+})
