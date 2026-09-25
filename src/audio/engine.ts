@@ -93,6 +93,16 @@ export class AudioEngine {
     return this.context().currentTime
   }
 
+  /** The metronome routes through the master gain so master volume applies to it too. */
+  get audioContext(): AudioContext {
+    return this.context()
+  }
+
+  get masterNode(): GainNode {
+    this.context()
+    return this.master!
+  }
+
   get ready(): boolean {
     return [...this.buses.values()].some((b) => b.instrument !== null)
   }

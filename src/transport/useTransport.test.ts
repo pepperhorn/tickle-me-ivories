@@ -13,7 +13,7 @@ const score = (): ScoreDocument => ({
     { id: 0, pitch: 60, startTicks: 0, durTicks: 480, startSec: 0, endSec: 0.5, velocity: 100, voiceId: 'v' },
     { id: 1, pitch: 64, startTicks: PPQ * 8, durTicks: 480, startSec: 4, endSec: 4.5, velocity: 100, voiceId: 'v' },
   ],
-  durationSec: 4.5, sourceFormat: 'midi',
+  durationSec: 4.5, sourceFormat: 'midi', beatsPerBar: 4,
 })
 
 // Two voices, one note each -- used by the updateVoice tests below.
@@ -29,7 +29,7 @@ const makeScore = (): ScoreDocument => {
       { id: 0, pitch: 60, startTicks: 0, durTicks: 480, startSec: 0, endSec: 0, velocity: 100, voiceId: 'a' },
       { id: 1, pitch: 64, startTicks: 480, durTicks: 480, startSec: 0, endSec: 0, velocity: 100, voiceId: 'b' },
     ],
-    durationSec: 0, sourceFormat: 'midi',
+    durationSec: 0, sourceFormat: 'midi', beatsPerBar: 4,
   }
   return retimeScore(base, { mode: 'scale', scale: 1 })
 }

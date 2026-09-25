@@ -23,6 +23,8 @@ export function parseMidi(
   const tempoMap = buildTempoMap(
     midi.header.tempos.map((t) => ({ ticks: t.ticks, bpm: t.bpm })), ppq,
   )
+  // @tonejs/midi exposes timeSignature as [numerator, denominator].
+  const beatsPerBar = midi.header.timeSignatures[0]?.timeSignature?.[0] ?? 4
 
   const played = midi.tracks.filter((t) => t.notes.length > 0)
   const notes: NoteEvent[] = []
@@ -61,7 +63,8 @@ export function parseMidi(
   }
 
   const score: ScoreDocument = {
-    id: '', name, ppq, tempoMap, voices, notes, durationSec: 0, sourceFormat: 'midi',
+    id: '', name, ppq, tempoMap, voices, notes,
+    durationSec: 0, sourceFormat: 'midi', beatsPerBar,
   }
   return retimeScore(score, setting)
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AudioEngine } from './audio/engine'
+import { BeatCursor, MetronomeVoice, beatTimes } from './audio/metronome'
 import { Scheduler, TICK_MS } from './audio/scheduler'
 import { parseMidi } from './io/parseMidi'
 import { hashFile } from './io/hashFile'
@@ -11,7 +12,7 @@ import { playheadAt, useTransport } from './transport/useTransport'
 import { useSettings } from './settings/useSettings'
 import { DisplaySettings } from './ui/DisplaySettings'
 import { FileDropZone } from './ui/FileDropZone'
-import { SettingsPanel, SettingsSection } from './ui/SettingsPanel'
+import { SettingsPanel, SettingsRow, SettingsSection } from './ui/SettingsPanel'
 import { TempoControl } from './ui/TempoControl'
 import { TransportBar } from './ui/TransportBar'
 import { VelocityEditor } from './ui/VelocityEditor'
@@ -26,6 +27,8 @@ export default function App() {
   const settings = useSettings()
   const engineRef = useRef<AudioEngine | null>(null)
   const schedulerRef = useRef<Scheduler | null>(null)
+  const beatsRef = useRef<BeatCursor | null>(null)
+  const metronomeRef = useRef<MetronomeVoice | null>(null)
   const [playhead, setPlayhead] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -85,10 +88,15 @@ export default function App() {
   // notes already handed to smplr and sound them twice.
   const notes = t.score?.notes
   useEffect(() => {
-    if (!notes) { schedulerRef.current = null; return }
+    if (!notes) { schedulerRef.current = null; beatsRef.current = null; return }
+    const head = playheadAt(useTransport.getState(), engine.currentTime)
     const s = new Scheduler(notes)
-    s.seek(playheadAt(useTransport.getState(), engine.currentTime))
+    s.seek(head)
     schedulerRef.current = s
+    const score = useTransport.getState().score!
+    const b = new BeatCursor(beatTimes(score, useTransport.getState().tempo))
+    b.seek(head)
+    beatsRef.current = b
   }, [notes, engine])
 
   // The scheduler tick. Runs on a plain interval; audio timing comes from the
@@ -107,12 +115,27 @@ export default function App() {
       if (head >= state.score.durationSec) {
         state.pause(state.originSec + state.score.durationSec)
         engine.stopAll()
+        metronomeRef.current?.stop()
         return
       }
 
       for (const sched of s.collect(head)) {
         const voice = state.score.voices.find((v) => v.id === sched.note.voiceId)
         if (voice) engine.play(sched, voice, state.originSec)
+      }
+
+      const audio = useSettings.getState().audio
+      if (audio.metronome && beatsRef.current) {
+        if (!metronomeRef.current) {
+          metronomeRef.current = new MetronomeVoice(engine.audioContext, engine.masterNode)
+        }
+        for (const beat of beatsRef.current.collect(head)) {
+          metronomeRef.current.click(state.originSec + beat.sec, beat.accent, audio.metronomeVolume)
+        }
+      } else {
+        // Keep the cursor level with the playhead while the click is off, so
+        // switching it on mid-piece does not fire every beat since the start.
+        beatsRef.current?.seek(head)
       }
     }, TICK_MS)
     return () => clearInterval(id)
@@ -175,6 +198,7 @@ export default function App() {
 
     try {
       await engine.resume()
+      engine.setMasterVolume(useSettings.getState().audio.masterVolume)
       await Promise.all(score.voices.map((v) => engine.loadVoice(v)))
       if (loadTokenRef.current === token) engine.retainVoices(score.voices.map((v) => v.id))
     } catch (e) {
@@ -187,10 +211,11 @@ export default function App() {
     await engine.resume()
     const state = useTransport.getState()
     const now = engine.currentTime
-    if (state.playing) { state.pause(now); engine.stopAll() }
+    if (state.playing) { state.pause(now); engine.stopAll(); metronomeRef.current?.stop() }
     else {
       state.play(now)
       schedulerRef.current?.seek(playheadAt(useTransport.getState(), now))
+      beatsRef.current?.seek(playheadAt(useTransport.getState(), now))
     }
   }, [engine])
 
@@ -198,7 +223,9 @@ export default function App() {
     const now = engine.currentTime
     useTransport.getState().seek(sec, now)
     schedulerRef.current?.seek(playheadAt(useTransport.getState(), now))
+    beatsRef.current?.seek(playheadAt(useTransport.getState(), now))
     engine.stopAll()
+    metronomeRef.current?.stop()
   }, [engine])
 
   // setTempo replaces score.notes, so the score-identity effect above rebuilds
@@ -209,6 +236,7 @@ export default function App() {
     const now = engine.currentTime
     useTransport.getState().setTempo(setting, now)
     engine.stopAll()
+    metronomeRef.current?.stop()
   }, [engine])
 
   // Volume and instrument have audio-side effects; colour, label and visibility
@@ -228,12 +256,21 @@ export default function App() {
     const state = useTransport.getState()
     if (state.playing) state.pause(engine.currentTime)
     engine.stopAll()
+    metronomeRef.current?.stop()
     state.clearScore()
     loadTokenRef.current++ // invalidate any in-flight loadFile's retainVoices
     engine.retainVoices([])
   }, [engine])
 
   const effectiveBpm = t.score ? effectiveBpmAt(t.score.tempoMap, playhead, t.tempo) : 120
+
+  // Master volume has an audio-side effect (the engine's gain node) as well as
+  // a persisted setting, so it goes through its own callback rather than a
+  // direct settings.setAudio call, mirroring changeVoice's split above.
+  const changeMasterVolume = useCallback((v: number) => {
+    useSettings.getState().setAudio({ masterVolume: v })
+    engine.setMasterVolume(v)
+  }, [engine])
 
   return (
     <div className="app-shell flex h-full flex-col bg-[var(--ground)]">
@@ -291,6 +328,33 @@ export default function App() {
                     onDisplay={settings.setDisplay}
                     onFallSeconds={t.setFallSeconds}
                   />
+                </SettingsSection>
+                <SettingsSection id="audio" title="Audio">
+                  <SettingsRow label="Master volume" htmlFor="master-volume">
+                    <input
+                      id="master-volume" type="range" aria-label="Master volume"
+                      className="master-volume-slider h-1 w-32 accent-[var(--accent)]"
+                      min={0} max={1} step={0.01} value={settings.audio.masterVolume}
+                      onChange={(e) => changeMasterVolume(Number(e.target.value))}
+                    />
+                  </SettingsRow>
+                  <SettingsRow label="Metronome">
+                    <input
+                      type="checkbox" aria-label="Metronome"
+                      className="metronome-toggle accent-[var(--accent)]"
+                      checked={settings.audio.metronome}
+                      onChange={(e) => settings.setAudio({ metronome: e.target.checked })}
+                    />
+                  </SettingsRow>
+                  <SettingsRow label="Metronome volume" htmlFor="metronome-volume">
+                    <input
+                      id="metronome-volume" type="range" aria-label="Metronome volume"
+                      className="metronome-volume-slider h-1 w-32 accent-[var(--accent)]"
+                      min={0} max={1} step={0.01} value={settings.audio.metronomeVolume}
+                      disabled={!settings.audio.metronome}
+                      onChange={(e) => settings.setAudio({ metronomeVolume: Number(e.target.value) })}
+                    />
+                  </SettingsRow>
                 </SettingsSection>
               </SettingsPanel>
             </>

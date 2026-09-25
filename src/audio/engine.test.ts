@@ -78,6 +78,21 @@ describe('clampToNow', () => {
   })
 })
 
+describe('AudioEngine audioContext / masterNode', () => {
+  it('exposes the same context instance used internally, creating it lazily', () => {
+    const h = harness()
+    expect(h.engine.audioContext).toBe(h.ctx)
+  })
+
+  it('exposes the master gain node so an external voice can route through it', () => {
+    const h = harness()
+    const master = h.engine.masterNode
+    expect(master).toBeTruthy()
+    // Same instance on repeat access -- one master bus for the whole engine.
+    expect(h.engine.masterNode).toBe(master)
+  })
+})
+
 describe('AudioEngine voice bus', () => {
   let h: ReturnType<typeof harness>
   beforeEach(() => { h = harness() })

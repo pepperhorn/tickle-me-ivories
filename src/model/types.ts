@@ -38,4 +38,5 @@ export interface ScoreDocument {
   notes: NoteEvent[]     // sorted ascending by startSec
   durationSec: number
   sourceFormat: 'midi' | 'musicxml'
+  beatsPerBar: number    // from the file's first time signature; 4 if absent
 }
