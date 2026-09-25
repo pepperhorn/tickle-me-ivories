@@ -134,8 +134,8 @@ export default function App() {
 
     try {
       await engine.resume()
-      await Promise.all([...new Set(score.voices.map((v) => v.instrument))]
-        .map((i) => engine.loadInstrument(i)))
+      await Promise.all(score.voices.map((v) => engine.loadVoice(v)))
+      engine.retainVoices(score.voices.map((v) => v.id))
     } catch (e) {
       // The score is loaded and visible; only sound is affected.
       setError(`${file.name} is loaded, but audio could not start: ${(e as Error).message}`)
@@ -177,6 +177,7 @@ export default function App() {
     if (state.playing) state.pause(engine.currentTime)
     engine.stopAll()
     state.clearScore()
+    engine.retainVoices([])
   }, [engine])
 
   const effectiveBpm = t.score ? effectiveBpmAt(t.score.tempoMap, playhead, t.tempo) : 120
