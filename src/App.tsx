@@ -22,6 +22,7 @@ import { FileDropZone } from './ui/FileDropZone'
 import { ProfileSettings } from './ui/ProfileSettings'
 import { SettingsPanel, SettingsRow, SettingsSection } from './ui/SettingsPanel'
 import { TempoControl } from './ui/TempoControl'
+import { ThemeSettings } from './ui/ThemeSettings'
 import { TransportBar } from './ui/TransportBar'
 import { VelocityEditor } from './ui/VelocityEditor'
 import { VoicePanel } from './ui/VoicePanel'
@@ -311,6 +312,14 @@ export default function App() {
     engine.retainVoices([])
   }, [engine])
 
+  // The canvas has alpha, but the page behind it does not. Without this the host
+  // page paints its own ground and an OBS browser source composites only black.
+  useEffect(() => {
+    const transparent = settings.theme.name === 'transparent' && settings.theme.stageBgOverride === null
+    document.documentElement.classList.toggle('tmi-transparent', transparent)
+    return () => document.documentElement.classList.remove('tmi-transparent')
+  }, [settings.theme.name, settings.theme.stageBgOverride])
+
   // Globals follow the user, not the song: restore them once at startup.
   useEffect(() => {
     const g = loadGlobals()
@@ -475,6 +484,9 @@ export default function App() {
                     onDisplay={settings.setDisplay}
                     onFallSeconds={t.setFallSeconds}
                   />
+                </SettingsSection>
+                <SettingsSection id="theme" title="Theme &amp; compositing">
+                  <ThemeSettings theme={settings.theme} onChange={settings.setTheme} />
                 </SettingsSection>
                 <SettingsSection id="audio" title="Audio">
                   <SettingsRow label="Master volume" htmlFor="master-volume">

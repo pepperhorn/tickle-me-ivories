@@ -442,7 +442,8 @@ These replace the sixteen colour literals currently hardcoded across
 | `--tmi-key-white` | `#f6f2e4` | Unpressed white keys |
 | `--tmi-key-black` | `#0c0c10` | Unpressed black keys |
 | `--tmi-key-border` | `rgba(255,255,255,0.16)` | Hit line along the keyboard top |
-| `--tmi-key-border-width` | `1px` | Its thickness |
+| `--tmi-key-border-width` | `1px` | Its thickness (also the per-key outline's) |
+| `--tmi-key-outline` | `transparent` | Per-key stroke; `drawKeyboard` strokes each key only when this is not transparent, so the Outline preset's transparent keys stay visible |
 | `--tmi-key-radius` | `0px` | Key corner rounding |
 | `--tmi-key-gap` | `1px` | Gap between white keys |
 | `--tmi-middle-c-mark` | `rgba(0,0,0,0.55)` | Middle C's orientation border |

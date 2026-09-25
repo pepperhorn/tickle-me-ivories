@@ -128,6 +128,23 @@ describe('decodeProfile validation of untrusted input', () => {
     expect(() => decodeProfile(tampered((p) => { delete p.global.audio.metronomeVolume }))).toThrow(/audio/i)
   })
 
+  it('refuses an unknown theme name', () => {
+    expect(() => decodeProfile(tampered((p) => { p.theme = { name: 'neon', stageBgOverride: null } }))).toThrow(/theme/i)
+  })
+
+  it('refuses a theme with a non-string, non-null stageBgOverride', () => {
+    expect(() => decodeProfile(tampered((p) => { p.theme = { name: 'classic', stageBgOverride: 7 } }))).toThrow(/theme/i)
+  })
+
+  it('refuses a theme missing its name', () => {
+    expect(() => decodeProfile(tampered((p) => { p.theme = { stageBgOverride: null } }))).toThrow(/theme/i)
+  })
+
+  it('accepts a valid theme, including a matte override colour', () => {
+    const p = decodeProfile(tampered((x) => { x.theme = { name: 'contrast', stageBgOverride: '#00b140' } }))
+    expect(p.theme).toEqual({ name: 'contrast', stageBgOverride: '#00b140' })
+  })
+
   it('drops voice entries that are not objects with a string id', () => {
     const p = decodeProfile(tampered((x) => { x.voices = [null, 7, { hue: 3 }, { id: 5 }, { id: 'l', hue: 40 }] }))
     expect(p.voices).toEqual([{ id: 'l', hue: 40 }])

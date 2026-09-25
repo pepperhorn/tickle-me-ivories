@@ -4,6 +4,9 @@ export interface Theme {
   keyBlack: string
   keyBorder: string
   keyBorderWidth: number
+  /** F32: per-key stroke, drawn by drawKeyboard only when not transparent.
+      Distinct from keyBorder, which is only the hit line along the keyboard top. */
+  keyOutline: string
   keyRadius: number
   keyGap: number
   middleCMark: string
@@ -26,6 +29,7 @@ export const DEFAULT_THEME: Theme = {
   keyBlack: '#0c0c10',
   keyBorder: 'rgba(255,255,255,0.16)',
   keyBorderWidth: 1,
+  keyOutline: 'transparent',
   keyRadius: 0,
   keyGap: 1,
   middleCMark: 'rgba(0,0,0,0.55)',
@@ -95,6 +99,7 @@ export function readTheme(
     keyBlack: str('--tmi-key-black', DEFAULT_THEME.keyBlack),
     keyBorder: str('--tmi-key-border', DEFAULT_THEME.keyBorder),
     keyBorderWidth: num('--tmi-key-border-width', DEFAULT_THEME.keyBorderWidth),
+    keyOutline: str('--tmi-key-outline', DEFAULT_THEME.keyOutline),
     keyRadius: num('--tmi-key-radius', DEFAULT_THEME.keyRadius),
     keyGap: num('--tmi-key-gap', DEFAULT_THEME.keyGap),
     middleCMark: str('--tmi-middle-c-mark', DEFAULT_THEME.middleCMark),

@@ -24,6 +24,9 @@
   --tmi-key-black: #0c0c10;
   --tmi-key-border: rgba(255, 255, 255, 0.16);
   --tmi-key-border-width: 1px;
+  /* F32: per-key stroke. drawKeyboard strokes each key only when this is not
+     transparent, so a theme that leaves it alone (the default) pays nothing. */
+  --tmi-key-outline: transparent;
   --tmi-key-radius: 0px;
   --tmi-key-gap: 1px;
   --tmi-middle-c-mark: rgba(0, 0, 0, 0.55);
@@ -45,4 +48,58 @@ body {
   background: var(--ground);
   color: var(--ink);
   font-family: 'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* Spec §14.2. Each preset is a block of token overrides and nothing else, so a
+   stylesheet can add more without touching code. */
+.theme-classic { /* the :root defaults */ }
+
+.theme-outline {
+  --tmi-key-white: transparent;
+  --tmi-key-black: rgba(0, 0, 0, 0.35);
+  --tmi-key-border: rgba(255, 255, 255, 0.85);
+  --tmi-key-border-width: 2px;
+  /* F32: --tmi-key-white/black are transparent here, so without a stroke the
+     keyboard would be invisible against the stage. */
+  --tmi-key-outline: rgba(255, 255, 255, 0.85);
+  --tmi-key-radius: 3px;
+  --tmi-key-gap: 2px;
+  --tmi-middle-c-mark: rgba(255, 255, 255, 0.85);
+  --tmi-grid-line-style: dashed;
+}
+
+.theme-contrast {
+  --tmi-stage-bg: #000000;
+  --tmi-key-white: #ffffff;
+  --tmi-key-black: #000000;
+  --tmi-key-border: #ffffff;
+  --tmi-key-border-width: 2px;
+  --tmi-middle-c-mark: #000000;
+  --tmi-black-key-top: #ffffff;
+  --tmi-grid-line: rgba(255, 255, 255, 0.25);
+  --tmi-grid-line-c4: rgba(255, 255, 255, 0.6);
+  --tmi-progress-fill: #ffff00;
+}
+
+.theme-transparent {
+  --tmi-stage-bg: transparent;
+  /* F33: opaque, per spec §13.1 ("the keyboard remains opaque") -- the brief's
+     0.92-alpha keys contradicted that and the task's own manual check. */
+  --tmi-key-white: #f6f2e4;
+  --tmi-key-black: #0c0c10;
+  --tmi-key-border: rgba(255, 255, 255, 0.5);
+  --tmi-grid-line: rgba(255, 255, 255, 0.02);
+  --tmi-grid-line-c4: rgba(255, 255, 255, 0.06);
+  --tmi-progress-track: transparent;
+}
+
+/* §13.1: the canvas is created with alpha, but the page behind it is not
+   transparent by default. Without this the host page paints its own ground and
+   an OBS browser source composites nothing but black. */
+html.tmi-transparent,
+html.tmi-transparent body,
+html.tmi-transparent #root,
+html.tmi-transparent .app-shell,
+html.tmi-transparent .stage-wrap {
+  background: transparent !important;
 }

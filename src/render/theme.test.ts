@@ -81,4 +81,10 @@ describe('readTheme', () => {
     const t = readTheme(el, reader({ '--tmi-key-white': '  #abcdef  ' }))
     expect(t.keyWhite).toBe('#abcdef')
   })
+
+  it('F32: defaults keyOutline to transparent, and adopts an explicit token', () => {
+    expect(isTransparent(readTheme(el, reader({})).keyOutline)).toBe(true)
+    const t = readTheme(el, reader({ '--tmi-key-outline': 'rgba(255, 255, 255, 0.85)' }))
+    expect(t.keyOutline).toBe('rgba(255, 255, 255, 0.85)')
+  })
 })

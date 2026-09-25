@@ -1,5 +1,6 @@
 import { noteColor } from './colors'
-import { roundRect } from './shapes'
+import { roundRect, strokeRoundRect } from './shapes'
+import { isTransparent } from './theme'
 import type { NoteEvent } from '../model/types'
 import type { RenderState } from './pianoRoll'
 
@@ -15,13 +16,23 @@ export function drawKeyboard(
 ): void {
   const { layout, voices, theme } = state
   const { hitY, keyboardH, blackH } = layout
+  // F32: the Outline preset sets keyWhite/keyBlack to transparent, so a visible
+  // stroke is what keeps the keyboard from disappearing entirely. Skipped by
+  // default (keyOutline is transparent) so themes that don't opt in pay nothing.
+  const outlined = !isTransparent(theme.keyOutline)
 
   for (const k of layout.keys) {
     if (k.black) continue
     const h = held.get(k.pitch)
     const v = h ? voices.get(h.voiceId) : undefined
     ctx.fillStyle = h && v ? noteColor(v.hue, h.velocity, state.velocity) : theme.keyWhite
-    roundRect(ctx, k.x, hitY, Math.max(1, k.w - theme.keyGap), keyboardH, theme.keyRadius)
+    const w = Math.max(1, k.w - theme.keyGap)
+    roundRect(ctx, k.x, hitY, w, keyboardH, theme.keyRadius)
+    if (outlined) {
+      ctx.strokeStyle = theme.keyOutline
+      ctx.lineWidth = theme.keyBorderWidth
+      strokeRoundRect(ctx, k.x, hitY, w, keyboardH, theme.keyRadius)
+    }
 
     // Middle C carries a dark border and a "C4" label so orientation
     // survives phone scale, where 88 keys means ~16px per white key.
@@ -48,6 +59,11 @@ export function drawKeyboard(
     const v = h ? voices.get(h.voiceId) : undefined
     ctx.fillStyle = h && v ? noteColor(v.hue, h.velocity, state.velocity) : theme.keyBlack
     roundRect(ctx, k.x, hitY, k.w, blackH, theme.keyRadius)
+    if (outlined) {
+      ctx.strokeStyle = theme.keyOutline
+      ctx.lineWidth = theme.keyBorderWidth
+      strokeRoundRect(ctx, k.x, hitY, k.w, blackH, theme.keyRadius)
+    }
     if (h) {
       ctx.fillStyle = theme.blackKeyTop
       ctx.fillRect(k.x, hitY, k.w, 2)

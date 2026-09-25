@@ -178,4 +178,14 @@ describe('drawStage', () => {
     expect(dash).toBeGreaterThan(on.calls.indexOf('save(0)'))
     expect(on.calls.indexOf('restore(0)')).toBeGreaterThan(dash)
   })
+
+  it('F32: strokes every key when keyOutline is set, and none when it is transparent', () => {
+    const off = stubCtx(); drawStage(off.ctx, state([]), 0, 0)
+    const on = stubCtx()
+    drawStage(on.ctx, { ...state([]), theme: { ...DEFAULT_THEME, keyOutline: '#ffffff' } }, 0, 0)
+    const strokeRects = (c: string[]) => c.filter((x) => x.startsWith('strokeRect(')).length
+    expect(strokeRects(off.calls)).toBe(0)
+    // Full 88-key range: 52 white + 36 black keys, one stroke each.
+    expect(strokeRects(on.calls)).toBe(88)
+  })
 })

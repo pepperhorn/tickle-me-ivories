@@ -1,5 +1,5 @@
 import type {
-  AudioSettings, DisplaySettings, GradientStop, Settings, TextSettings, ThemeSettings, VelocityScheme,
+  AudioSettings, DisplaySettings, GradientStop, Settings, TextSettings, ThemeName, ThemeSettings, VelocityScheme,
 } from './types'
 import type { ScoreDocument, TempoSetting, Voice } from '../model/types'
 import type { DisplayMode } from '../transport/useTransport'
@@ -18,6 +18,7 @@ const MIN_FALL_SECONDS = 0.5
 const MAX_FALL_SECONDS = 8
 const MAX_FLASH_SCALE = 1.5
 const DISPLAY_MODES: readonly DisplayMode[] = ['keyboard', 'roll']
+const THEME_NAMES: readonly ThemeName[] = ['classic', 'outline', 'contrast', 'transparent']
 
 /** App-wide preferences: they follow the user, not the song. */
 export interface GlobalPrefs {
@@ -134,6 +135,20 @@ export function validDisplaySettings(d: unknown): DisplaySettings | null {
 }
 
 /**
+ * Returns a clean copy of a valid theme block, or null. Task 8 review: this
+ * used to be an isObj-only truthiness check, so a corrupt or foreign
+ * `theme.name` would reach the `.theme-${name}` class and every CSS custom
+ * property `themeFor` resolves from it -- silently falling back to whatever
+ * the browser does with an unknown class rather than a known theme.
+ */
+export function validTheme(v: unknown): ThemeSettings | null {
+  if (!isObj(v)) return null
+  if (!THEME_NAMES.includes(v.name as ThemeName)) return null
+  if (v.stageBgOverride !== null && typeof v.stageBgOverride !== 'string') return null
+  return { name: v.name as ThemeName, stageBgOverride: v.stageBgOverride as string | null }
+}
+
+/**
  * Drops entries that are not objects with a string id, and omits any field of
  * the wrong type so mergeVoices keeps the parsed value for it. Volume is
  * clamped to 0-1 and hue to 0-360: both reach the engine or the colour maths.
@@ -177,6 +192,8 @@ export function decodeProfile(json: string): SongProfile {
   if (!velocity) throw new Error('Profile has an invalid velocity colour scheme.')
   const audio = validAudio(raw.global.audio)
   if (!audio) throw new Error('Profile has invalid audio settings.')
+  const theme = validTheme(raw.theme)
+  if (!theme) throw new Error('Profile has an invalid theme.')
 
   const { mode, fallSeconds, settings } = raw.display as Obj
   if (!DISPLAY_MODES.includes(mode as DisplayMode)) throw new Error('Profile has an invalid display mode.')
@@ -193,6 +210,7 @@ export function decodeProfile(json: string): SongProfile {
     voices: sanitiseVoices(raw.voices),
     tempo: sanitiseTempo(raw.tempo),
     display,
+    theme,
     global: { velocity, audio },
   } as SongProfile
 }
