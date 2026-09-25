@@ -22,13 +22,17 @@ export function VelocityEditor(props: {
                   ? 'border-[var(--accent)] text-[var(--accent)]'
                   : 'border-[var(--line)] text-[var(--ink-dim)]'
               }`}
-              onClick={() =>
+              onClick={() => {
+                // Re-clicking the already-active scheme must not rebuild from
+                // defaults: that would wipe tuned gradient stops or lightness
+                // values for no reason.
+                if (scheme.kind === k) return
                 onChange(
                   k === 'lightness'
                     ? { kind: 'lightness', ...DEFAULT_LIGHTNESS }
                     : { kind: 'gradient', stops: DEFAULT_GRADIENT },
                 )
-              }
+              }}
             >
               {k}
             </button>

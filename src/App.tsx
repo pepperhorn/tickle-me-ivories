@@ -408,6 +408,21 @@ export default function App() {
     }
   }, [engine])
 
+  // Autosave, debounced so a slider drag writes once rather than sixty times.
+  // The pending save is also stashed in a ref so it can be flushed on demand:
+  // "Load another file" (before the score it describes is cleared) and
+  // pagehide (before the tab actually closes) both fire well inside the
+  // 400ms window and must not lose the last edit.
+  const pendingAutosaveRef = useRef<{ timer: ReturnType<typeof setTimeout>; run: () => void } | null>(null)
+
+  const flushAutosave = useCallback(() => {
+    const pending = pendingAutosaveRef.current
+    if (!pending) return
+    clearTimeout(pending.timer)
+    pendingAutosaveRef.current = null
+    pending.run()
+  }, [])
+
   const loadAnother = useCallback(() => {
     // Stop and pause before clearing the model, or the previous file keeps
     // sounding after the drop zone reappears.
@@ -415,12 +430,15 @@ export default function App() {
     if (state.playing) state.pause(engine.currentTime)
     engine.stopAll()
     metronomeRef.current?.stop()
+    // The debounced autosave is keyed on this score; flush it before
+    // clearScore() or an edit made in the last 400ms is lost.
+    flushAutosave()
     state.clearScore()
     // Silence holds the last chord, so a cleared score would keep showing it.
     chordFeed.reset()
     loadTokenRef.current++ // invalidate any in-flight loadFile's retainVoices
     engine.retainVoices([])
-  }, [engine, chordFeed])
+  }, [engine, chordFeed, flushAutosave])
 
   // The canvas has alpha, but the page behind it does not. Without this the host
   // page paints its own ground and an OBS browser source composites only black.
@@ -439,9 +457,9 @@ export default function App() {
     engine.setMasterVolume(g.audio.masterVolume)
   }, [engine])
 
-  // Autosave, debounced so a slider drag writes once rather than sixty times.
   useEffect(() => {
-    const id = setTimeout(() => {
+    const run = () => {
+      pendingAutosaveRef.current = null
       const st = useSettings.getState()
       saveGlobals({ velocity: st.velocity, audio: st.audio })
       const tr = useTransport.getState()
@@ -454,9 +472,18 @@ export default function App() {
         fallSeconds: tr.fallSeconds,
         settings: currentSettings(),
       }))
-    }, 400)
-    return () => clearTimeout(id)
+    }
+    const timer = setTimeout(run, 400)
+    pendingAutosaveRef.current = { timer, run }
+    return () => clearTimeout(timer)
   }, [t.score, t.tempo, t.mode, t.fallSeconds, settings])
+
+  // A tab close (or refresh) can land inside the 400ms debounce window;
+  // pagehide fires reliably before that, unlike beforeunload/unload.
+  useEffect(() => {
+    window.addEventListener('pagehide', flushAutosave)
+    return () => window.removeEventListener('pagehide', flushAutosave)
+  }, [flushAutosave])
 
   const exportProfile = useCallback(() => {
     const tr = useTransport.getState()

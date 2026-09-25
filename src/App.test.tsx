@@ -132,6 +132,38 @@ describe('App: loading a file', () => {
   })
 })
 
+describe('App: autosave flush', () => {
+  it('flushes a pending autosave synchronously before "Load another file" clears the score', async () => {
+    const a = midiBytes([60, 64])
+    render(<App />)
+    await loadFile(midiFile(a, 'a.mid'))
+    const idA = await idOf(a)
+
+    // Edit the tempo -- this schedules a 400ms-debounced autosave that has
+    // not written anything to storage yet.
+    act(() => { useTransport.getState().setTempo({ mode: 'absolute', bpm: 91 }, engine.currentTime) })
+    expect(loadProfile(idA)?.tempo).not.toEqual({ mode: 'absolute', bpm: 91 })
+
+    // "Load another" must flush that pending save before clearing the score,
+    // well inside the 400ms window.
+    fireEvent.click(screen.getByRole('button', { name: /load another/i }))
+    expect(loadProfile(idA)?.tempo).toEqual({ mode: 'absolute', bpm: 91 })
+  })
+
+  it('flushes a pending autosave on pagehide', async () => {
+    const a = midiBytes([60, 64])
+    render(<App />)
+    await loadFile(midiFile(a, 'a.mid'))
+    const idA = await idOf(a)
+
+    act(() => { useTransport.getState().setTempo({ mode: 'absolute', bpm: 77 }, engine.currentTime) })
+    expect(loadProfile(idA)?.tempo).not.toEqual({ mode: 'absolute', bpm: 77 })
+
+    act(() => { window.dispatchEvent(new Event('pagehide')) })
+    expect(loadProfile(idA)?.tempo).toEqual({ mode: 'absolute', bpm: 77 })
+  })
+})
+
 describe('App: importing a profile', () => {
   it('applies the imported profile to the loaded song', async () => {
     const bytes = midiBytes()

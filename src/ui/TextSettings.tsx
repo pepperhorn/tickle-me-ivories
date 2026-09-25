@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { SettingsRow } from './SettingsPanel'
 import { KEY_OPTIONS } from '../music/keyOf'
 import type {
@@ -39,6 +40,18 @@ export function TextSettings(props: {
   onStyle: (patch: Partial<TextStyle>) => void
 }) {
   const { text, onChange, onStyle } = props
+
+  // Committing on every keystroke means StageText's ensureGoogleFont effect
+  // fires for each partial name ("M", "Mo", ...), each injecting a <link> that
+  // fails to resolve and stays in <head> forever. Mirror TempoControl's BPM
+  // draft: keep a local draft string and commit once, on blur or Enter.
+  const [familyDraft, setFamilyDraft] = useState(text.style.family)
+  useEffect(() => { setFamilyDraft(text.style.family) }, [text.style.family])
+  const commitFamily = () => {
+    if (familyDraft.trim() && familyDraft !== text.style.family) onStyle({ family: familyDraft })
+    else setFamilyDraft(text.style.family)
+  }
+
   return (
     <div className="text-settings flex flex-col gap-1">
       <SettingsRow label="Note labels">
@@ -137,8 +150,12 @@ export function TextSettings(props: {
         <input
           id="text-family" type="text" list="google-font-suggestions" aria-label="Font family"
           className="text-family-input w-32 rounded border border-[var(--line)] bg-transparent px-1 py-0.5 text-[11px] text-[var(--ink)]"
-          value={text.style.family}
-          onChange={(e) => onStyle({ family: e.target.value })}
+          value={familyDraft}
+          onChange={(e) => setFamilyDraft(e.target.value)}
+          onBlur={commitFamily}
+          // Enter only blurs: the blur commits. Committing here as well would
+          // fire ensureGoogleFont twice for the same value.
+          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
         />
         <datalist id="google-font-suggestions" className="google-font-suggestions">
           {GOOGLE_FONT_SUGGESTIONS.map((f) => <option key={f} className="google-font-option" value={f} />)}
