@@ -1,0 +1,615 @@
+<title>Ivory Strike Lab</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --ground:#07070a; --stage:#000000; --panel:#101119; --panel-2:#161822;
+    --line:#22232e; --line-soft:#1a1b24;
+    --ink:#e9eaf2; --ink-dim:#9698ad; --ink-faint:#63657a;
+    --blue:#4d9cf0; --orange:#ff9c1a; --red:#e8384f;
+    --font-ui:'Poppins',system-ui,-apple-system,'Segoe UI',sans-serif;
+    --font-num:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:var(--font-ui); font-size:14px; line-height:1.45;
+    height:100dvh; display:flex; flex-direction:column; overflow:hidden;
+  }
+
+  /* ---------- top bar ---------- */
+  .lab-bar{
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    padding:10px 16px; border-bottom:1px solid var(--line);
+    background:var(--panel); flex:0 0 auto;
+  }
+  .lab-title{font-size:15px; font-weight:600; letter-spacing:-.01em; margin:0}
+  .lab-sub{font-size:12px; color:var(--ink-faint); margin:0}
+  .bar-spacer{flex:1 1 auto}
+  .bar-actions{display:flex; gap:8px; flex-wrap:wrap}
+
+  button{
+    font-family:var(--font-ui); font-size:12.5px; font-weight:500; color:var(--ink);
+    background:var(--panel-2); border:1px solid var(--line); border-radius:6px;
+    padding:6px 12px; cursor:pointer; transition:background .12s, border-color .12s;
+  }
+  button:hover{background:#1e2130; border-color:#333549}
+  button:focus-visible{outline:2px solid var(--orange); outline-offset:2px}
+  button.primary{background:var(--orange); border-color:var(--orange); color:#1a1000; font-weight:600}
+  button.primary:hover{background:#ffab3d}
+  button[aria-pressed="true"]{border-color:var(--orange); color:var(--orange)}
+
+  /* ---------- stage ---------- */
+  .stage-wrap{position:relative; flex:1 1 auto; min-height:180px; background:var(--stage)}
+  #stage{position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none}
+  .stage-hint{
+    position:absolute; left:12px; top:10px; margin:0;
+    font-size:11px; color:#4a4c60; letter-spacing:.04em; pointer-events:none;
+  }
+
+  /* ---------- controls ---------- */
+  .rack{
+    flex:0 0 auto; max-height:42dvh; overflow-y:auto;
+    border-top:1px solid var(--line); background:var(--panel);
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+    gap:0;
+  }
+  body.stage-only .rack{display:none}
+  body.stage-only .lab-sub{display:none}
+
+  .group{padding:12px 16px 14px; border-right:1px solid var(--line-soft); display:flex; flex-direction:column; gap:9px}
+  .group:last-child{border-right:none}
+  .group-name{
+    font-size:10px; font-weight:600; letter-spacing:.13em; text-transform:uppercase;
+    color:var(--ink-faint); margin:0 0 2px;
+  }
+  .ctl{display:grid; grid-template-columns:1fr auto; align-items:center; gap:2px 10px}
+  .ctl label{font-size:12.5px; color:var(--ink-dim)}
+  .ctl output{font-family:var(--font-num); font-size:12px; font-variant-numeric:tabular-nums; color:var(--ink)}
+  .ctl input[type=range]{grid-column:1 / -1; width:100%; accent-color:var(--orange); height:18px; margin:0}
+  .toggles{display:flex; flex-wrap:wrap; gap:6px}
+
+  .out{
+    grid-column:1/-1; border-top:1px solid var(--line-soft); padding:12px 16px 16px;
+    display:none;
+  }
+  .out.shown{display:block}
+  .out pre{
+    margin:8px 0 0; padding:10px 12px; background:#0a0b11; border:1px solid var(--line);
+    border-radius:6px; font-family:var(--font-num); font-size:11.5px; line-height:1.6;
+    color:#b8c8e0; overflow-x:auto; white-space:pre;
+  }
+  .out p{margin:0; font-size:12px; color:var(--ink-dim)}
+  .swatch{display:inline-block; width:9px; height:9px; border-radius:2px; vertical-align:middle; margin-right:5px}
+
+  @media (prefers-reduced-motion:reduce){ *{transition:none !important} }
+  @media (max-width:560px){
+    .lab-bar{padding:8px 12px; gap:10px}
+    .rack{max-height:48dvh}
+  }
+</style>
+
+<div class="lab-bar">
+  <div>
+    <p class="lab-title">Ivory Strike Lab</p>
+    <p class="lab-sub">Tuning rig for the note-strike flash &mdash; spec &sect;8.1</p>
+  </div>
+  <div class="bar-spacer"></div>
+  <div class="bar-actions">
+    <button id="btn-play" class="primary" type="button">Pause</button>
+    <button id="btn-stageonly" type="button" aria-pressed="false">Stage only</button>
+    <button id="btn-export" type="button">Constants</button>
+  </div>
+</div>
+
+<div class="stage-wrap" id="stage-wrap">
+  <canvas id="stage"></canvas>
+  <p class="stage-hint">Tap a key to strike it &middot; or play rows A&ndash;L / Q&ndash;P</p>
+</div>
+
+<div class="rack" id="rack">
+  <div class="group">
+    <p class="group-name">Impact flash</p>
+    <div class="ctl"><label for="c-flashms">Decay</label><output id="o-flashms"></output>
+      <input type="range" id="c-flashms" min="60" max="600" step="10" value="220"></div>
+    <div class="ctl"><label for="c-bloom">Bloom radius</label><output id="o-bloom"></output>
+      <input type="range" id="c-bloom" min="0.4" max="5" step="0.1" value="2.2"></div>
+    <div class="ctl"><label for="c-bloomA">Bloom alpha</label><output id="o-bloomA"></output>
+      <input type="range" id="c-bloomA" min="0" max="1.6" step="0.05" value="1"></div>
+    <div class="ctl"><label for="c-floor">Velocity floor</label><output id="o-floor"></output>
+      <input type="range" id="c-floor" min="0" max="1" step="0.05" value="0.45"></div>
+  </div>
+
+  <div class="group">
+    <p class="group-name">Sparks &amp; beam</p>
+    <div class="ctl"><label for="c-sparks">Spark count</label><output id="o-sparks"></output>
+      <input type="range" id="c-sparks" min="0" max="10" step="1" value="5"></div>
+    <div class="ctl"><label for="c-sparklen">Spark length</label><output id="o-sparklen"></output>
+      <input type="range" id="c-sparklen" min="0.2" max="5" step="0.1" value="1.6"></div>
+    <div class="ctl"><label for="c-spread">Spark spread</label><output id="o-spread"></output>
+      <input type="range" id="c-spread" min="10" max="90" step="5" value="50"></div>
+    <div class="toggles">
+      <button id="t-beam" type="button" aria-pressed="true">Beam</button>
+      <button id="t-flash" type="button" aria-pressed="true">Flash</button>
+    </div>
+  </div>
+
+  <div class="group">
+    <p class="group-name">Roll</p>
+    <div class="ctl"><label for="c-fall">Fall window</label><output id="o-fall"></output>
+      <input type="range" id="c-fall" min="0.8" max="8" step="0.1" value="3"></div>
+    <div class="ctl"><label for="c-bpm">Tempo</label><output id="o-bpm"></output>
+      <input type="range" id="c-bpm" min="60" max="260" step="2" value="168"></div>
+    <div class="ctl"><label for="c-radius">Bar radius</label><output id="o-radius"></output>
+      <input type="range" id="c-radius" min="0" max="10" step="1" value="4"></div>
+    <div class="toggles">
+      <button id="t-grid" type="button" aria-pressed="true">Octave grid</button>
+      <button id="t-sustain" type="button" aria-pressed="true">Sustain into key</button>
+    </div>
+  </div>
+
+  <div class="group">
+    <p class="group-name">Velocity colour</p>
+    <div class="ctl"><label for="c-lmax">Lightness &mdash; soft</label><output id="o-lmax"></output>
+      <input type="range" id="c-lmax" min="40" max="95" step="1" value="78"></div>
+    <div class="ctl"><label for="c-lmin">Lightness &mdash; hard</label><output id="o-lmin"></output>
+      <input type="range" id="c-lmin" min="15" max="70" step="1" value="38"></div>
+    <div class="ctl"><label for="c-sat">Saturation</label><output id="o-sat"></output>
+      <input type="range" id="c-sat" min="30" max="100" step="1" value="85"></div>
+    <p class="lab-sub" style="margin:2px 0 0">
+      <span class="swatch" style="background:hsl(207 85% 58%)"></span>Left hand 207&deg;
+      &nbsp;<span class="swatch" style="background:hsl(28 95% 55%)"></span>Right hand 28&deg;
+    </p>
+  </div>
+
+  <div class="group">
+    <p class="group-name">Keyboard scale</p>
+    <div class="ctl"><label for="c-aspect">Key length</label><output id="o-aspect"></output>
+      <input type="range" id="c-aspect" min="2.5" max="9" step="0.01" value="5.8"></div>
+    <div class="ctl"><label for="c-blackW">Black key width</label><output id="o-blackW"></output>
+      <input type="range" id="c-blackW" min="0.35" max="0.85" step="0.0001" value="0.5652"></div>
+    <div class="ctl"><label for="c-blackLen">Black key length</label><output id="o-blackLen"></output>
+      <input type="range" id="c-blackLen" min="0.4" max="0.85" step="0.005" value="0.655"></div>
+    <div class="toggles">
+      <button id="t-trueOffsets" type="button" aria-pressed="true">True black-key offsets</button>
+    </div>
+    <p class="lab-sub" style="margin:2px 0 0">Off = naive boundary-centred. Reference frame 6.31&nbsp;:&nbsp;1, DIN&nbsp;8996 6.15&nbsp;:&nbsp;1.</p>
+  </div>
+
+  <div class="out" id="out">
+    <p>Paste into <span style="font-family:var(--font-num)">render/flash.ts</span>:</p>
+    <pre id="out-json"></pre>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  var cv = document.getElementById('stage');
+  var ctx = cv.getContext('2d');
+  var wrap = document.getElementById('stage-wrap');
+
+  /* ---------- tunables ---------- */
+  var P = {
+    flashMs:220, bloomMul:2.2, bloomAlpha:1, floor:0.45,
+    sparks:5, sparkLen:1.6, spread:50,
+    fall:3, bpm:168, radius:4,
+    lMax:78, lMin:38, sat:85,
+    aspect:5.8, blackW:0.5652, blackLen:0.655,
+    beam:true, flash:true, grid:true, sustain:true, trueOffsets:true
+  };
+  var HUES = [207, 28];           // left hand, right hand — from the reference
+  var FLASH_EPS = 0.003;
+
+  /* ---------- geometry ---------- */
+  /* A real piano is built so the white-key TAILS behind the black keys are equal
+     width: 3 equal tails across C-D-E, 4 across F-G-A-B. That construction reduces
+     to a fixed offset of each black key from the white-key boundary, in units of
+     the black-key width b -- independent of b itself, so one rule serves any
+     proportions. Corroborated three ways: derived here, measured off all 36 black
+     keys in the SheetMusicBoss reference frame (within 0.32px on a 23.5px key),
+     and already in use in chordl's BLACK_KEY_OFFSETS table.
+     chordl's G# entry is 16.25 where the construction gives 16.50 -- the only one
+     of its five that is off, by 1.09% of a white key. */
+  var BLACK = {1:1,3:1,6:1,8:1,10:1};
+  var BLACK_OFFSET = {1:-1/6, 3:1/6, 6:-1/4, 8:0, 10:1/4};   // x blackW, from the boundary
+  var W=0, H=0, whiteW=0, blackW=0, keyboardH=0, blackH=0, hitY=0;
+  var keys=[], keyByPitch=new Map();
+
+  function layout(){
+    whiteW = W/52;
+    blackW = Math.max(3, whiteW*P.blackW);
+    /* White key length : width. 5.8:1 is a chosen value -- shorter than the
+       reference frame's measured 6.31:1 and DIN 8996's 6.15:1 -- trading key
+       length for roll height. What matters is that it is derived from key WIDTH,
+       never the viewport: taking it from stage height gave 19.5:1 in portrait.
+       Capped so a short window still leaves room for the roll. */
+    keyboardH = Math.min(whiteW*P.aspect, H*0.55);
+    blackH = keyboardH*P.blackLen;
+    hitY = H - keyboardH;
+    keys = []; keyByPitch = new Map();
+    var wi = 0;
+    for(var p=21;p<=108;p++){
+      var k;
+      if(BLACK[p%12]){
+        var off = P.trueOffsets ? BLACK_OFFSET[p%12]*blackW : 0;
+        k = {p:p, black:true, x: wi*whiteW + off - blackW/2, w: blackW};
+      } else {
+        k = {p:p, black:false, x: wi*whiteW, w: whiteW};
+        wi++;
+      }
+      keys.push(k); keyByPitch.set(p,k);
+    }
+  }
+
+  function resize(){
+    var r = wrap.getBoundingClientRect();
+    var dpr = Math.min(window.devicePixelRatio||1, 2);
+    W = Math.max(1, r.width); H = Math.max(1, r.height);
+    cv.width = Math.round(W*dpr); cv.height = Math.round(H*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    layout();
+  }
+
+  /* ---------- score ---------- */
+  var notes=[], total=0, maxDur=2;
+
+  function buildNotes(bpm){
+    var out=[], spb=60/bpm, six=spb/4, id=0, tsec=0, bar=0;
+    var chords=[[40,47,52,55,59],[45,52,57,60,64],[43,50,55,59,62],[38,45,50,53,57]];
+    var shape=[0,1,2,3,4,3,2,1,0,2,3,4,3,2,1,0];
+    while(tsec < 210){
+      var ch = chords[bar%chords.length], root = ch[0];
+      for(var k=0;k<4;k++){
+        var st = tsec + k*4*six, heavy = (k%2===0);
+        out.push({id:id++,p:root-12,vel:heavy?116:80,v:0,s:st,e:st+six*3.2});
+        out.push({id:id++,p:root,   vel:heavy?106:74,v:0,s:st,e:st+six*3.2});
+        if(!heavy) for(var c=1;c<4;c++) out.push({id:id++,p:ch[c],vel:66,v:0,s:st,e:st+six*1.6});
+      }
+      for(var i=0;i<16;i++){
+        var oct = i<8 ? 1 : 2;
+        var st2 = tsec + i*six;
+        var vel = 58 + Math.round(58*Math.abs(Math.sin(i/16*Math.PI)));
+        out.push({id:id++,p:ch[shape[i]%ch.length]+12*oct, vel:vel, v:1, s:st2, e:st2+six*0.85});
+      }
+      tsec += spb*4; bar++;
+    }
+    out.sort(function(a,b){return a.s-b.s});
+    notes = out; total = tsec;
+    maxDur = 0; for(var n=0;n<out.length;n++) maxDur = Math.max(maxDur, out[n].e-out[n].s);
+    return out;
+  }
+
+  function lowerBound(arr, val){
+    var lo=0, hi=arr.length;
+    while(lo<hi){ var mid=(lo+hi)>>1; if(arr[mid].s < val) lo=mid+1; else hi=mid; }
+    return lo;
+  }
+
+  /* ---------- colour ---------- */
+  function noteColor(hue, vel){
+    var L = P.lMax + (P.lMin - P.lMax) * (vel/127);
+    return 'hsl(' + hue + ' ' + P.sat + '% ' + L.toFixed(1) + '%)';
+  }
+  function flashIntensity(age, vel){
+    if(age < 0) return 0;
+    var a = 1 - age/(P.flashMs/1000);
+    if(a <= 0) return 0;
+    return a*a * (P.floor + (1-P.floor)*(vel/127));
+  }
+
+  /* ---------- live strikes ---------- */
+  var live = [];
+  function strike(pitch, vel){
+    var n = {id:-1, p:pitch, vel:vel, v:1, s:t, e:t+0.55, live:true};
+    live.push(n); return n;
+  }
+
+  /* ---------- transport ---------- */
+  var t=0, origin=0, playing=true, raf=0;
+  function setPlaying(on){
+    playing = on;
+    origin = performance.now()/1000 - t;
+    document.getElementById('btn-play').textContent = on ? 'Pause' : 'Play';
+  }
+
+  /* ---------- draw ---------- */
+  function roundRect(x,y,w,h,r){
+    r = Math.max(0, Math.min(r, w/3, Math.abs(h)/2));
+    if(ctx.roundRect){ ctx.beginPath(); ctx.roundRect(x,y,w,h,r); ctx.fill(); }
+    else ctx.fillRect(x,y,w,h);
+  }
+
+  function draw(){
+    ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H);
+
+    /* 2. octave grid */
+    if(P.grid){
+      for(var gp=24; gp<=108; gp+=12){
+        var gk = keyByPitch.get(gp); if(!gk) continue;
+        ctx.fillStyle = (gp===60) ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.06)';
+        ctx.fillRect(gk.x, 0, 1, hitY);
+      }
+    }
+
+    /* gather the visible window */
+    var vis = [];
+    var i = lowerBound(notes, t - maxDur);
+    for(; i<notes.length; i++){
+      var n = notes[i];
+      if(n.s > t + P.fall) break;
+      if(n.e >= t - P.flashMs/1000) vis.push(n);
+    }
+    for(var q=live.length-1;q>=0;q--){
+      if(t > live[q].e + 1) live.splice(q,1); else vis.push(live[q]);
+    }
+
+    var pps = hitY / P.fall;
+    var floorY = P.sustain ? H : hitY;
+
+    /* 3+4. bars — whites first, then blacks on top */
+    for(var pass=0; pass<2; pass++){
+      for(var b=0;b<vis.length;b++){
+        var nn = vis[b], kk = keyByPitch.get(nn.p);
+        if(!kk || (kk.black ? 0 : 1) === pass) continue;
+        var bot = Math.min(hitY + (t - nn.s)*pps, floorY);
+        var top = hitY + (t - nn.e)*pps;
+        if(bot <= 0) continue;
+        var h = bot - top;
+        if(h < 1) h = 1;
+        var hue = HUES[nn.v];
+        var g = ctx.createLinearGradient(0, top, 0, top+h);
+        g.addColorStop(0, noteColor(hue, Math.max(1, nn.vel-14)));
+        g.addColorStop(1, noteColor(hue, nn.vel));
+        ctx.fillStyle = g;
+        roundRect(kk.x + (kk.black?0.5:1), top, kk.w - (kk.black?1:2), h, P.radius);
+      }
+    }
+
+    /* 5. keyboard */
+    var held = new Map();
+    for(var v2=0; v2<vis.length; v2++){
+      var nv = vis[v2];
+      if(nv.s <= t && t < nv.e){
+        var prev = held.get(nv.p);
+        if(!prev || nv.vel > prev.vel) held.set(nv.p, nv);
+      }
+    }
+    for(var w2=0; w2<keys.length; w2++){
+      var kw = keys[w2]; if(kw.black) continue;
+      var hv = held.get(kw.p);
+      ctx.fillStyle = hv ? noteColor(HUES[hv.v], hv.vel) : '#f6f2e4';
+      ctx.fillRect(kw.x, hitY, kw.w-1, keyboardH);
+      if(kw.p === 60){ ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(kw.x, hitY, 1.5, keyboardH); ctx.fillRect(kw.x+kw.w-2.5, hitY, 1.5, keyboardH); }
+    }
+    for(var b2=0; b2<keys.length; b2++){
+      var kb = keys[b2]; if(!kb.black) continue;
+      var hb = held.get(kb.p);
+      ctx.fillStyle = hb ? noteColor(HUES[hb.v], hb.vel) : '#0c0c10';
+      ctx.fillRect(kb.x, hitY, kb.w, blackH);
+      if(hb){ ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.fillRect(kb.x, hitY, kb.w, 2); }
+    }
+    ctx.fillStyle='rgba(255,255,255,0.16)'; ctx.fillRect(0, hitY, W, 1);
+
+    /* 6. impact layer */
+    if(P.flash){
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for(var f=0; f<vis.length; f++){
+        var nf = vis[f];
+        var inten = flashIntensity(t - nf.s, nf.vel);
+        if(inten <= FLASH_EPS) continue;
+        var kf = keyByPitch.get(nf.p); if(!kf) continue;
+        var cx = kf.x + kf.w/2, cy = hitY;
+
+        var R = Math.max(2, P.bloomMul * whiteW * inten);
+        var rg = ctx.createRadialGradient(cx,cy,0,cx,cy,R);
+        rg.addColorStop(0,   'rgba(255,255,255,' + (0.90*inten*P.bloomAlpha).toFixed(3) + ')');
+        rg.addColorStop(0.35,'rgba(255,242,214,' + (0.34*inten*P.bloomAlpha).toFixed(3) + ')');
+        rg.addColorStop(1,   'rgba(255,255,255,0)');
+        ctx.fillStyle = rg;
+        ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.fill();
+
+        if(P.beam){
+          var bgd = ctx.createLinearGradient(0, cy-26, 0, cy+20);
+          bgd.addColorStop(0,  'rgba(255,255,255,0)');
+          bgd.addColorStop(0.5,'rgba(255,255,255,' + (0.85*inten).toFixed(3) + ')');
+          bgd.addColorStop(1,  'rgba(255,255,255,0)');
+          ctx.fillStyle = bgd;
+          ctx.fillRect(cx - kf.w*0.45, cy-26, kf.w*0.9, 46);
+        }
+
+        if(P.sparks > 0){
+          var len = P.sparkLen * whiteW * inten;
+          ctx.strokeStyle = 'rgba(255,255,255,' + (0.7*inten).toFixed(3) + ')';
+          ctx.lineWidth = 1; ctx.lineCap = 'round';
+          ctx.beginPath();
+          for(var s=0; s<P.sparks; s++){
+            var frac = P.sparks === 1 ? 0.5 : s/(P.sparks-1);
+            var ang = (-P.spread + 2*P.spread*frac) * Math.PI/180;
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + Math.sin(ang)*len, cy - Math.cos(ang)*len);
+          }
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    /* 7. progress */
+    ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(0, H-3, W, 3);
+    ctx.fillStyle = '#e8384f'; ctx.fillRect(0, H-3, W * Math.min(1, t/total), 3);
+  }
+
+  function frame(now){
+    raf = requestAnimationFrame(frame);
+    if(playing){
+      t = now/1000 - origin;
+      if(t > total){ origin = now/1000; t = 0; }
+    }
+    draw();
+  }
+
+  /* ---------- controls ---------- */
+  function bind(id, key, fmt, after){
+    var el = document.getElementById('c-'+id), out = document.getElementById('o-'+id);
+    function sync(){
+      P[key] = parseFloat(el.value);
+      out.textContent = fmt(P[key]);
+      if(after) after();
+    }
+    el.addEventListener('input', sync); sync();
+  }
+  function toggle(id, key, after){
+    var el = document.getElementById('t-'+id);
+    el.addEventListener('click', function(){
+      P[key] = !P[key];
+      el.setAttribute('aria-pressed', String(P[key]));
+      if(after) after();
+    });
+    el.setAttribute('aria-pressed', String(P[key]));
+  }
+
+  bind('flashms','flashMs',  function(v){return Math.round(v)+' ms'});
+  bind('bloom',  'bloomMul', function(v){return v.toFixed(1)+'× key'});
+  bind('bloomA', 'bloomAlpha',function(v){return v.toFixed(2)});
+  bind('floor',  'floor',    function(v){return v.toFixed(2)});
+  bind('sparks', 'sparks',   function(v){return String(Math.round(v))});
+  bind('sparklen','sparkLen',function(v){return v.toFixed(1)+'× key'});
+  bind('spread', 'spread',   function(v){return '±'+Math.round(v)+'°'});
+  bind('fall',   'fall',     function(v){return v.toFixed(1)+' s'});
+  bind('radius', 'radius',   function(v){return Math.round(v)+' px'});
+  bind('lmax',   'lMax',     function(v){return Math.round(v)+'%'});
+  bind('lmin',   'lMin',     function(v){return Math.round(v)+'%'});
+  bind('sat',    'sat',      function(v){return Math.round(v)+'%'});
+  bind('bpm',    'bpm',      function(v){return Math.round(v)+' bpm'}, function(){
+    var frac = total ? t/total : 0;
+    buildNotes(P.bpm);
+    t = frac*total; origin = performance.now()/1000 - t;
+  });
+
+  bind('aspect',  'aspect',  function(v){return v.toFixed(2)+' : 1'},  layout);
+  bind('blackW',  'blackW',  function(v){return v.toFixed(4)+'× white'}, layout);
+  bind('blackLen','blackLen',function(v){return v.toFixed(3)+'× white'}, layout);
+
+  toggle('beam','beam'); toggle('flash','flash');
+  toggle('grid','grid'); toggle('sustain','sustain');
+  toggle('trueOffsets','trueOffsets', layout);
+
+  document.getElementById('btn-play').addEventListener('click', function(){ setPlaying(!playing); });
+
+  document.getElementById('btn-stageonly').addEventListener('click', function(){
+    var on = !document.body.classList.contains('stage-only');
+    document.body.classList.toggle('stage-only', on);
+    this.setAttribute('aria-pressed', String(on));
+    if(on && document.documentElement.requestFullscreen){
+      document.documentElement.requestFullscreen().catch(function(){});
+    } else if(!on && document.fullscreenElement && document.exitFullscreen){
+      document.exitFullscreen().catch(function(){});
+    }
+    requestAnimationFrame(resize);
+  });
+
+  document.getElementById('btn-export').addEventListener('click', function(){
+    var json = JSON.stringify({
+      FLASH_MS: Math.round(P.flashMs),
+      bloomRadiusMul: +P.bloomMul.toFixed(2),
+      bloomAlpha: +P.bloomAlpha.toFixed(2),
+      intensityFloor: +P.floor.toFixed(2),
+      sparkCount: Math.round(P.sparks),
+      sparkLenMul: +P.sparkLen.toFixed(2),
+      sparkSpreadDeg: Math.round(P.spread),
+      beam: P.beam,
+      fallSeconds: +P.fall.toFixed(1),
+      barRadiusPx: Math.round(P.radius),
+      lMax: Math.round(P.lMax), lMin: Math.round(P.lMin),
+      saturation: Math.round(P.sat),
+      voiceHues: HUES,
+      keyAspect: +P.aspect.toFixed(2),
+      blackKeyWidthRatio: +P.blackW.toFixed(3),
+      blackKeyLengthRatio: +P.blackLen.toFixed(3),
+      blackKeyOffsets: {'C#':'-b/6','D#':'+b/6','F#':'-b/4','G#':'0','A#':'+b/4'}
+    }, null, 2);
+    var out = document.getElementById('out');
+    document.getElementById('out-json').textContent = json;
+    out.classList.add('shown');
+    if(navigator.clipboard) navigator.clipboard.writeText(json).catch(function(){});
+    out.scrollIntoView({block:'nearest'});
+  });
+
+  /* ---------- play the keyboard ---------- */
+  function pitchAt(x, y){
+    if(y < hitY) return -1;
+    for(var i=0;i<keys.length;i++){
+      var k = keys[i];
+      if(k.black && x >= k.x && x <= k.x+k.w && y <= hitY+blackH) return k.p;
+    }
+    for(var j=0;j<keys.length;j++){
+      var k2 = keys[j];
+      if(!k2.black && x >= k2.x && x < k2.x+k2.w) return k2.p;
+    }
+    return -1;
+  }
+  var pointerNotes = new Map();
+  cv.addEventListener('pointerdown', function(ev){
+    var r = cv.getBoundingClientRect();
+    var p = pitchAt(ev.clientX-r.left, ev.clientY-r.top);
+    if(p < 0) return;
+    cv.setPointerCapture(ev.pointerId);
+    var vel = Math.round(40 + 87*Math.min(1, Math.max(0, (ev.clientY-r.top-hitY)/keyboardH)));
+    pointerNotes.set(ev.pointerId, strike(p, vel));
+  });
+  function releasePointer(ev){
+    var n = pointerNotes.get(ev.pointerId);
+    if(n){ n.e = Math.max(n.s + 0.05, t); pointerNotes.delete(ev.pointerId); }
+  }
+  cv.addEventListener('pointerup', releasePointer);
+  cv.addEventListener('pointercancel', releasePointer);
+
+  var KEYMAP = {KeyA:60,KeyW:61,KeyS:62,KeyE:63,KeyD:64,KeyF:65,KeyT:66,KeyG:67,KeyY:68,KeyH:69,KeyU:70,KeyJ:71,KeyK:72,KeyO:73,KeyL:74,KeyP:75,Semicolon:76};
+  var downKeys = new Map();
+  window.addEventListener('keydown', function(ev){
+    if(ev.code === 'Space' && ev.target === document.body){ ev.preventDefault(); setPlaying(!playing); return; }
+    var p = KEYMAP[ev.code];
+    if(p === undefined || ev.repeat || ev.metaKey || ev.ctrlKey) return;
+    if(downKeys.has(ev.code)) return;
+    downKeys.set(ev.code, strike(p, 104));
+  });
+  window.addEventListener('keyup', function(ev){
+    var n = downKeys.get(ev.code);
+    if(n){ n.e = Math.max(n.s + 0.05, t); downKeys.delete(ev.code); }
+  });
+
+  /* live MIDI, where the host allows it */
+  if(navigator.requestMIDIAccess){
+    navigator.requestMIDIAccess().then(function(access){
+      var liveByPitch = new Map();
+      access.inputs.forEach(function(input){
+        input.onmidimessage = function(m){
+          var cmd = m.data[0] & 0xf0, pitch = m.data[1], vel = m.data[2];
+          if(cmd === 0x90 && vel > 0) liveByPitch.set(pitch, strike(pitch, vel));
+          else if(cmd === 0x80 || (cmd === 0x90 && vel === 0)){
+            var n = liveByPitch.get(pitch);
+            if(n){ n.e = Math.max(n.s+0.05, t); liveByPitch.delete(pitch); }
+          }
+        };
+      });
+      document.querySelector('.stage-hint').textContent = 'MIDI input live · or tap a key';
+    }).catch(function(){});
+  }
+
+  /* ---------- boot ---------- */
+  buildNotes(P.bpm);
+  resize();
+  if(window.ResizeObserver) new ResizeObserver(resize).observe(wrap);
+  window.addEventListener('resize', resize);
+
+  if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    t = 1.9; setPlaying(false);
+  } else {
+    t = 1.9; origin = performance.now()/1000 - t;
+  }
+  raf = requestAnimationFrame(frame);
+})();
+</script>
