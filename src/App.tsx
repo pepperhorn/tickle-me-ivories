@@ -42,6 +42,9 @@ import type { ChordDisplayValue } from './ui/ChordReadout'
 import type { ScoreDocument, TempoSetting, Voice } from './model/types'
 import type { ThemeName, ZoomMode } from './settings/types'
 
+/** The tempo a song with no saved profile starts at: the file's own tempi. */
+const DEFAULT_TEMPO: TempoSetting = { mode: 'scale', scale: 1 }
+
 /** Shared by identity so the labels-off overlay state never allocates. */
 const NO_PITCHES: number[] = []
 
@@ -333,6 +336,11 @@ export default function App() {
         ...currentSettings(), theme: saved.theme, text: saved.text,
         ...(saved.display.settings ? { display: saved.display.settings } : {}),
       })
+    } else {
+      // Tempo is song-scoped (§10): a song with no profile starts at its own
+      // tempo, not the previous song's -- which, in absolute mode, would
+      // flatten this file's tempo map and then be autosaved as its profile.
+      useTransport.setState({ tempo: DEFAULT_TEMPO })
     }
 
     useTransport.getState().loadScore(score)
@@ -462,8 +470,13 @@ export default function App() {
     const a = document.createElement('a')
     a.href = url
     a.download = `${tr.score.name.replace(/\.[^.]+$/, '')}.tmi.json`
+    a.className = 'profile-download hidden'
+    // Safari and Firefox can cancel a download from a detached anchor, or one
+    // whose URL is revoked in the same task as the click.
+    document.body.appendChild(a)
     a.click()
-    URL.revokeObjectURL(url)
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 0)
   }, [])
 
   const importProfile = useCallback(async (file: File, applyGlobals: boolean) => {
