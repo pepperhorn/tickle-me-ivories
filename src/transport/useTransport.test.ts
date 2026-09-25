@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useTransport, playheadAt } from './useTransport'
 import { buildTempoMap } from '../model/tempoMap'
+import { retimeScore } from '../io/parseMidi'
 import type { ScoreDocument } from '../model/types'
 
 const PPQ = 480
@@ -14,6 +15,24 @@ const score = (): ScoreDocument => ({
   ],
   durationSec: 4.5, sourceFormat: 'midi',
 })
+
+// Two voices, one note each -- used by the updateVoice tests below.
+const makeScore = (): ScoreDocument => {
+  const base: ScoreDocument = {
+    id: 'two', name: 'two.mid', ppq: PPQ,
+    tempoMap: buildTempoMap([], PPQ),
+    voices: [
+      { id: 'a', label: 'Voice A', hue: 200, instrument: 'acoustic_grand_piano', visible: true, audible: true, volume: 1 },
+      { id: 'b', label: 'Voice B', hue: 30, instrument: 'acoustic_grand_piano', visible: true, audible: true, volume: 1 },
+    ],
+    notes: [
+      { id: 0, pitch: 60, startTicks: 0, durTicks: 480, startSec: 0, endSec: 0, velocity: 100, voiceId: 'a' },
+      { id: 1, pitch: 64, startTicks: 480, durTicks: 480, startSec: 0, endSec: 0, velocity: 100, voiceId: 'b' },
+    ],
+    durationSec: 0, sourceFormat: 'midi',
+  }
+  return retimeScore(base, { mode: 'scale', scale: 1 })
+}
 
 beforeEach(() => {
   useTransport.setState({
@@ -133,5 +152,35 @@ describe('setTempo', () => {
     t.seek(2.5, 0)                                   // 2.5s = tick 2880
     t.setTempo({ mode: 'absolute', bpm: 60 }, 0)     // 2880 ticks @60bpm = 6s
     expect(playheadAt(useTransport.getState(), 0)).toBeCloseTo(6, 6)
+  })
+})
+
+describe('updateVoice', () => {
+  it('patches one voice and leaves its siblings alone', () => {
+    const s = makeScore()
+    useTransport.getState().loadScore(s)
+    const v0 = useTransport.getState().score!.voices[0]
+    const v1 = useTransport.getState().score!.voices[1]
+
+    useTransport.getState().updateVoice(v1.id, { hue: 300 })
+    const after = useTransport.getState().score!.voices
+    expect(after[1].hue).toBe(300)
+    expect(after[0]).toBe(v0)
+  })
+
+  it('keeps the SAME notes array reference, so the scheduler is not rebuilt', () => {
+    const s = makeScore()
+    useTransport.getState().loadScore(s)
+    const notesBefore = useTransport.getState().score!.notes
+    useTransport.getState().updateVoice(notesBefore[0].voiceId, { label: 'Melody' })
+    expect(useTransport.getState().score!.notes).toBe(notesBefore)
+  })
+
+  it('is a no-op for an unknown voice id', () => {
+    const s = makeScore()
+    useTransport.getState().loadScore(s)
+    const before = useTransport.getState().score!.voices
+    useTransport.getState().updateVoice('nope', { hue: 1 })
+    expect(useTransport.getState().score!.voices).toEqual(before)
   })
 })

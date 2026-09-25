@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { retimeScore } from '../io/parseMidi'
 import { secToTicks, ticksToSec } from '../model/tempoMap'
-import type { ScoreDocument, TempoSetting } from '../model/types'
+import type { ScoreDocument, TempoSetting, Voice } from '../model/types'
 
 export type DisplayMode = 'keyboard' | 'roll'
 
@@ -29,6 +29,7 @@ export interface TransportActions {
   setTempo: (setting: TempoSetting, now: number) => void
   setMode: (mode: DisplayMode) => void
   setFallSeconds: (sec: number) => void
+  updateVoice: (id: string, patch: Partial<Voice>) => void
 }
 
 /** The playhead is derived, never stored while running. */
@@ -105,4 +106,17 @@ export const useTransport = create<TransportState & TransportActions>((set, get)
 
   setMode: (mode) => set({ mode }),
   setFallSeconds: (fallSeconds) => set({ fallSeconds }),
+
+  /**
+   * Replaces the score object but reuses the SAME notes array. App.tsx keys its
+   * scheduler effect on score.notes for exactly this reason: a colour or label
+   * change must not rebuild the scheduler, which would re-hand already-scheduled
+   * notes to smplr and double them.
+   */
+  updateVoice: (id, patch) => set((s) => {
+    if (!s.score) return {}
+    const voices = s.score.voices.map((v) => (v.id === id ? { ...v, ...patch } : v))
+    if (voices.every((v, i) => v === s.score!.voices[i])) return {}
+    return { score: { ...s.score, voices } }
+  }),
 }))

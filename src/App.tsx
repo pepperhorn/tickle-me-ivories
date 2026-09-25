@@ -12,6 +12,7 @@ import { FileDropZone } from './ui/FileDropZone'
 import { SettingsPanel, SettingsSection } from './ui/SettingsPanel'
 import { TempoControl } from './ui/TempoControl'
 import { TransportBar } from './ui/TransportBar'
+import { VoicePanel } from './ui/VoicePanel'
 import type { RenderState } from './render/pianoRoll'
 import type { KeyboardLayout } from './render/geometry'
 import type { ScoreDocument, TempoSetting, Voice } from './model/types'
@@ -58,13 +59,17 @@ export default function App() {
     return cached.layout
   }
 
-  // Rebuild the scheduler whenever the note array is replaced (load or retime).
+  // Rebuild the scheduler whenever the note array is REPLACED (load or retime).
+  // Keyed on score.notes, not score: updateVoice replaces the score object while
+  // keeping the same notes, and rebuilding there would re-seat the cursor behind
+  // notes already handed to smplr and sound them twice.
+  const notes = t.score?.notes
   useEffect(() => {
-    if (!t.score) { schedulerRef.current = null; return }
-    const s = new Scheduler(t.score.notes)
+    if (!notes) { schedulerRef.current = null; return }
+    const s = new Scheduler(notes)
     s.seek(playheadAt(useTransport.getState(), engine.currentTime))
     schedulerRef.current = s
-  }, [t.score, engine])
+  }, [notes, engine])
 
   // The scheduler tick. Runs on a plain interval; audio timing comes from the
   // exact `time` passed to smplr, not from when this fires.
@@ -181,6 +186,17 @@ export default function App() {
     engine.stopAll()
   }, [engine])
 
+  // Volume and instrument have audio-side effects; colour, label and visibility
+  // are model-only and the draw loop picks them up on the next frame.
+  const changeVoice = useCallback((id: string, patch: Partial<Voice>) => {
+    useTransport.getState().updateVoice(id, patch)
+    if (patch.volume !== undefined) engine.setVoiceVolume(id, patch.volume)
+    if (patch.instrument !== undefined) {
+      const v = useTransport.getState().score?.voices.find((x) => x.id === id)
+      if (v) void engine.loadVoice(v)
+    }
+  }, [engine])
+
   const loadAnother = useCallback(() => {
     // Stop and pause before clearing the model, or the previous file keeps
     // sounding after the drop zone reappears.
@@ -236,6 +252,9 @@ export default function App() {
               <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)}>
                 <SettingsSection id="tempo" title="Tempo" defaultOpen>
                   <TempoControl tempo={t.tempo} effectiveBpm={effectiveBpm} onChange={changeTempo} />
+                </SettingsSection>
+                <SettingsSection id="voices" title="Voices">
+                  <VoicePanel voices={t.score?.voices ?? []} onChange={changeVoice} />
                 </SettingsSection>
               </SettingsPanel>
             </>
