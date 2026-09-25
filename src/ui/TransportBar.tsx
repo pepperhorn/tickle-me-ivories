@@ -11,13 +11,14 @@ export function TransportBar(props: {
   duration: number
   mode: DisplayMode
   name: string
+  effectiveBpm: number
   onToggle: () => void
   onSeek: (sec: number) => void
   onMode: (mode: DisplayMode) => void
   onLoadAnother: () => void
   settings?: React.ReactNode
 }) {
-  const { playing, playhead, duration, mode, name } = props
+  const { playing, playhead, duration, mode, name, effectiveBpm } = props
   return (
     <div className="transport-bar relative flex flex-wrap items-center gap-3 border-t border-[var(--line)] bg-[var(--panel)] px-4 py-2">
       <button
@@ -30,6 +31,10 @@ export function TransportBar(props: {
 
       <span className="transport-time font-mono text-xs tabular-nums text-[var(--ink-dim)]">
         {mmss(playhead)} / {mmss(duration)}
+      </span>
+
+      <span className="transport-bpm font-mono text-xs tabular-nums text-[var(--ink-dim)]">
+        {Math.round(effectiveBpm)} BPM
       </span>
 
       <input

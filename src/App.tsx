@@ -6,13 +6,15 @@ import { hashFile } from './io/hashFile'
 import { computeLayout } from './render/geometry'
 import { drawStage } from './render/pianoRoll'
 import { useCanvasStage } from './render/useCanvasStage'
+import { effectiveBpmAt } from './model/tempoMap'
 import { playheadAt, useTransport } from './transport/useTransport'
 import { FileDropZone } from './ui/FileDropZone'
 import { SettingsPanel, SettingsSection } from './ui/SettingsPanel'
+import { TempoControl } from './ui/TempoControl'
 import { TransportBar } from './ui/TransportBar'
 import type { RenderState } from './render/pianoRoll'
 import type { KeyboardLayout } from './render/geometry'
-import type { ScoreDocument, Voice } from './model/types'
+import type { ScoreDocument, TempoSetting, Voice } from './model/types'
 
 export default function App() {
   const t = useTransport()
@@ -158,6 +160,16 @@ export default function App() {
     engine.stopAll()
   }, [engine])
 
+  // setTempo replaces score.notes, so the score-identity effect above rebuilds
+  // and re-seats the scheduler on its own. What it CANNOT undo is the notes
+  // already handed to smplr at their old times -- those keep sounding across
+  // the change unless we cancel them here, exactly as seek and pause do.
+  const changeTempo = useCallback((setting: TempoSetting) => {
+    const now = engine.currentTime
+    useTransport.getState().setTempo(setting, now)
+    engine.stopAll()
+  }, [engine])
+
   const loadAnother = useCallback(() => {
     // Stop and pause before clearing the model, or the previous file keeps
     // sounding after the drop zone reappears.
@@ -166,6 +178,8 @@ export default function App() {
     engine.stopAll()
     state.clearScore()
   }, [engine])
+
+  const effectiveBpm = t.score ? effectiveBpmAt(t.score.tempoMap, playhead, t.tempo) : 120
 
   return (
     <div className="app-shell flex h-full flex-col bg-[var(--ground)]">
@@ -190,6 +204,7 @@ export default function App() {
           duration={t.score.durationSec}
           mode={t.mode}
           name={t.score.name}
+          effectiveBpm={effectiveBpm}
           onToggle={toggle}
           onSeek={seek}
           onMode={t.setMode}
@@ -206,10 +221,8 @@ export default function App() {
                 Settings
               </button>
               <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)}>
-                <SettingsSection id="placeholder" title="Settings" defaultOpen>
-                  <p className="settings-placeholder text-xs text-[var(--ink-dim)]">
-                    Controls arrive in the following tasks.
-                  </p>
+                <SettingsSection id="tempo" title="Tempo" defaultOpen>
+                  <TempoControl tempo={t.tempo} effectiveBpm={effectiveBpm} onChange={changeTempo} />
                 </SettingsSection>
               </SettingsPanel>
             </>
