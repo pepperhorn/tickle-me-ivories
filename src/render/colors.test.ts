@@ -127,6 +127,20 @@ describe('gradientColor', () => {
     expect(() => gradientColor(64, [])).not.toThrow()
     expect(gradientColor(64, [{ at: 0.3, color: '#123456' }])).toBe('rgb(18, 52, 86)')
   })
+
+  it('picks up an edited stop colour from a freshly-built stops array (cache invalidation)', () => {
+    // The store never mutates scheme.stops in place -- an edit always replaces
+    // the array (see VelocityEditor), so a new array identity with the same
+    // shape but a different colour must produce the new colour, not a value
+    // cached under the previous array.
+    const original = [{ at: 0, color: '#000000' }, { at: 1, color: '#ffffff' }]
+    expect(gradientColor(0, original)).toBe('rgb(0, 0, 0)')
+
+    const edited = original.map((s, i) => (i === 0 ? { ...s, color: '#ff0000' } : s))
+    expect(gradientColor(0, edited)).toBe('rgb(255, 0, 0)')
+    // The original array's cached parse is untouched by the edit.
+    expect(gradientColor(0, original)).toBe('rgb(0, 0, 0)')
+  })
 })
 
 describe('noteColor scheme dispatch', () => {

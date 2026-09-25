@@ -46,11 +46,33 @@ export function hexToRgb(hex: string): [number, number, number] {
   return [128, 128, 128]
 }
 
+interface ParsedStop { at: number; rgb: [number, number, number] }
+
+/**
+ * Sorting + hex-parsing is the same work on every call for the same `stops`
+ * array, and `gradientColor` runs per visible note and per held key, every
+ * frame -- so it is cached here, keyed by the array's identity. The settings
+ * store always REPLACES `scheme.stops` wholesale on any edit (never mutates
+ * in place -- see `VelocityEditor`/`setVelocity`), so identity is exactly
+ * "has this gradient changed" and a stale cache entry can never be read.
+ */
+const parsedStopsCache = new WeakMap<GradientStop[], ParsedStop[]>()
+
+function parsedStops(stops: GradientStop[]): ParsedStop[] {
+  const cached = parsedStopsCache.get(stops)
+  if (cached) return cached
+  const sorted = [...stops]
+    .sort((a, b) => a.at - b.at)
+    .map((s): ParsedStop => ({ at: s.at, rgb: hexToRgb(s.color) }))
+  parsedStopsCache.set(stops, sorted)
+  return sorted
+}
+
 /** Velocity -> a colour on the multi-stop gradient. Stops are sorted defensively;
     the editor lets a user drag one past another. */
 export function gradientColor(velocity: number, stops: GradientStop[]): string {
-  if (stops.length === 0) return 'rgb(128, 128, 128)'
-  const sorted = [...stops].sort((a, b) => a.at - b.at)
+  const sorted = parsedStops(stops)
+  if (sorted.length === 0) return 'rgb(128, 128, 128)'
   const t = clamp(velocity, 0, 127) / 127
 
   let lo = sorted[0]
@@ -65,10 +87,10 @@ export function gradientColor(velocity: number, stops: GradientStop[]): string {
 
   const span = hi.at - lo.at
   const f = span <= 0 ? 0 : (t - lo.at) / span
-  const a = hexToRgb(lo.color)
-  const b = hexToRgb(hi.color)
-  const mix = (i: number) => Math.round(a[i] + (b[i] - a[i]) * f)
-  return `rgb(${mix(0)}, ${mix(1)}, ${mix(2)})`
+  const r = Math.round(lo.rgb[0] + (hi.rgb[0] - lo.rgb[0]) * f)
+  const g = Math.round(lo.rgb[1] + (hi.rgb[1] - lo.rgb[1]) * f)
+  const b = Math.round(lo.rgb[2] + (hi.rgb[2] - lo.rgb[2]) * f)
+  return `rgb(${r}, ${g}, ${b})`
 }
 
 /**
