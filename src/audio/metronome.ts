@@ -1,4 +1,5 @@
 import { ticksToSec } from '../model/tempoMap'
+import { clampToNow } from './engine'
 import { LOOKAHEAD_SEC } from './scheduler'
 import type { ScoreDocument, TempoSetting } from '../model/types'
 
@@ -77,12 +78,19 @@ export class MetronomeVoice {
 
   click(time: number, accent: boolean, volume: number): void {
     if (volume <= 0) return
+    // Same guard as AudioEngine.play: after a seek/tempo change, originSec + beat.sec
+    // can already be behind the clock by the time this tick runs. Scheduling the
+    // envelope at a PAST time makes exponentialRampToValueAtTime measure its ramp
+    // from that past instant, so most of the decay (and some of the 35ms itself)
+    // has already elapsed by the time anything actually sounds -- an inaudible or
+    // near-silent click. Clamp once and use the clamped time everywhere below.
+    const t = clampToNow(time, this.ctx.currentTime)
     const osc = this.ctx.createOscillator()
     const gain = this.ctx.createGain()
     osc.type = 'square'
     osc.frequency.value = accent ? ACCENT_HZ : BEAT_HZ
-    gain.gain.setValueAtTime(Math.min(1, Math.max(0, volume)) * 0.25, time)
-    gain.gain.exponentialRampToValueAtTime(0.0001, time + CLICK_SEC)
+    gain.gain.setValueAtTime(Math.min(1, Math.max(0, volume)) * 0.25, t)
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + CLICK_SEC)
     osc.connect(gain)
     gain.connect(this.destination)
     osc.onended = () => {
@@ -92,8 +100,8 @@ export class MetronomeVoice {
       osc.disconnect()
     }
     this.pending.push(osc)
-    osc.start(time)
-    osc.stop(time + CLICK_SEC)
+    osc.start(t)
+    osc.stop(t + CLICK_SEC)
   }
 
   /** Cancels every click already scheduled ahead of now, the same job

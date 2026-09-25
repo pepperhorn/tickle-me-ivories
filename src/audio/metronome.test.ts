@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { BeatCursor, beatTimes } from './metronome'
+import { describe, it, expect, vi } from 'vitest'
+import { BeatCursor, MetronomeVoice, beatTimes } from './metronome'
 import { buildTempoMap } from '../model/tempoMap'
 import type { NoteEvent, ScoreDocument } from '../model/types'
 
@@ -79,5 +79,81 @@ describe('BeatCursor', () => {
     c.seek(1)
     expect(c.collect(1).map((b) => b.sec)).toEqual([1])
     expect(c.collect(1.4).map((b) => b.sec)).toEqual([1.5])
+  })
+})
+
+/** Minimal Web Audio stand-in: jsdom has no real AudioContext. */
+function fakeAudioNode() {
+  return {
+    connect: vi.fn(), disconnect: vi.fn(),
+    start: vi.fn(), stop: vi.fn(),
+    frequency: { value: 0 }, type: '',
+    onended: null as (() => void) | null,
+  }
+}
+function fakeGainNode() {
+  return {
+    gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn(), value: 1 },
+    connect: vi.fn(), disconnect: vi.fn(),
+  }
+}
+function fakeCtx(currentTime: number) {
+  const osc = fakeAudioNode()
+  const gain = fakeGainNode()
+  const ctx = {
+    currentTime,
+    createOscillator: vi.fn(() => osc),
+    createGain: vi.fn(() => gain),
+  }
+  return { ctx: ctx as unknown as BaseAudioContext, osc, gain }
+}
+
+describe('MetronomeVoice.click', () => {
+  // The bug this guards: App.tsx schedules clicks up to LOOKAHEAD_SEC ahead, but by
+  // the time a tick runs (after a play/seek/tempo change), state.originSec + beat.sec
+  // can already be behind ctx.currentTime -- the same situation AudioEngine.play
+  // guards with clampToNow. Scheduling the gain envelope at a PAST time makes
+  // exponentialRampToValueAtTime measure its ramp from that past instant, so most
+  // (or all) of the 35ms decay has already elapsed before anything can be heard.
+  it('clamps a past scheduled time to now, for start, envelope and stop alike', () => {
+    const { ctx, osc, gain } = fakeCtx(10)
+    const voice = new MetronomeVoice(ctx, {} as AudioNode)
+    voice.click(5, false, 1) // 5 is behind currentTime 10
+    expect(osc.start).toHaveBeenCalledWith(10)
+    expect(osc.stop).toHaveBeenCalledWith(10 + 0.035)
+    expect(gain.gain.setValueAtTime).toHaveBeenCalledWith(expect.any(Number), 10)
+    expect(gain.gain.exponentialRampToValueAtTime)
+      .toHaveBeenCalledWith(expect.any(Number), 10 + 0.035)
+  })
+
+  it('does not clamp a time that is already in the future', () => {
+    const { ctx, osc } = fakeCtx(10)
+    const voice = new MetronomeVoice(ctx, {} as AudioNode)
+    voice.click(12, false, 1)
+    expect(osc.start).toHaveBeenCalledWith(12)
+    expect(osc.stop).toHaveBeenCalledWith(12 + 0.035)
+  })
+
+  it('schedules nothing when volume is zero', () => {
+    const { ctx, osc } = fakeCtx(10)
+    const voice = new MetronomeVoice(ctx, {} as AudioNode)
+    voice.click(10, true, 0)
+    expect(osc.start).not.toHaveBeenCalled()
+  })
+})
+
+describe('MetronomeVoice.stop', () => {
+  it('stops a click already handed to Web Audio, the same job stopAll() does for notes', () => {
+    const { ctx, osc } = fakeCtx(10)
+    const voice = new MetronomeVoice(ctx, {} as AudioNode)
+    voice.click(20, false, 1) // scheduled ahead; osc.stop already called once for the envelope
+    voice.stop()
+    expect(osc.stop).toHaveBeenCalledTimes(2)
+  })
+
+  it('is safe to call with nothing pending', () => {
+    const { ctx } = fakeCtx(10)
+    const voice = new MetronomeVoice(ctx, {} as AudioNode)
+    expect(() => voice.stop()).not.toThrow()
   })
 })
