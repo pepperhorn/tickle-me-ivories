@@ -187,6 +187,53 @@ describe('decodeProfile validation of untrusted input', () => {
     const p = decodeProfile(tampered((x) => { x.display.settings.zoom = 'huge' }))
     expect(p.display.settings).toBeUndefined()
   })
+
+  // Task 8 review carry-forward: text.* now reaches the DOM overlay (labels,
+  // placement, font), so the block is validated field by field, not just isObj.
+  it('round-trips a valid text block unchanged', () => {
+    const p = decodeProfile(encodeProfile(profile()))
+    expect(p.text).toEqual(DEFAULT_SETTINGS.text)
+  })
+
+  it('refuses an unknown note-label mode or placement', () => {
+    expect(() => decodeProfile(tampered((p) => { p.text.labels = 'solfege' }))).toThrow(/text/i)
+    expect(() => decodeProfile(tampered((p) => { p.text.labelPlacement = 'inside' }))).toThrow(/text/i)
+  })
+
+  it('refuses an unknown chord display or placement, or a non-boolean alternates flag', () => {
+    expect(() => decodeProfile(tampered((p) => { p.text.chord = 'tab' }))).toThrow(/text/i)
+    expect(() => decodeProfile(tampered((p) => { p.text.chordPlacement = 'nowhere' }))).toThrow(/text/i)
+    expect(() => decodeProfile(tampered((p) => { p.text.chordAlternates = 'yes' }))).toThrow(/text/i)
+  })
+
+  it('refuses a key override that is neither null nor a string', () => {
+    expect(() => decodeProfile(tampered((p) => { p.text.keyOverride = 7 }))).toThrow(/text/i)
+    expect(decodeProfile(tampered((p) => { p.text.keyOverride = 'Eb major' })).text.keyOverride).toBe('Eb major')
+  })
+
+  it('refuses a missing or wrongly-typed text style field', () => {
+    expect(() => decodeProfile(tampered((p) => { delete p.text.style }))).toThrow(/text/i)
+    expect(() => decodeProfile(tampered((p) => { p.text.style.family = 12 }))).toThrow(/text/i)
+    expect(() => decodeProfile(tampered((p) => { p.text.style.weight = 'bold' }))).toThrow(/text/i)
+    expect(() => decodeProfile(tampered((p) => { p.text.style.color = null }))).toThrow(/text/i)
+    expect(() => decodeProfile(tampered((p) => { delete p.text.style.strokeColor }))).toThrow(/text/i)
+    expect(() => decodeProfile(tampered((p) => { p.text.style.opacity = 'half' }))).toThrow(/text/i)
+  })
+
+  it('clamps out-of-range text numbers to the control ranges', () => {
+    const p = decodeProfile(tampered((x) => {
+      x.text.chordWindowMs = 0
+      Object.assign(x.text.style, { weight: 5000, sizeRatio: -1, letterSpacing: 9, opacity: 3, strokeWidth: -2 })
+    }))
+    expect(p.text.chordWindowMs).toBe(100)
+    expect(p.text.style).toMatchObject({ weight: 900, sizeRatio: 0.2, letterSpacing: 0.3, opacity: 1, strokeWidth: 0 })
+  })
+
+  it('does not carry unknown keys from the text block through', () => {
+    const p = decodeProfile(tampered((x) => { x.text.evil = '<script>'; x.text.style.extra = 1 }))
+    expect(p.text).not.toHaveProperty('evil')
+    expect(p.text.style).not.toHaveProperty('extra')
+  })
 })
 
 describe('mergeVoices', () => {

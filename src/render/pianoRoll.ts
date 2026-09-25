@@ -147,10 +147,14 @@ function drawImpact(
   ctx.restore()
 }
 
-/** The whole frame, in spec draw order. Pure function of t. */
+/**
+ * The whole frame, in spec draw order. Pure function of t. Returns the held set
+ * the keyboard was lit from (visible voices only), so the DOM text overlay reads
+ * the same pitches without a second visibleNotes pass (F38).
+ */
 export function drawStage(
   ctx: CanvasRenderingContext2D, state: RenderState, t: number, progress: number,
-): void {
+): Map<number, NoteEvent> {
   const { layout, theme } = state
   const stageW = layout.stageW
   const stageH = layout.hitY + layout.keyboardH
@@ -204,4 +208,5 @@ export function drawStage(
   ctx.fillRect(0, stageH - 3, stageW, 3)
   ctx.fillStyle = theme.progressFill
   ctx.fillRect(0, stageH - 3, stageW * Math.min(1, Math.max(0, progress)), 3)
+  return held
 }

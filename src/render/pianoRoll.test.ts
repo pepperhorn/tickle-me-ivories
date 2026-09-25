@@ -149,6 +149,17 @@ describe('drawStage', () => {
     expect(a.calls.length).toBeLessThan(b.calls.length)
   })
 
+  // F38: the overlay reads the same held set the keyboard was lit from, so
+  // there is one visibleNotes pass per frame rather than two.
+  it('returns the held set it lit the keyboard from, hidden voices excluded', () => {
+    const notes = [n(0, 60, 0, 1), n(1, 64, 0.2, 1), n(2, 67, 2)]   // 67 not yet sounding
+    const held = drawStage(stubCtx().ctx, state(notes), 0.5, 0)
+    expect([...held.keys()].sort()).toEqual([60, 64])
+    const hidden = state(notes)
+    hidden.voices.get('v')!.visible = false
+    expect(drawStage(stubCtx().ctx, hidden, 0.5, 0).size).toBe(0)
+  })
+
   it('clears rather than fills when the stage background is transparent', () => {
     const { ctx, calls } = stubCtx()
     drawStage(ctx, { ...state([]), theme: { ...DEFAULT_THEME, stageBg: 'transparent' } }, 0, 0)

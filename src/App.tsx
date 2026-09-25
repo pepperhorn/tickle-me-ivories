@@ -10,6 +10,7 @@ import { drawStage } from './render/pianoRoll'
 import { DEFAULT_THEME, readTheme } from './render/theme'
 import { useCanvasStage } from './render/useCanvasStage'
 import { effectiveBpmAt } from './model/tempoMap'
+import { keyOfScore } from './music/keyOf'
 import { playheadAt, useTransport } from './transport/useTransport'
 import { currentSettings, useSettings } from './settings/useSettings'
 import {
@@ -19,6 +20,8 @@ import {
 import { DEFAULT_SETTINGS } from './settings/types'
 import { DisplaySettings } from './ui/DisplaySettings'
 import { FileDropZone } from './ui/FileDropZone'
+import { StageText, samePitches } from './ui/StageText'
+import { TextSettings } from './ui/TextSettings'
 import { ProfileSettings } from './ui/ProfileSettings'
 import { SettingsPanel, SettingsRow, SettingsSection } from './ui/SettingsPanel'
 import { TempoControl } from './ui/TempoControl'
@@ -44,6 +47,12 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
   const lastTenthRef = useRef(-1)
+  // What the DOM text overlay is showing. The ref is the draw loop's copy, so
+  // it can compare against the last push without reading React state.
+  const [stageText, setStageText] = useState<{ layout: KeyboardLayout | null; pitches: number[] }>({
+    layout: null, pitches: [],
+  })
+  const stageTextRef = useRef(stageText)
   const voicesRef = useRef<{ score: ScoreDocument | null; map: Map<string, Voice> }>({
     score: null, map: new Map(),
   })
@@ -202,7 +211,18 @@ export default function App() {
         showMiddleC: st.display.showMiddleC,
         theme: themeFor(st.theme.name, st.theme.stageBgOverride, layout),
       }
-      drawStage(ctx, rs, head, state.score ? head / state.score.durationSec : 0)
+      const held = drawStage(ctx, rs, head, state.score ? head / state.score.durationSec : 0)
+
+      // The overlay is DOM, so it must not re-render per frame. Push only when
+      // the sounding set or the layout actually changes -- the same discipline
+      // as the 10Hz playhead readout. samePitches allocates nothing; the new
+      // array is built only on an actual change (F38).
+      const shown = stageTextRef.current
+      if (layout !== shown.layout || !samePitches(held, shown.pitches)) {
+        const next = { layout, pitches: [...held.keys()].sort((a, b) => a - b) }
+        stageTextRef.current = next
+        setStageText(next)
+      }
     }, [engine]),
   )
 
@@ -432,6 +452,12 @@ export default function App() {
           : undefined}
       >
         <canvas ref={canvasRef} className="stage-canvas block h-full w-full" />
+        <StageText
+          layout={stageText.layout}
+          pitches={stageText.pitches}
+          text={settings.text}
+          keyContext={keyOfScore(t.score, settings.text.keyOverride)}
+        />
         {!t.score && (
           <div className="stage-empty absolute inset-0 flex items-center justify-center p-4">
             <FileDropZone onFile={loadFile} />
@@ -487,6 +513,13 @@ export default function App() {
                 </SettingsSection>
                 <SettingsSection id="theme" title="Theme &amp; compositing">
                   <ThemeSettings theme={settings.theme} onChange={settings.setTheme} />
+                </SettingsSection>
+                <SettingsSection id="text" title="On-stage text">
+                  <TextSettings
+                    text={settings.text}
+                    onChange={settings.setText}
+                    onStyle={settings.setTextStyle}
+                  />
                 </SettingsSection>
                 <SettingsSection id="audio" title="Audio">
                   <SettingsRow label="Master volume" htmlFor="master-volume">

@@ -1,5 +1,6 @@
 import type {
-  AudioSettings, DisplaySettings, GradientStop, Settings, TextSettings, ThemeName, ThemeSettings, VelocityScheme,
+  AudioSettings, ChordDisplay, ChordPlacement, DisplaySettings, GradientStop, NoteLabelContent,
+  NoteLabelPlacement, Settings, TextSettings, TextStyle, ThemeName, ThemeSettings, VelocityScheme,
 } from './types'
 import type { ScoreDocument, TempoSetting, Voice } from '../model/types'
 import type { DisplayMode } from '../transport/useTransport'
@@ -19,6 +20,19 @@ const MAX_FALL_SECONDS = 8
 const MAX_FLASH_SCALE = 1.5
 const DISPLAY_MODES: readonly DisplayMode[] = ['keyboard', 'roll']
 const THEME_NAMES: readonly ThemeName[] = ['classic', 'outline', 'contrast', 'transparent']
+const LABEL_CONTENTS: readonly NoteLabelContent[] = ['off', 'pitch', 'midi', 'both']
+const LABEL_PLACEMENTS: readonly NoteLabelPlacement[] = ['above', 'below']
+const CHORD_DISPLAYS: readonly ChordDisplay[] = ['off', 'symbol', 'numeral', 'both']
+const CHORD_PLACEMENTS: readonly ChordPlacement[] = ['stage-left', 'stage-centre', 'above-keys']
+/** The on-stage text controls' ranges (TextSettings.tsx, and the chord-window slider). */
+const TEXT_RANGES = {
+  chordWindowMs: [100, 2000],
+  weight: [100, 900],
+  sizeRatio: [0.2, 1.4],
+  letterSpacing: [-0.05, 0.3],
+  opacity: [0, 1],
+  strokeWidth: [0, 8],
+} as const
 
 /** App-wide preferences: they follow the user, not the song. */
 export interface GlobalPrefs {
@@ -148,6 +162,55 @@ export function validTheme(v: unknown): ThemeSettings | null {
   return { name: v.name as ThemeName, stageBgOverride: v.stageBgOverride as string | null }
 }
 
+/** Returns a clean copy of a valid text style, clamped to the control ranges, or null. */
+function validTextStyle(v: unknown): TextStyle | null {
+  if (!isObj(v)) return null
+  const { family, weight, sizeRatio, letterSpacing, color, opacity, strokeWidth, strokeColor } = v
+  if (typeof family !== 'string' || typeof color !== 'string' || typeof strokeColor !== 'string') return null
+  if (!isNum(weight) || !isNum(sizeRatio) || !isNum(letterSpacing) || !isNum(opacity) || !isNum(strokeWidth)) return null
+  const r = TEXT_RANGES
+  return {
+    family,
+    weight: clamp(weight, ...r.weight),
+    sizeRatio: clamp(sizeRatio, ...r.sizeRatio),
+    letterSpacing: clamp(letterSpacing, ...r.letterSpacing),
+    color,
+    opacity: clamp(opacity, ...r.opacity),
+    strokeWidth: clamp(strokeWidth, ...r.strokeWidth),
+    strokeColor,
+  }
+}
+
+/**
+ * Returns a clean copy of a valid on-stage text block, or null. Task 8 review:
+ * this used to be an isObj-only check, but labels, placement and the font now
+ * reach the DOM overlay, so an unknown enum member or a non-string family would
+ * render as nothing (or throw) rather than as a setting anyone chose. Unknown
+ * keys are not carried through.
+ */
+export function validText(v: unknown): TextSettings | null {
+  if (!isObj(v)) return null
+  if (!LABEL_CONTENTS.includes(v.labels as NoteLabelContent)) return null
+  if (!LABEL_PLACEMENTS.includes(v.labelPlacement as NoteLabelPlacement)) return null
+  if (!CHORD_DISPLAYS.includes(v.chord as ChordDisplay)) return null
+  if (!CHORD_PLACEMENTS.includes(v.chordPlacement as ChordPlacement)) return null
+  if (typeof v.chordAlternates !== 'boolean' || !isNum(v.chordWindowMs)) return null
+  // A string that does not parse as a key is harmless: keyOfScore ignores it.
+  if (v.keyOverride !== null && typeof v.keyOverride !== 'string') return null
+  const style = validTextStyle(v.style)
+  if (!style) return null
+  return {
+    labels: v.labels as NoteLabelContent,
+    labelPlacement: v.labelPlacement as NoteLabelPlacement,
+    chord: v.chord as ChordDisplay,
+    chordPlacement: v.chordPlacement as ChordPlacement,
+    chordAlternates: v.chordAlternates,
+    chordWindowMs: clamp(v.chordWindowMs, ...TEXT_RANGES.chordWindowMs),
+    keyOverride: v.keyOverride as string | null,
+    style,
+  }
+}
+
 /**
  * Drops entries that are not objects with a string id, and omits any field of
  * the wrong type so mergeVoices keeps the parsed value for it. Volume is
@@ -194,6 +257,8 @@ export function decodeProfile(json: string): SongProfile {
   if (!audio) throw new Error('Profile has invalid audio settings.')
   const theme = validTheme(raw.theme)
   if (!theme) throw new Error('Profile has an invalid theme.')
+  const text = validText(raw.text)
+  if (!text) throw new Error('Profile has invalid on-stage text settings.')
 
   const { mode, fallSeconds, settings } = raw.display as Obj
   if (!DISPLAY_MODES.includes(mode as DisplayMode)) throw new Error('Profile has an invalid display mode.')
@@ -211,6 +276,7 @@ export function decodeProfile(json: string): SongProfile {
     tempo: sanitiseTempo(raw.tempo),
     display,
     theme,
+    text,
     global: { velocity, audio },
   } as SongProfile
 }
