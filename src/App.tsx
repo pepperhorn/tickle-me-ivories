@@ -8,10 +8,12 @@ import { drawStage } from './render/pianoRoll'
 import { useCanvasStage } from './render/useCanvasStage'
 import { effectiveBpmAt } from './model/tempoMap'
 import { playheadAt, useTransport } from './transport/useTransport'
+import { useSettings } from './settings/useSettings'
 import { FileDropZone } from './ui/FileDropZone'
 import { SettingsPanel, SettingsSection } from './ui/SettingsPanel'
 import { TempoControl } from './ui/TempoControl'
 import { TransportBar } from './ui/TransportBar'
+import { VelocityEditor } from './ui/VelocityEditor'
 import { VoicePanel } from './ui/VoicePanel'
 import type { RenderState } from './render/pianoRoll'
 import type { KeyboardLayout } from './render/geometry'
@@ -19,6 +21,7 @@ import type { ScoreDocument, TempoSetting, Voice } from './model/types'
 
 export default function App() {
   const t = useTransport()
+  const settings = useSettings()
   const engineRef = useRef<AudioEngine | null>(null)
   const schedulerRef = useRef<Scheduler | null>(null)
   const [playhead, setPlayhead] = useState(0)
@@ -112,10 +115,12 @@ export default function App() {
       if (tenth !== lastTenthRef.current) { lastTenthRef.current = tenth; setPlayhead(head) }
 
       const layout = layoutFor(w, h)
+      const st = useSettings.getState()
       const rs: RenderState = {
         notes: state.score?.notes ?? [],
         voices: voicesFor(state.score),
         layout,
+        velocity: st.velocity,
         fallSeconds: state.fallSeconds,
         maxNoteDur: state.maxNoteDur,
         showRoll: state.mode === 'roll',
@@ -255,6 +260,9 @@ export default function App() {
                 </SettingsSection>
                 <SettingsSection id="voices" title="Voices">
                   <VoicePanel voices={t.score?.voices ?? []} onChange={changeVoice} />
+                </SettingsSection>
+                <SettingsSection id="velocity" title="Velocity colour">
+                  <VelocityEditor scheme={settings.velocity} onChange={settings.setVelocity} />
                 </SettingsSection>
               </SettingsPanel>
             </>

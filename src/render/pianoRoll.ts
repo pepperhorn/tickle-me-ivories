@@ -2,11 +2,13 @@ import { drawKeyboard } from './keyboard'
 import { FLASH_MS, flashIntensity, noteColor } from './colors'
 import type { KeyboardLayout } from './geometry'
 import type { NoteEvent, Voice } from '../model/types'
+import type { VelocityScheme } from '../settings/types'
 
 export interface RenderState {
   notes: NoteEvent[]           // sorted by startSec
   voices: Map<string, Voice>
   layout: KeyboardLayout
+  velocity: VelocityScheme
   fallSeconds: number
   /** Longest note in the score, in seconds, under the CURRENT tempo setting.
       The window search looks back this far for notes that started earlier and
@@ -95,8 +97,8 @@ export function drawRoll(
       const h = Math.max(1, bottom - top)
 
       const g = ctx.createLinearGradient(0, top, 0, top + h)
-      g.addColorStop(0, noteColor(v.hue, Math.max(1, n.velocity - 14)))
-      g.addColorStop(1, noteColor(v.hue, n.velocity))
+      g.addColorStop(0, noteColor(v.hue, Math.max(1, n.velocity - 14), state.velocity))
+      g.addColorStop(1, noteColor(v.hue, n.velocity, state.velocity))
       ctx.fillStyle = g
       roundRect(ctx, k.x + (k.black ? 0.5 : 1), top, k.w - (k.black ? 1 : 2), h, BAR_RADIUS)
     }
@@ -183,7 +185,7 @@ export function drawStage(
   const held = heldNotes(
     vis.filter((n) => state.voices.get(n.voiceId)?.visible !== false), t,
   )
-  drawKeyboard(ctx, layout, state.voices, held)
+  drawKeyboard(ctx, state, held)
 
   if (state.showFlash) drawImpact(ctx, state, t, vis)
 

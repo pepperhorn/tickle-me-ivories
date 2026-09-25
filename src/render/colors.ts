@@ -1,6 +1,13 @@
+import { DEFAULT_LIGHTNESS } from '../settings/types'
+import type { GradientStop, VelocityScheme } from '../settings/types'
+
 export interface ColorOpts { lMax: number; lMin: number; sat: number }
 
-export const DEFAULT_COLORS: ColorOpts = { lMax: 78, lMin: 38, sat: 85 }
+/** Reuses the single canonical literal (F12) rather than re-declaring it here. */
+export const DEFAULT_COLORS: ColorOpts = DEFAULT_LIGHTNESS
+
+/** The lightness-scheme default, built from the same canonical literal (F12). */
+export const DEFAULT_SCHEME: VelocityScheme = { kind: 'lightness', ...DEFAULT_LIGHTNESS }
 
 /** Left hand, right hand -- taken from the SheetMusicBoss reference frame. */
 export const VOICE_HUES = [207, 28]
@@ -11,13 +18,69 @@ export const INTENSITY_FLOOR = 0.45
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
 
 /** Soft notes light, hard notes dark. Monotonic by construction. */
-export function velocityLightness(velocity: number, o: ColorOpts = DEFAULT_COLORS): number {
+export function velocityLightness(
+  velocity: number, o: { lMax: number; lMin: number } = DEFAULT_COLORS,
+): number {
   const t = clamp(velocity, 0, 127) / 127
   return o.lMax + (o.lMin - o.lMax) * t
 }
 
-export function noteColor(hue: number, velocity: number, o: ColorOpts = DEFAULT_COLORS): string {
-  return `hsl(${hue} ${o.sat}% ${velocityLightness(velocity, o).toFixed(1)}%)`
+/** #rgb and #rrggbb. Junk returns mid grey rather than NaN, which would poison
+    every downstream arithmetic op and paint nothing at all. */
+export function hexToRgb(hex: string): [number, number, number] {
+  const s = hex.trim().replace(/^#/, '')
+  if (/^[0-9a-f]{3}$/i.test(s)) {
+    return [
+      parseInt(s[0] + s[0], 16),
+      parseInt(s[1] + s[1], 16),
+      parseInt(s[2] + s[2], 16),
+    ]
+  }
+  if (/^[0-9a-f]{6}$/i.test(s)) {
+    return [
+      parseInt(s.slice(0, 2), 16),
+      parseInt(s.slice(2, 4), 16),
+      parseInt(s.slice(4, 6), 16),
+    ]
+  }
+  return [128, 128, 128]
+}
+
+/** Velocity -> a colour on the multi-stop gradient. Stops are sorted defensively;
+    the editor lets a user drag one past another. */
+export function gradientColor(velocity: number, stops: GradientStop[]): string {
+  if (stops.length === 0) return 'rgb(128, 128, 128)'
+  const sorted = [...stops].sort((a, b) => a.at - b.at)
+  const t = clamp(velocity, 0, 127) / 127
+
+  let lo = sorted[0]
+  let hi = sorted[sorted.length - 1]
+  if (t <= lo.at) hi = lo
+  else if (t >= hi.at) lo = hi
+  else {
+    for (let i = 0; i < sorted.length - 1; i++) {
+      if (t >= sorted[i].at && t <= sorted[i + 1].at) { lo = sorted[i]; hi = sorted[i + 1]; break }
+    }
+  }
+
+  const span = hi.at - lo.at
+  const f = span <= 0 ? 0 : (t - lo.at) / span
+  const a = hexToRgb(lo.color)
+  const b = hexToRgb(hi.color)
+  const mix = (i: number) => Math.round(a[i] + (b[i] - a[i]) * f)
+  return `rgb(${mix(0)}, ${mix(1)}, ${mix(2)})`
+}
+
+/**
+ * In lightness mode the voice hue carries voice identity and velocity drives
+ * lightness. In gradient mode the gradient IS the colour language and hue is
+ * deliberately ignored -- blending the two produces muddy, unreadable colour.
+ */
+export function noteColor(
+  hue: number, velocity: number, scheme: VelocityScheme = DEFAULT_SCHEME,
+): string {
+  if (scheme.kind === 'gradient') return gradientColor(velocity, scheme.stops)
+  return `hsl(${hue} ${scheme.sat}% ${velocityLightness(velocity, scheme).toFixed(1)}%)`
 }
 
 /**

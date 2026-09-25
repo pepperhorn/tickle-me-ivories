@@ -1,6 +1,6 @@
 import { noteColor } from './colors'
-import type { KeyboardLayout } from './geometry'
-import type { NoteEvent, Voice } from '../model/types'
+import type { NoteEvent } from '../model/types'
+import type { RenderState } from './pianoRoll'
 
 const WHITE_FILL = '#f6f2e4'
 const BLACK_FILL = '#0c0c10'
@@ -11,17 +11,17 @@ const MIN_WHITE_W_FOR_LABEL = 14
 
 export function drawKeyboard(
   ctx: CanvasRenderingContext2D,
-  layout: KeyboardLayout,
-  voices: Map<string, Voice>,
+  state: RenderState,
   held: Map<number, NoteEvent>,
 ): void {
+  const { layout, voices } = state
   const { hitY, keyboardH, blackH } = layout
 
   for (const k of layout.keys) {
     if (k.black) continue
     const h = held.get(k.pitch)
     const v = h ? voices.get(h.voiceId) : undefined
-    ctx.fillStyle = h && v ? noteColor(v.hue, h.velocity) : WHITE_FILL
+    ctx.fillStyle = h && v ? noteColor(v.hue, h.velocity, state.velocity) : WHITE_FILL
     ctx.fillRect(k.x, hitY, k.w - 1, keyboardH)
 
     // Middle C carries a dark border and a "C4" label so orientation
@@ -47,7 +47,7 @@ export function drawKeyboard(
     if (!k.black) continue
     const h = held.get(k.pitch)
     const v = h ? voices.get(h.voiceId) : undefined
-    ctx.fillStyle = h && v ? noteColor(v.hue, h.velocity) : BLACK_FILL
+    ctx.fillStyle = h && v ? noteColor(v.hue, h.velocity, state.velocity) : BLACK_FILL
     ctx.fillRect(k.x, hitY, k.w, blackH)
     if (h) {
       ctx.fillStyle = 'rgba(255,255,255,0.35)'

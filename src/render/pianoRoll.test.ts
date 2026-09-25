@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { visibleNotes, heldNotes, drawStage } from './pianoRoll'
 import { computeLayout } from './geometry'
+import { DEFAULT_SCHEME } from './colors'
 import type { NoteEvent, Voice } from '../model/types'
 
 const n = (id: number, pitch: number, startSec: number, dur = 0.4): NoteEvent => ({
@@ -107,6 +108,7 @@ describe('drawStage', () => {
       visible: true, audible: true, volume: 1,
     }]]),
     layout: computeLayout(1000, 600),
+    velocity: DEFAULT_SCHEME,
     fallSeconds: 3,
     maxNoteDur: 3,
     showRoll: true,
