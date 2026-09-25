@@ -1,9 +1,9 @@
 import { noteColor } from './colors'
-import type { KeyboardLayout } from './geometry'
-import type { NoteEvent, Voice } from '../model/types'
+import { roundRect, strokeRoundRect } from './shapes'
+import { isTransparent } from './theme'
+import type { NoteEvent } from '../model/types'
+import type { RenderState } from './pianoRoll'
 
-const WHITE_FILL = '#f6f2e4'
-const BLACK_FILL = '#0c0c10'
 const MIDDLE_C = 60
 // Below this whiteW the "C4" label would render as illegible mush -- skip it
 // entirely rather than draw noise at phone scale.
@@ -11,29 +11,39 @@ const MIN_WHITE_W_FOR_LABEL = 14
 
 export function drawKeyboard(
   ctx: CanvasRenderingContext2D,
-  layout: KeyboardLayout,
-  voices: Map<string, Voice>,
+  state: RenderState,
   held: Map<number, NoteEvent>,
 ): void {
+  const { layout, voices, theme } = state
   const { hitY, keyboardH, blackH } = layout
+  // F32: the Outline preset sets keyWhite/keyBlack to transparent, so a visible
+  // stroke is what keeps the keyboard from disappearing entirely. Skipped by
+  // default (keyOutline is transparent) so themes that don't opt in pay nothing.
+  const outlined = !isTransparent(theme.keyOutline)
 
   for (const k of layout.keys) {
     if (k.black) continue
     const h = held.get(k.pitch)
     const v = h ? voices.get(h.voiceId) : undefined
-    ctx.fillStyle = h && v ? noteColor(v.hue, h.velocity) : WHITE_FILL
-    ctx.fillRect(k.x, hitY, k.w - 1, keyboardH)
+    ctx.fillStyle = h && v ? noteColor(v.hue, h.velocity, state.velocity) : theme.keyWhite
+    const w = Math.max(1, k.w - theme.keyGap)
+    roundRect(ctx, k.x, hitY, w, keyboardH, theme.keyRadius)
+    if (outlined) {
+      ctx.strokeStyle = theme.keyOutline
+      ctx.lineWidth = theme.keyBorderWidth
+      strokeRoundRect(ctx, k.x, hitY, w, keyboardH, theme.keyRadius)
+    }
 
     // Middle C carries a dark border and a "C4" label so orientation
     // survives phone scale, where 88 keys means ~16px per white key.
-    if (k.pitch === MIDDLE_C) {
-      ctx.fillStyle = 'rgba(0,0,0,0.55)'
+    if (k.pitch === MIDDLE_C && state.showMiddleC) {
+      ctx.fillStyle = theme.middleCMark
       ctx.fillRect(k.x, hitY, 1.5, keyboardH)
       ctx.fillRect(k.x + k.w - 2.5, hitY, 1.5, keyboardH)
 
       if (layout.whiteW >= MIN_WHITE_W_FOR_LABEL) {
         ctx.save()
-        ctx.fillStyle = 'rgba(0,0,0,0.45)'
+        ctx.fillStyle = theme.middleCMark
         ctx.font = `600 ${Math.round(layout.whiteW * 0.42)}px Poppins, sans-serif`
         ctx.textAlign = 'center'
         ctx.textBaseline = 'alphabetic'
@@ -47,14 +57,19 @@ export function drawKeyboard(
     if (!k.black) continue
     const h = held.get(k.pitch)
     const v = h ? voices.get(h.voiceId) : undefined
-    ctx.fillStyle = h && v ? noteColor(v.hue, h.velocity) : BLACK_FILL
-    ctx.fillRect(k.x, hitY, k.w, blackH)
+    ctx.fillStyle = h && v ? noteColor(v.hue, h.velocity, state.velocity) : theme.keyBlack
+    roundRect(ctx, k.x, hitY, k.w, blackH, theme.keyRadius)
+    if (outlined) {
+      ctx.strokeStyle = theme.keyOutline
+      ctx.lineWidth = theme.keyBorderWidth
+      strokeRoundRect(ctx, k.x, hitY, k.w, blackH, theme.keyRadius)
+    }
     if (h) {
-      ctx.fillStyle = 'rgba(255,255,255,0.35)'
+      ctx.fillStyle = theme.blackKeyTop
       ctx.fillRect(k.x, hitY, k.w, 2)
     }
   }
 
-  ctx.fillStyle = 'rgba(255,255,255,0.16)'
-  ctx.fillRect(0, hitY, layout.whiteW * 52, 1)
+  ctx.fillStyle = theme.keyBorder
+  ctx.fillRect(0, hitY, layout.stageW, theme.keyBorderWidth)
 }

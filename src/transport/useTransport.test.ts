@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useTransport, playheadAt } from './useTransport'
 import { buildTempoMap } from '../model/tempoMap'
+import { retimeScore } from '../io/parseMidi'
 import type { ScoreDocument } from '../model/types'
 
 const PPQ = 480
@@ -12,8 +13,26 @@ const score = (): ScoreDocument => ({
     { id: 0, pitch: 60, startTicks: 0, durTicks: 480, startSec: 0, endSec: 0.5, velocity: 100, voiceId: 'v' },
     { id: 1, pitch: 64, startTicks: PPQ * 8, durTicks: 480, startSec: 4, endSec: 4.5, velocity: 100, voiceId: 'v' },
   ],
-  durationSec: 4.5, sourceFormat: 'midi',
+  durationSec: 4.5, sourceFormat: 'midi', timeSignatures: [], keySignature: null,
 })
+
+// Two voices, one note each -- used by the updateVoice tests below.
+const makeScore = (): ScoreDocument => {
+  const base: ScoreDocument = {
+    id: 'two', name: 'two.mid', ppq: PPQ,
+    tempoMap: buildTempoMap([], PPQ),
+    voices: [
+      { id: 'a', label: 'Voice A', hue: 200, instrument: 'acoustic_grand_piano', visible: true, audible: true, volume: 1 },
+      { id: 'b', label: 'Voice B', hue: 30, instrument: 'acoustic_grand_piano', visible: true, audible: true, volume: 1 },
+    ],
+    notes: [
+      { id: 0, pitch: 60, startTicks: 0, durTicks: 480, startSec: 0, endSec: 0, velocity: 100, voiceId: 'a' },
+      { id: 1, pitch: 64, startTicks: 480, durTicks: 480, startSec: 0, endSec: 0, velocity: 100, voiceId: 'b' },
+    ],
+    durationSec: 0, sourceFormat: 'midi', timeSignatures: [], keySignature: null,
+  }
+  return retimeScore(base, { mode: 'scale', scale: 1 })
+}
 
 beforeEach(() => {
   useTransport.setState({
@@ -133,5 +152,82 @@ describe('setTempo', () => {
     t.seek(2.5, 0)                                   // 2.5s = tick 2880
     t.setTempo({ mode: 'absolute', bpm: 60 }, 0)     // 2880 ticks @60bpm = 6s
     expect(playheadAt(useTransport.getState(), 0)).toBeCloseTo(6, 6)
+  })
+})
+
+describe('updateVoice', () => {
+  it('patches one voice and leaves its siblings alone', () => {
+    const s = makeScore()
+    useTransport.getState().loadScore(s)
+    const v0 = useTransport.getState().score!.voices[0]
+    const v1 = useTransport.getState().score!.voices[1]
+
+    useTransport.getState().updateVoice(v1.id, { hue: 300 })
+    const after = useTransport.getState().score!.voices
+    expect(after[1].hue).toBe(300)
+    expect(after[0]).toBe(v0)
+  })
+
+  it('keeps the SAME notes array reference, so the scheduler is not rebuilt', () => {
+    const s = makeScore()
+    useTransport.getState().loadScore(s)
+    const notesBefore = useTransport.getState().score!.notes
+    useTransport.getState().updateVoice(notesBefore[0].voiceId, { label: 'Melody' })
+    expect(useTransport.getState().score!.notes).toBe(notesBefore)
+  })
+
+  it('is a no-op for an unknown voice id', () => {
+    const s = makeScore()
+    useTransport.getState().loadScore(s)
+    const before = useTransport.getState().score!.voices
+    useTransport.getState().updateVoice('nope', { hue: 1 })
+    expect(useTransport.getState().score!.voices).toEqual(before)
+  })
+})
+
+describe('parked plan 1 gaps', () => {
+  it('pausing at the end leaves the playhead exactly at the duration', () => {
+    const s = makeScore()
+    useTransport.getState().loadScore(s)
+    const dur = useTransport.getState().score!.durationSec
+    useTransport.getState().play(100)
+    // This is what App's scheduler tick does when head >= durationSec.
+    useTransport.getState().pause(100 + dur)
+    expect(useTransport.getState().playing).toBe(false)
+    expect(useTransport.getState().pausedAtSec).toBeCloseTo(dur, 9)
+  })
+
+  it('clearScore returns the store to its empty state', () => {
+    useTransport.getState().loadScore(makeScore())
+    useTransport.getState().play(10)
+    useTransport.getState().clearScore()
+    const s = useTransport.getState()
+    expect(s.score).toBeNull()
+    expect(s.playing).toBe(false)
+    expect(s.pausedAtSec).toBe(0)
+    expect(s.originSec).toBe(0)
+    expect(s.maxNoteDur).toBe(0)
+  })
+
+  it('seek clamps to the score at both ends, paused and playing', () => {
+    useTransport.getState().loadScore(makeScore())
+    const dur = useTransport.getState().score!.durationSec
+
+    useTransport.getState().seek(-5, 0)
+    expect(useTransport.getState().pausedAtSec).toBe(0)
+
+    useTransport.getState().seek(dur + 99, 0)
+    expect(useTransport.getState().pausedAtSec).toBeCloseTo(dur, 9)
+
+    useTransport.getState().play(50)
+    useTransport.getState().seek(dur + 99, 50)
+    expect(useTransport.getState().pausedAtSec).toBeCloseTo(dur, 9)
+    expect(useTransport.getState().originSec).toBeCloseTo(50 - dur, 9)
+  })
+
+  it('seek on an empty store clamps to zero rather than to NaN', () => {
+    useTransport.getState().clearScore()
+    useTransport.getState().seek(10, 0)
+    expect(useTransport.getState().pausedAtSec).toBe(0)
   })
 })

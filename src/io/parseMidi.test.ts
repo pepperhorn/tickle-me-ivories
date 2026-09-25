@@ -82,6 +82,26 @@ describe('parseMidi', () => {
     expect(s.voices.map((v) => v.label)).toEqual(['Right', 'Left'])
   })
 
+  it('defaults to 4/4 from tick 0 when the file carries no time signature', () => {
+    const s = parseMidi(makeMidi([{ name: 'Piano', notes: [[60, 0, 0.5]] }]), 'x.mid', SCALE_1)
+    expect(s.timeSignatures).toEqual([{ ticks: 0, numerator: 4, denominator: 4 }])
+  })
+
+  it('reads every time signature with its denominator', () => {
+    const midi = new Midi()
+    midi.header.setTempo(120)
+    midi.header.timeSignatures.push({ ticks: 0, timeSignature: [6, 8] })
+    midi.header.timeSignatures.push({ ticks: 1920, timeSignature: [2, 2] })
+    const track = midi.addTrack()
+    track.name = 'Piano'
+    track.addNote({ midi: 60, time: 0, duration: 0.5, velocity: 0.8 })
+    const s = parseMidi(midi.toArray().buffer as ArrayBuffer, 'x.mid', SCALE_1)
+    expect(s.timeSignatures).toEqual([
+      { ticks: 0, numerator: 6, denominator: 8 },
+      { ticks: 1920, numerator: 2, denominator: 2 },
+    ])
+  })
+
   it('hand-splits a file whose only pitched track sits behind a conductor track', () => {
     // Type 1 MIDI almost always has a meta-only track 0. That must not stop
     // the hand split: the file still has exactly one PITCHED track.
@@ -95,6 +115,36 @@ describe('parseMidi', () => {
     expect(s.voices.map((v) => v.id).sort()).toEqual([LEFT_VOICE, RIGHT_VOICE].sort())
     expect(s.notes.find((n) => n.pitch === 40)!.voiceId).toBe(LEFT_VOICE)
     expect(s.notes.find((n) => n.pitch === 72)!.voiceId).toBe(RIGHT_VOICE)
+  })
+
+  it('carries null for a file with no key signature', () => {
+    const s = parseMidi(makeMidi([{ name: 'Piano', notes: [[60, 0, 0.5]] }]), 'x.mid', SCALE_1)
+    expect(s.keySignature).toBeNull()
+  })
+
+  it('reads a minor key signature, correcting the tonic to the true minor (F34)', () => {
+    // @tonejs/midi's own encoder round-trips the `key` field as undefined
+    // (Encode.ts double-applies the +7 offset that Header.ts's decoder also
+    // applies), so a fixture built via `header.keySignatures.push(...)` and
+    // `midi.toArray()` cannot be used here. This builds the raw Standard MIDI
+    // File bytes directly: a key-signature meta event with sf = -3 (3 flats,
+    // C natural minor: Bb, Eb, Ab) and scale = 1 (minor), a tempo, one note,
+    // and end-of-track. @tonejs/midi decodes sf=-3 as the major key sharing
+    // those 3 flats, Eb -- reporting { key: 'Eb', scale: 'minor' } -- which is
+    // exactly the wrong-tonic case F34 exists to correct back to C minor.
+    const bytes = new Uint8Array([
+      // MThd: format 0, 1 track, 480 ticks/quarter
+      0x4d, 0x54, 0x68, 0x64, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x01, 0x01, 0xe0,
+      // MTrk
+      0x4d, 0x54, 0x72, 0x6b, 0x00, 0x00, 0x00, 0x15,
+      0x00, 0xff, 0x59, 0x02, 0xfd, 0x01,       // delta0 keySignature sf=-3 scale=1(minor)
+      0x00, 0xff, 0x51, 0x03, 0x07, 0xa1, 0x20, // delta0 setTempo 500000us (120bpm)
+      0x00, 0x90, 0x3c, 0x50,                   // delta0 noteOn ch0 pitch60 vel80
+      0x83, 0x60, 0x80, 0x3c, 0x00,             // delta480 noteOff ch0 pitch60
+      0x00, 0xff, 0x2f, 0x00,                   // delta0 endOfTrack
+    ])
+    const s = parseMidi(bytes.buffer, 'minor.mid', SCALE_1)
+    expect(s.keySignature).toEqual({ key: 'C', scale: 'minor' })
   })
 })
 

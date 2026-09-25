@@ -25,6 +25,13 @@ export interface TempoEvent {
   bpm: number
 }
 
+/** A MIDI time-signature meta event: `numerator`/`denominator` as written, e.g. 6/8. */
+export interface TimeSigEvent {
+  ticks: number
+  numerator: number
+  denominator: number
+}
+
 export type TempoSetting =
   | { mode: 'scale'; scale: number }
   | { mode: 'absolute'; bpm: number }
@@ -38,4 +45,9 @@ export interface ScoreDocument {
   notes: NoteEvent[]     // sorted ascending by startSec
   durationSec: number
   sourceFormat: 'midi' | 'musicxml'
+  /** Every time signature in the file, sorted, starting at tick 0 (4/4 when
+      the file carries none). The metronome's pulse and accents come from it. */
+  timeSignatures: TimeSigEvent[]
+  /** From the MIDI key-signature meta event; null when the file carries none. */
+  keySignature: { key: string; scale: string } | null
 }

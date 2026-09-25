@@ -1,5 +1,7 @@
 import { Midi } from '@tonejs/midi'
+import { Key } from 'tonal'
 import { buildTempoMap, ticksToSec } from '../model/tempoMap'
+import { normaliseTimeSignatures } from '../model/timeSignatures'
 import { hueForVoiceIndex } from '../render/colors'
 import { DEFAULT_SPLIT_PITCH, LEFT_VOICE, RIGHT_VOICE, splitHands } from './handSplit'
 import type { NoteEvent, ScoreDocument, TempoSetting, Voice } from '../model/types'
@@ -23,6 +25,25 @@ export function parseMidi(
   const tempoMap = buildTempoMap(
     midi.header.tempos.map((t) => ({ ticks: t.ticks, bpm: t.bpm })), ppq,
   )
+  // @tonejs/midi exposes timeSignature as [numerator, denominator].
+  const timeSignatures = normaliseTimeSignatures(midi.header.timeSignatures.map((ts) => ({
+    ticks: ts.ticks, numerator: ts.timeSignature?.[0] ?? 4, denominator: ts.timeSignature?.[1] ?? 4,
+  })))
+
+  // @tonejs/midi's KeySignatureEvent is { ticks, key, scale }, e.g. { key: 'Ab', scale: 'major' }.
+  // F34: for a minor key it reports the MAJOR key sharing the same accidental
+  // count (Header.js derives `key` from the accidental count alone, ignoring
+  // `scale`), so an A-minor file (no sharps/flats) comes back as key: 'C',
+  // scale: 'minor'. Recover the true minor tonic via its relative major.
+  const rawKeySig = midi.header.keySignatures[0]
+  const keySignature = rawKeySig
+    ? {
+        key: rawKeySig.scale === 'minor'
+          ? Key.majorKey(rawKeySig.key).minorRelative
+          : rawKeySig.key,
+        scale: rawKeySig.scale,
+      }
+    : null
 
   const played = midi.tracks.filter((t) => t.notes.length > 0)
   const notes: NoteEvent[] = []
@@ -61,7 +82,8 @@ export function parseMidi(
   }
 
   const score: ScoreDocument = {
-    id: '', name, ppq, tempoMap, voices, notes, durationSec: 0, sourceFormat: 'midi',
+    id: '', name, ppq, tempoMap, voices, notes,
+    durationSec: 0, sourceFormat: 'midi', timeSignatures, keySignature,
   }
   return retimeScore(score, setting)
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildTempoMap, ticksToSec, secToTicks } from './tempoMap'
+import { buildTempoMap, ticksToSec, secToTicks, effectiveBpmAt, sameTempo } from './tempoMap'
 import type { TempoSetting } from './types'
 
 const PPQ = 480
@@ -85,5 +85,47 @@ describe('tempo change preserves musical position', () => {
     const ticks = secToTicks(map, PPQ, playheadSec, before)
     const rebasedSec = ticksToSec(map, PPQ, ticks, after)
     expect(secToTicks(map, PPQ, rebasedSec, after)).toBeCloseTo(ticks, 6)
+  })
+})
+
+describe('effectiveBpmAt', () => {
+  const ppq = 480
+  // 120bpm from the start, dropping to 60bpm at tick 960 (= 2 beats = 1.0s).
+  const map = buildTempoMap([{ ticks: 0, bpm: 120 }, { ticks: 960, bpm: 60 }], ppq)
+
+  it('reports the notated tempo at scale 1', () => {
+    expect(effectiveBpmAt(map, 0.5, { mode: 'scale', scale: 1 })).toBeCloseTo(120, 6)
+    expect(effectiveBpmAt(map, 1.5, { mode: 'scale', scale: 1 })).toBeCloseTo(60, 6)
+  })
+
+  it('multiplies the notated tempo by the scale', () => {
+    expect(effectiveBpmAt(map, 0.25, { mode: 'scale', scale: 0.5 })).toBeCloseTo(60, 6)
+    expect(effectiveBpmAt(map, 0.2, { mode: 'scale', scale: 2 })).toBeCloseTo(240, 6)
+  })
+
+  it('crosses the tempo change at the scaled playhead, not the notated one', () => {
+    // At scale 2 the 1.0s change lands at playhead 0.5s. Before it: 120*2.
+    expect(effectiveBpmAt(map, 0.4, { mode: 'scale', scale: 2 })).toBeCloseTo(240, 6)
+    // After it: 60*2.
+    expect(effectiveBpmAt(map, 0.6, { mode: 'scale', scale: 2 })).toBeCloseTo(120, 6)
+  })
+
+  it('reports a flat tempo in absolute mode, ignoring the map entirely', () => {
+    expect(effectiveBpmAt(map, 0.5, { mode: 'absolute', bpm: 90 })).toBe(90)
+    expect(effectiveBpmAt(map, 5, { mode: 'absolute', bpm: 90 })).toBe(90)
+  })
+
+  it('does not divide by zero if a scale of 0 ever reaches it', () => {
+    expect(Number.isFinite(effectiveBpmAt(map, 1, { mode: 'scale', scale: 0 }))).toBe(true)
+  })
+})
+
+describe('sameTempo', () => {
+  it('compares mode and value', () => {
+    expect(sameTempo({ mode: 'scale', scale: 1 }, { mode: 'scale', scale: 1 })).toBe(true)
+    expect(sameTempo({ mode: 'scale', scale: 1 }, { mode: 'scale', scale: 0.5 })).toBe(false)
+    expect(sameTempo({ mode: 'absolute', bpm: 90 }, { mode: 'absolute', bpm: 90 })).toBe(true)
+    expect(sameTempo({ mode: 'absolute', bpm: 90 }, { mode: 'absolute', bpm: 91 })).toBe(false)
+    expect(sameTempo({ mode: 'scale', scale: 1 }, { mode: 'absolute', bpm: 120 })).toBe(false)
   })
 })

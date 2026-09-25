@@ -310,7 +310,7 @@ All three effects are settings: impact flash on/off and intensity, grid lines on
 
 ## 10. Persistence
 
-Settings autosave to `localStorage` keyed by the file's content hash, so reopening a piece restores its colours, tempo setting and display mode with no user action. Global preferences (velocity scheme, default fall speed, audio levels) are stored separately and apply to every file.
+Settings autosave to `localStorage` keyed by the file's content hash (`tmi.profile.<sha256>`), so reopening a piece restores its colours, tempo setting, display mode, display settings, theme and text settings with no user action. Global preferences (velocity scheme, audio levels) are stored separately under `tmi.globals` and apply to every file.
 
 **Export Profile** downloads `<song>.tmi.json`:
 
@@ -321,22 +321,35 @@ Settings autosave to `localStorage` keyed by the file's content hash, so reopeni
   "voices": [{ "id": "t0", "label": "Right hand", "hue": 210,
                "instrument": "acoustic_grand_piano",
                "visible": true, "audible": true, "volume": 1 }],
-  "tempo": { "mode": "scale", "scale": 1.0, "absoluteBpm": null },
-  "display": { "mode": "roll", "fallSeconds": 3, "zoom": "fit",
-               "showNoteNames": false },
+  // A TempoSetting union: { "mode": "scale", "scale": 0.25-3 }
+  // or { "mode": "absolute", "bpm": 20-300 }. Out-of-range values are clamped on import.
+  "tempo": { "mode": "scale", "scale": 1.0 },
+  "display": { "mode": "roll", "fallSeconds": 3,
+               "settings": { "zoom": "fit", "showGrid": true, "showFlash": true,
+                             "flashScale": 1, "showMiddleC": true } },
+  "theme": { "name": "classic", "stageBgOverride": null },
+  "text": { "labels": "off", "chord": "off", /* ...the full TextSettings block (§15) */ },
   "global": {
-    "velocityScheme": { "kind": "lightness", "lMax": 78, "lMin": 38 },
-    "masterVolume": 0.8, "metronome": false
+    "velocity": { "kind": "lightness", "lMax": 78, "lMin": 38, "sat": 85 },
+    "audio": { "masterVolume": 0.8, "metronome": false, "metronomeVolume": 0.5 }
   }
 }
 ```
 
-Song-scoped keys (`voices`, `tempo`, `display`) always apply on import. The
-`global` block is a snapshot of the app-wide preferences at export time; import
-offers to apply it or leave the current globals alone, so sharing a profile for
-its colours does not silently rewrite someone's audio settings.
+Song-scoped keys (`voices`, `tempo`, `display`, `theme`, `text`) always apply on
+import. The `global` block is a snapshot of the app-wide preferences at export
+time; import applies it only when the user ticks "Also apply the file's global
+preferences", so sharing a profile for its colours does not silently rewrite
+someone's audio settings. A file missing `song`, `voices`, `tempo`, `display`,
+`theme`, `text` or `global` is refused, like an unknown `schemaVersion` (§11).
 
-**Import** accepts the file via picker or drag-and-drop onto the window. Song data is referenced by hash rather than embedded, so importing a profile on a machine without the source file prompts you to re-pick it; the profile then reattaches by hash.
+**Import** accepts the file via the Profile section's picker and applies it to the currently loaded piece; voices are matched by id, and saved voices that no longer exist in the file are ignored.
+
+**Deferred** (not built in v1):
+
+- Drag-and-drop of a profile file onto the window (the picker is the only import path).
+- The re-pick prompt: importing a profile whose song is not loaded does not ask for the source file, and a profile does not reattach itself by hash when the file is later opened (the autosave does, independently).
+- A global default fall speed: fall speed is song-scoped only, inside `display`.
 
 ## 11. Error handling
 
@@ -429,7 +442,8 @@ These replace the sixteen colour literals currently hardcoded across
 | `--tmi-key-white` | `#f6f2e4` | Unpressed white keys |
 | `--tmi-key-black` | `#0c0c10` | Unpressed black keys |
 | `--tmi-key-border` | `rgba(255,255,255,0.16)` | Hit line along the keyboard top |
-| `--tmi-key-border-width` | `1px` | Its thickness |
+| `--tmi-key-border-width` | `1px` | Its thickness (also the per-key outline's) |
+| `--tmi-key-outline` | `transparent` | Per-key stroke; `drawKeyboard` strokes each key only when this is not transparent, so the Outline preset's transparent keys stay visible |
 | `--tmi-key-radius` | `0px` | Key corner rounding |
 | `--tmi-key-gap` | `1px` | Gap between white keys |
 | `--tmi-middle-c-mark` | `rgba(0,0,0,0.55)` | Middle C's orientation border |
@@ -439,10 +453,17 @@ These replace the sixteen colour literals currently hardcoded across
 | `--tmi-grid-line-width` | `1px` | Grid thickness |
 | `--tmi-grid-line-style` | `solid` | `solid` \| `dashed` \| `dotted` — via `setLineDash` |
 | `--tmi-bar-radius` | `4px` | Falling note corner rounding |
-| `--tmi-flash-core` | `rgba(255,255,255,…)` | Bloom centre |
-| `--tmi-flash-warm` | `rgba(255,242,214,…)` | Bloom mid-stop |
+| `--tmi-flash-core-rgb` | `255, 255, 255` | Bloom centre |
+| `--tmi-flash-warm-rgb` | `255, 242, 214` | Bloom mid-stop |
 | `--tmi-progress-track` | `rgba(255,255,255,0.06)` | Progress bar track |
 | `--tmi-progress-fill` | `#e8384f` | Progress bar fill |
+
+**Deviation from the token names above.** The two flash tokens are named
+`--tmi-flash-core-rgb` and `--tmi-flash-warm-rgb` and hold a bare `r, g, b`
+triple rather than a complete `rgba()` literal. The flash's alpha is computed
+per frame from velocity and age, so a complete colour literal cannot express
+it; the triple composes as `rgba(${theme.flashCoreRgb}, ${alpha})`. Every
+other token is exactly as named above.
 
 Voice hues stay in the profile rather than in CSS — they are per-song data the
 user assigns, not a theme.
@@ -493,8 +514,18 @@ Chord.detect(notes: string[], { assumePerfectFifth: true }): string[]
 ```
 
 Notes are passed **absolute and lowest-first**, because tonal treats the first
-element as the bass — that is what produces `CM/E` rather than `Em#5`. Take the
-first result; keep the rest for a settings-level "show alternates" option.
+element as the bass — that is what produces `CM/E` rather than `Em#5`.
+
+**Deviation (Task 15):** taking tonal's first result verbatim is wrong. tonal
+ranks a root-position reading first even when that reading is absurd —
+`Chord.detect(['E3','C4','G4'], { assumePerfectFifth: true })` returns
+`["Em#5", "CM/E"]`, so a first-inversion C major would print as `Em#5`. The
+fix is a single stable demote-the-rare pass over tonal's own candidate list:
+any candidate whose quality contains an altered extension (`#5`, `b5`, `#9`,
+`b9`, `#11`, `b13`, `alt`, `omit`) sorts after the rest, and tonal's order
+decides everything else (`rankCandidates` in `src/music/chords.ts`). Take the
+first result *after* that pass; keep the rest for a settings-level "show
+alternates" option.
 
 **The chord window.** A piano arpeggio sounds one note at a time, so identifying
 only simultaneously-held pitches would produce nonsense on most real music. The

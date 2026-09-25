@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   velocityLightness, noteColor, flashIntensity,
   hueForVoiceIndex, DEFAULT_COLORS, FLASH_MS,
+  gradientColor, hexToRgb, DEFAULT_SCHEME,
 } from './colors'
 
 describe('velocityLightness', () => {
@@ -77,5 +78,88 @@ describe('hueForVoiceIndex', () => {
     const hues = Array.from({ length: 6 }, (_, i) => hueForVoiceIndex(i, 6))
     expect(new Set(hues).size).toBe(6)
     for (const h of hues) { expect(h).toBeGreaterThanOrEqual(0); expect(h).toBeLessThan(360) }
+  })
+})
+
+describe('hexToRgb', () => {
+  it('parses six-digit hex', () => {
+    expect(hexToRgb('#4a7cff')).toEqual([0x4a, 0x7c, 0xff])
+  })
+
+  it('parses three-digit hex by doubling each nibble', () => {
+    expect(hexToRgb('#0f8')).toEqual([0, 255, 0x88])
+  })
+
+  it('falls back to mid grey rather than NaN on junk', () => {
+    expect(hexToRgb('not a colour')).toEqual([128, 128, 128])
+  })
+})
+
+describe('gradientColor', () => {
+  const stops = [
+    { at: 0, color: '#000000' },
+    { at: 0.5, color: '#ff0000' },
+    { at: 1, color: '#ffffff' },
+  ]
+
+  it('returns a stop colour exactly at that stop', () => {
+    expect(gradientColor(0, stops)).toBe('rgb(0, 0, 0)')
+    expect(gradientColor(127, stops)).toBe('rgb(255, 255, 255)')
+  })
+
+  it('interpolates linearly between two stops', () => {
+    // velocity 31.75 is a quarter of the way = halfway between stop 0 and stop 1
+    expect(gradientColor(127 * 0.25, stops)).toBe('rgb(128, 0, 0)')
+  })
+
+  it('clamps velocity outside 0-127 to the end stops', () => {
+    expect(gradientColor(-50, stops)).toBe('rgb(0, 0, 0)')
+    expect(gradientColor(999, stops)).toBe('rgb(255, 255, 255)')
+  })
+
+  it('sorts unsorted stops rather than producing nonsense', () => {
+    const jumbled = [{ at: 1, color: '#ffffff' }, { at: 0, color: '#000000' }]
+    expect(gradientColor(0, jumbled)).toBe('rgb(0, 0, 0)')
+    expect(gradientColor(127, jumbled)).toBe('rgb(255, 255, 255)')
+  })
+
+  it('survives an empty or single-stop list', () => {
+    expect(() => gradientColor(64, [])).not.toThrow()
+    expect(gradientColor(64, [{ at: 0.3, color: '#123456' }])).toBe('rgb(18, 52, 86)')
+  })
+
+  it('picks up an edited stop colour from a freshly-built stops array (cache invalidation)', () => {
+    // The store never mutates scheme.stops in place -- an edit always replaces
+    // the array (see VelocityEditor), so a new array identity with the same
+    // shape but a different colour must produce the new colour, not a value
+    // cached under the previous array.
+    const original = [{ at: 0, color: '#000000' }, { at: 1, color: '#ffffff' }]
+    expect(gradientColor(0, original)).toBe('rgb(0, 0, 0)')
+
+    const edited = original.map((s, i) => (i === 0 ? { ...s, color: '#ff0000' } : s))
+    expect(gradientColor(0, edited)).toBe('rgb(255, 0, 0)')
+    // The original array's cached parse is untouched by the edit.
+    expect(gradientColor(0, original)).toBe('rgb(0, 0, 0)')
+  })
+})
+
+describe('noteColor scheme dispatch', () => {
+  it('uses the voice hue in lightness mode', () => {
+    expect(noteColor(207, 100, DEFAULT_SCHEME)).toContain('hsl(207')
+  })
+
+  it('ignores the voice hue in gradient mode, by design', () => {
+    const scheme = { kind: 'gradient' as const, stops: [{ at: 0, color: '#000000' }, { at: 1, color: '#ffffff' }] }
+    expect(noteColor(207, 127, scheme)).toBe(noteColor(28, 127, scheme))
+  })
+
+  it('stays monotonic in gradient mode across the whole velocity range', () => {
+    const scheme = { kind: 'gradient' as const, stops: [{ at: 0, color: '#000000' }, { at: 1, color: '#ffffff' }] }
+    let prev = -1
+    for (let v = 0; v <= 127; v++) {
+      const m = /rgb\((\d+)/.exec(noteColor(0, v, scheme))!
+      expect(Number(m[1])).toBeGreaterThanOrEqual(prev)
+      prev = Number(m[1])
+    }
   })
 })

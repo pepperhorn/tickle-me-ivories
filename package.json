@@ -9,7 +9,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "sync:rig": "cp tools/strike-lab.html public/strike-lab.html && diff -q tools/strike-lab.html public/strike-lab.html"
   },
   "dependencies": {
     "@fontsource/poppins": "^5.3.0",
@@ -17,6 +18,7 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "smplr": "^1.0.0",
+    "tonal": "^6.4.3",
     "zustand": "^5.0.15"
   },
   "devDependencies": {

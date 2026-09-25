@@ -1,12 +1,18 @@
 import { drawKeyboard } from './keyboard'
 import { FLASH_MS, flashIntensity, noteColor } from './colors'
+import { roundRect } from './shapes'
+import { isTransparent } from './theme'
+import { lowerBoundByStart } from '../model/search'
+import type { Theme } from './theme'
 import type { KeyboardLayout } from './geometry'
 import type { NoteEvent, Voice } from '../model/types'
+import type { VelocityScheme } from '../settings/types'
 
 export interface RenderState {
   notes: NoteEvent[]           // sorted by startSec
   voices: Map<string, Voice>
   layout: KeyboardLayout
+  velocity: VelocityScheme
   fallSeconds: number
   /** Longest note in the score, in seconds, under the CURRENT tempo setting.
       The window search looks back this far for notes that started earlier and
@@ -16,20 +22,12 @@ export interface RenderState {
   showRoll: boolean            // false in keyboard-only mode
   showGrid: boolean
   showFlash: boolean
+  flashScale: number           // 0-1.5 multiplier on flash intensity
+  showMiddleC: boolean
+  theme: Theme
 }
 
-const BAR_RADIUS = 4
 const FLASH_TAIL = FLASH_MS / 1000
-
-function lowerBound(notes: NoteEvent[], startSec: number): number {
-  let lo = 0, hi = notes.length
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1
-    if (notes[mid].startSec < startSec) lo = mid + 1
-    else hi = mid
-  }
-  return lo
-}
 
 /**
  * Binary-searches the sorted array for the visible slice. Cost scales with notes
@@ -40,7 +38,7 @@ export function visibleNotes(
   notes: NoteEvent[], t: number, fallSeconds: number, maxNoteDur: number,
 ): NoteEvent[] {
   const out: NoteEvent[] = []
-  for (let i = lowerBound(notes, t - maxNoteDur - FLASH_TAIL); i < notes.length; i++) {
+  for (let i = lowerBoundByStart(notes, t - maxNoteDur - FLASH_TAIL); i < notes.length; i++) {
     const n = notes[i]
     if (n.startSec > t + fallSeconds) break
     if (n.endSec >= t - FLASH_TAIL) out.push(n)
@@ -60,21 +58,10 @@ export function heldNotes(visible: NoteEvent[], t: number): Map<number, NoteEven
   return held
 }
 
-function roundRect(
-  ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number,
-): void {
-  const rad = Math.max(0, Math.min(r, w / 3, Math.abs(h) / 2))
-  if (typeof ctx.roundRect === 'function') {
-    ctx.beginPath(); ctx.roundRect(x, y, w, h, rad); ctx.fill()
-  } else {
-    ctx.fillRect(x, y, w, h)
-  }
-}
-
 export function drawRoll(
   ctx: CanvasRenderingContext2D, state: RenderState, t: number, vis: NoteEvent[],
 ): void {
-  const { layout, voices, fallSeconds } = state
+  const { layout, voices, fallSeconds, theme } = state
   const pps = layout.hitY / fallSeconds
   const stageH = layout.hitY + layout.keyboardH
 
@@ -95,10 +82,10 @@ export function drawRoll(
       const h = Math.max(1, bottom - top)
 
       const g = ctx.createLinearGradient(0, top, 0, top + h)
-      g.addColorStop(0, noteColor(v.hue, Math.max(1, n.velocity - 14)))
-      g.addColorStop(1, noteColor(v.hue, n.velocity))
+      g.addColorStop(0, noteColor(v.hue, Math.max(1, n.velocity - 14), state.velocity))
+      g.addColorStop(1, noteColor(v.hue, n.velocity, state.velocity))
       ctx.fillStyle = g
-      roundRect(ctx, k.x + (k.black ? 0.5 : 1), top, k.w - (k.black ? 1 : 2), h, BAR_RADIUS)
+      roundRect(ctx, k.x + (k.black ? 0.5 : 1), top, k.w - (k.black ? 1 : 2), h, theme.barRadius)
     }
   }
 }
@@ -106,14 +93,14 @@ export function drawRoll(
 function drawImpact(
   ctx: CanvasRenderingContext2D, state: RenderState, t: number, vis: NoteEvent[],
 ): void {
-  const { layout, voices } = state
+  const { layout, voices, theme } = state
 
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
   for (const n of vis) {
     const v = voices.get(n.voiceId)
     if (!v || !v.visible) continue
-    const i = flashIntensity(t - n.startSec, n.velocity)
+    const i = flashIntensity(t - n.startSec, n.velocity) * state.flashScale
     if (i <= 0.003) continue
     const k = layout.byPitch.get(n.pitch)
     if (!k) continue
@@ -123,21 +110,21 @@ function drawImpact(
     const R = Math.max(2, 2.2 * layout.whiteW * i)
 
     const rg = ctx.createRadialGradient(cx, cy, 0, cx, cy, R)
-    rg.addColorStop(0, `rgba(255,255,255,${(0.9 * i).toFixed(3)})`)
-    rg.addColorStop(0.35, `rgba(255,242,214,${(0.34 * i).toFixed(3)})`)
-    rg.addColorStop(1, 'rgba(255,255,255,0)')
+    rg.addColorStop(0, `rgba(${theme.flashCoreRgb}, ${(0.9 * i).toFixed(3)})`)
+    rg.addColorStop(0.35, `rgba(${theme.flashWarmRgb}, ${(0.34 * i).toFixed(3)})`)
+    rg.addColorStop(1, `rgba(${theme.flashCoreRgb}, 0)`)
     ctx.fillStyle = rg
     ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill()
 
     const bg = ctx.createLinearGradient(0, cy - 26, 0, cy + 20)
-    bg.addColorStop(0, 'rgba(255,255,255,0)')
-    bg.addColorStop(0.5, `rgba(255,255,255,${(0.85 * i).toFixed(3)})`)
-    bg.addColorStop(1, 'rgba(255,255,255,0)')
+    bg.addColorStop(0, `rgba(${theme.flashCoreRgb}, 0)`)
+    bg.addColorStop(0.5, `rgba(${theme.flashCoreRgb}, ${(0.85 * i).toFixed(3)})`)
+    bg.addColorStop(1, `rgba(${theme.flashCoreRgb}, 0)`)
     ctx.fillStyle = bg
     ctx.fillRect(cx - k.w * 0.45, cy - 26, k.w * 0.9, 46)
 
     const len = 1.6 * layout.whiteW * i
-    ctx.strokeStyle = `rgba(255,255,255,${(0.7 * i).toFixed(3)})`
+    ctx.strokeStyle = `rgba(${theme.flashCoreRgb}, ${(0.7 * i).toFixed(3)})`
     ctx.lineWidth = 1
     ctx.lineCap = 'round'
     ctx.beginPath()
@@ -151,24 +138,45 @@ function drawImpact(
   ctx.restore()
 }
 
-/** The whole frame, in spec draw order. Pure function of t. */
+/**
+ * The whole frame, in spec draw order. Pure function of t. Returns the held set
+ * the keyboard was lit from (visible voices only), so the DOM text overlay reads
+ * the same pitches without a second visibleNotes pass (F38).
+ */
 export function drawStage(
   ctx: CanvasRenderingContext2D, state: RenderState, t: number, progress: number,
-): void {
-  const { layout } = state
-  const stageW = layout.whiteW * 52
+): Map<number, NoteEvent> {
+  const { layout, theme } = state
+  const stageW = layout.stageW
   const stageH = layout.hitY + layout.keyboardH
 
-  ctx.fillStyle = '#000'
-  ctx.fillRect(0, 0, stageW, stageH)
+  // Spec §13.1: a transparent stage CLEARS instead of filling, so an OBS
+  // browser source composites live video through the page. Alpha, not chroma
+  // key -- the impact layer draws with 'lighter', and an additive white bloom
+  // over green keys as desaturated fringing at the brightest moment of a note.
+  if (isTransparent(theme.stageBg)) {
+    ctx.clearRect(0, 0, stageW, stageH)
+  } else {
+    ctx.fillStyle = theme.stageBg
+    ctx.fillRect(0, 0, stageW, stageH)
+  }
 
   if (state.showGrid) {
+    // The dash array is set inside save()/restore() so it cannot leak into the
+    // bars, the keys or the flash -- exactly as the impact layer's composite op is.
+    ctx.save()
+    ctx.setLineDash(theme.gridLineDash)
+    ctx.lineWidth = theme.gridLineWidth
     for (let p = 24; p <= 108; p += 12) {
       const k = layout.byPitch.get(p)
       if (!k) continue
-      ctx.fillStyle = p === 60 ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.06)'
-      ctx.fillRect(k.x, 0, 1, layout.hitY)
+      ctx.strokeStyle = p === 60 ? theme.gridLineC4 : theme.gridLine
+      ctx.beginPath()
+      ctx.moveTo(k.x + theme.gridLineWidth / 2, 0)
+      ctx.lineTo(k.x + theme.gridLineWidth / 2, layout.hitY)
+      ctx.stroke()
     }
+    ctx.restore()
   }
 
   // Computed once per frame and threaded through to drawRoll/drawImpact below
@@ -183,12 +191,13 @@ export function drawStage(
   const held = heldNotes(
     vis.filter((n) => state.voices.get(n.voiceId)?.visible !== false), t,
   )
-  drawKeyboard(ctx, layout, state.voices, held)
+  drawKeyboard(ctx, state, held)
 
   if (state.showFlash) drawImpact(ctx, state, t, vis)
 
-  ctx.fillStyle = 'rgba(255,255,255,0.06)'
+  ctx.fillStyle = theme.progressTrack
   ctx.fillRect(0, stageH - 3, stageW, 3)
-  ctx.fillStyle = '#e8384f'
+  ctx.fillStyle = theme.progressFill
   ctx.fillRect(0, stageH - 3, stageW * Math.min(1, Math.max(0, progress)), 3)
+  return held
 }

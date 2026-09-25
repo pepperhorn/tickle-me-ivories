@@ -56,3 +56,26 @@ export function secToTicks(
   const e = segmentAtSec(map, base)
   return e.ticks + ((base - e.sec) * (e.bpm / 60)) * ppq
 }
+
+/** Two tempo settings are the same when a retime between them would change nothing. */
+export function sameTempo(a: TempoSetting, b: TempoSetting): boolean {
+  if (a.mode === 'scale') return b.mode === 'scale' && a.scale === b.scale
+  return b.mode === 'absolute' && a.bpm === b.bpm
+}
+
+/** The tempo slider's bounds. 0 must never reach ticksToSec's divisor. */
+export const MIN_TEMPO_SCALE = 0.25
+export const MAX_TEMPO_SCALE = 3
+
+/**
+ * The BPM actually sounding at playhead second `sec`. In scale mode the playhead
+ * is converted back to the file's own timeline before the segment is looked up,
+ * so the readout crosses a ritardando at the moment the listener hears it.
+ */
+export function effectiveBpmAt(
+  map: TempoEvent[], sec: number, setting: TempoSetting,
+): number {
+  if (setting.mode === 'absolute') return setting.bpm
+  const scale = Math.max(0.01, setting.scale)
+  return segmentAtSec(map, sec * scale).bpm * scale
+}
