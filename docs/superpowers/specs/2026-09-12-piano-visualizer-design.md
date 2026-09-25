@@ -514,8 +514,18 @@ Chord.detect(notes: string[], { assumePerfectFifth: true }): string[]
 ```
 
 Notes are passed **absolute and lowest-first**, because tonal treats the first
-element as the bass — that is what produces `CM/E` rather than `Em#5`. Take the
-first result; keep the rest for a settings-level "show alternates" option.
+element as the bass — that is what produces `CM/E` rather than `Em#5`.
+
+**Deviation (Task 15):** taking tonal's first result verbatim is wrong. tonal
+ranks a root-position reading first even when that reading is absurd —
+`Chord.detect(['E3','C4','G4'], { assumePerfectFifth: true })` returns
+`["Em#5", "CM/E"]`, so a first-inversion C major would print as `Em#5`. The
+fix is a single stable demote-the-rare pass over tonal's own candidate list:
+any candidate whose quality contains an altered extension (`#5`, `b5`, `#9`,
+`b9`, `#11`, `b13`, `alt`, `omit`) sorts after the rest, and tonal's order
+decides everything else (`rankCandidates` in `src/music/chords.ts`). Take the
+first result *after* that pass; keep the rest for a settings-level "show
+alternates" option.
 
 **The chord window.** A piano arpeggio sounds one note at a time, so identifying
 only simultaneously-held pitches would produce nonsense on most real music. The
