@@ -39,4 +39,6 @@ export interface ScoreDocument {
   durationSec: number
   sourceFormat: 'midi' | 'musicxml'
   beatsPerBar: number    // from the file's first time signature; 4 if absent
+  /** From the MIDI key-signature meta event; null when the file carries none. */
+  keySignature: { key: string; scale: string } | null
 }

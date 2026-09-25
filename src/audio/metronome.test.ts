@@ -11,6 +11,7 @@ function score(patch: Partial<ScoreDocument> = {}): ScoreDocument {
     id: 'x', name: 'x', ppq: 480,
     tempoMap: buildTempoMap([{ ticks: 0, bpm: 120 }], 480),
     voices: [], notes, durationSec: 2, sourceFormat: 'midi', beatsPerBar: 4,
+    keySignature: null,
     ...patch,
   }
 }
