@@ -4,7 +4,7 @@ import type { ScoreDocument } from '../model/types'
 
 const score = (keySignature: ScoreDocument['keySignature']): ScoreDocument => ({
   id: 'x', name: 'x', ppq: 480, tempoMap: [], voices: [], notes: [],
-  durationSec: 0, sourceFormat: 'midi', beatsPerBar: 4, keySignature,
+  durationSec: 0, sourceFormat: 'midi', timeSignatures: [], keySignature,
 })
 
 describe('parseKeyString', () => {

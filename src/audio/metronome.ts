@@ -1,4 +1,5 @@
 import { ticksToSec } from '../model/tempoMap'
+import { normaliseTimeSignatures } from '../model/timeSignatures'
 import { clampToNow } from './engine'
 import { LOOKAHEAD_SEC } from './scheduler'
 import type { ScoreDocument, TempoSetting } from '../model/types'
@@ -9,17 +10,30 @@ export interface Beat { sec: number; accent: boolean }
  * Beat positions are computed in TICKS and converted through the tempo map,
  * never as a fixed interval. That is what makes the click follow a ritardando
  * and stay correct in both tempo modes.
+ *
+ * The pulse comes from each time signature in turn: one click per denominator
+ * unit (a half note in 2/2, an eighth in 3/8), except in compound metres --
+ * 6/8, 9/8, 12/8 and their /16 cousins -- where it clicks the dotted pulse, the
+ * beat a player actually counts. Each signature starts a new bar, so the
+ * accent re-seats at every change.
  */
 export function beatTimes(score: ScoreDocument, setting: TempoSetting): Beat[] {
   if (score.notes.length === 0) return []
   const lastTick = score.notes.reduce((m, n) => Math.max(m, n.startTicks + n.durTicks), 0)
-  const perBar = Math.max(1, Math.round(score.beatsPerBar))
+  const sigs = normaliseTimeSignatures(score.timeSignatures)
   const beats: Beat[] = []
-  for (let i = 0, ticks = 0; ticks <= lastTick; i++, ticks = i * score.ppq) {
-    beats.push({
-      sec: ticksToSec(score.tempoMap, score.ppq, ticks, setting),
-      accent: i % perBar === 0,
-    })
+  for (let s = 0; s < sigs.length; s++) {
+    const { ticks: start, numerator: num, denominator: den } = sigs[s]
+    const end = s + 1 < sigs.length ? sigs[s + 1].ticks : Infinity
+    const compound = den >= 8 && num > 3 && num % 3 === 0
+    const pulse = ((score.ppq * 4) / den) * (compound ? 3 : 1)
+    const perBar = compound ? num / 3 : num
+    for (let i = 0, ticks = start; ticks < end && ticks <= lastTick; i++, ticks = start + i * pulse) {
+      beats.push({
+        sec: ticksToSec(score.tempoMap, score.ppq, ticks, setting),
+        accent: i % perBar === 0,
+      })
+    }
   }
   return beats
 }

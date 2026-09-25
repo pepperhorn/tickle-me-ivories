@@ -10,11 +10,18 @@ function score(patch: Partial<ScoreDocument> = {}): ScoreDocument {
   return {
     id: 'x', name: 'x', ppq: 480,
     tempoMap: buildTempoMap([{ ticks: 0, bpm: 120 }], 480),
-    voices: [], notes, durationSec: 2, sourceFormat: 'midi', beatsPerBar: 4,
+    voices: [], notes, durationSec: 2, sourceFormat: 'midi',
+    timeSignatures: [{ ticks: 0, numerator: 4, denominator: 4 }],
     keySignature: null,
     ...patch,
   }
 }
+
+const SCALE_1 = { mode: 'scale', scale: 1 } as const
+const sig = (ticks: number, numerator: number, denominator: number) => ({ ticks, numerator, denominator })
+const note = (startTicks: number, durTicks: number): NoteEvent => ({
+  id: 0, pitch: 60, startTicks, durTicks, startSec: 0, endSec: 0, velocity: 90, voiceId: 'a',
+})
 
 describe('beatTimes', () => {
   it('places a beat on every quarter note, inclusive of the last', () => {
@@ -28,8 +35,65 @@ describe('beatTimes', () => {
   })
 
   it('follows the time signature', () => {
-    const beats = beatTimes(score({ beatsPerBar: 3 }), { mode: 'scale', scale: 1 })
+    const beats = beatTimes(score({ timeSignatures: [sig(0, 3, 4)] }), SCALE_1)
     expect(beats.map((b) => b.accent)).toEqual([true, false, false, true, false])
+  })
+
+  it('assumes 4/4 from the start when the file carries no time signature', () => {
+    const beats = beatTimes(score({ timeSignatures: [] }), SCALE_1)
+    expect(beats.map((b) => b.sec)).toEqual([0, 0.5, 1, 1.5, 2])
+    expect(beats.map((b) => b.accent)).toEqual([true, false, false, false, true])
+  })
+
+  it('clicks half notes in 2/2', () => {
+    const beats = beatTimes(score({ timeSignatures: [sig(0, 2, 2)] }), SCALE_1)
+    expect(beats.map((b) => b.sec)).toEqual([0, 1, 2])
+    expect(beats.map((b) => b.accent)).toEqual([true, false, true])
+  })
+
+  it('clicks eighth notes in 3/8 (simple, not compound)', () => {
+    const beats = beatTimes(score({ timeSignatures: [sig(0, 3, 8)] }), SCALE_1)
+    // 240 ticks = 0.25s per eighth; 1920 ticks = 8 eighths, inclusive of the last
+    expect(beats.map((b) => b.sec)).toEqual([0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2])
+    expect(beats.map((b) => b.accent))
+      .toEqual([true, false, false, true, false, false, true, false, false])
+  })
+
+  it('clicks the dotted-quarter pulse in 6/8, accenting each bar', () => {
+    const beats = beatTimes(score({ timeSignatures: [sig(0, 6, 8)] }), SCALE_1)
+    // 720 ticks = 0.75s per dotted quarter, two per bar
+    expect(beats.map((b) => b.sec)).toEqual([0, 0.75, 1.5])
+    expect(beats.map((b) => b.accent)).toEqual([true, false, true])
+  })
+
+  it('clicks four dotted quarters per bar in 12/8', () => {
+    const s = score({ timeSignatures: [sig(0, 12, 8)], notes: [note(0, 2880 * 2)] })
+    const beats = beatTimes(s, SCALE_1)
+    expect(beats.map((b) => b.sec)).toEqual([0, 0.75, 1.5, 2.25, 3, 3.75, 4.5, 5.25, 6])
+    expect(beats.map((b) => b.accent))
+      .toEqual([true, false, false, false, true, false, false, false, true])
+  })
+
+  it('follows a later time-signature change, accenting from the new bar', () => {
+    // one bar of 4/4 (1920 ticks), then 3/4 from tick 1920
+    const s = score({
+      timeSignatures: [sig(0, 4, 4), sig(1920, 3, 4)],
+      notes: [note(0, 1920 + 1440)],
+    })
+    const beats = beatTimes(s, SCALE_1)
+    expect(beats.map((b) => b.sec)).toEqual([0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5])
+    expect(beats.map((b) => b.accent))
+      .toEqual([true, false, false, false, true, false, false, true])
+  })
+
+  it('switches pulse at a change from 4/4 to 6/8', () => {
+    const s = score({
+      timeSignatures: [sig(0, 4, 4), sig(1920, 6, 8)],
+      notes: [note(0, 1920 + 1440)],
+    })
+    const beats = beatTimes(s, SCALE_1)
+    expect(beats.map((b) => b.sec)).toEqual([0, 0.5, 1, 1.5, 2, 2.75, 3.5])
+    expect(beats.map((b) => b.accent)).toEqual([true, false, false, false, true, false, true])
   })
 
   it('follows the tempo scale', () => {

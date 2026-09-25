@@ -82,20 +82,24 @@ describe('parseMidi', () => {
     expect(s.voices.map((v) => v.label)).toEqual(['Right', 'Left'])
   })
 
-  it('defaults beatsPerBar to 4 when the file carries no time signature', () => {
+  it('defaults to 4/4 from tick 0 when the file carries no time signature', () => {
     const s = parseMidi(makeMidi([{ name: 'Piano', notes: [[60, 0, 0.5]] }]), 'x.mid', SCALE_1)
-    expect(s.beatsPerBar).toBe(4)
+    expect(s.timeSignatures).toEqual([{ ticks: 0, numerator: 4, denominator: 4 }])
   })
 
-  it("reads beatsPerBar from the file's first time signature", () => {
+  it('reads every time signature with its denominator', () => {
     const midi = new Midi()
     midi.header.setTempo(120)
-    midi.header.timeSignatures.push({ ticks: 0, timeSignature: [3, 4] })
+    midi.header.timeSignatures.push({ ticks: 0, timeSignature: [6, 8] })
+    midi.header.timeSignatures.push({ ticks: 1920, timeSignature: [2, 2] })
     const track = midi.addTrack()
     track.name = 'Piano'
     track.addNote({ midi: 60, time: 0, duration: 0.5, velocity: 0.8 })
     const s = parseMidi(midi.toArray().buffer as ArrayBuffer, 'x.mid', SCALE_1)
-    expect(s.beatsPerBar).toBe(3)
+    expect(s.timeSignatures).toEqual([
+      { ticks: 0, numerator: 6, denominator: 8 },
+      { ticks: 1920, numerator: 2, denominator: 2 },
+    ])
   })
 
   it('hand-splits a file whose only pitched track sits behind a conductor track', () => {
