@@ -80,6 +80,98 @@ describe('profile encode/decode', () => {
   })
 })
 
+/** A valid exported profile with one path replaced, re-encoded as the raw JSON an import would see. */
+function tampered(edit: (p: Record<string, any>) => void): string {
+  const p = JSON.parse(encodeProfile(profile())) as Record<string, any>
+  edit(p)
+  return JSON.stringify(p)
+}
+
+describe('decodeProfile validation of untrusted input', () => {
+  it('refuses a gradient velocity scheme with no stops', () => {
+    expect(() => decodeProfile(tampered((p) => { p.global.velocity = { kind: 'gradient' } }))).toThrow(/velocity/i)
+  })
+
+  it('refuses a gradient stop with a non-numeric position', () => {
+    expect(() => decodeProfile(tampered((p) => {
+      p.global.velocity = { kind: 'gradient', stops: [{ at: 0, color: '#000' }, { at: 'x', color: '#fff' }] }
+    }))).toThrow(/velocity/i)
+  })
+
+  it('refuses a lightness scheme with a missing field', () => {
+    expect(() => decodeProfile(tampered((p) => { p.global.velocity = { kind: 'lightness', lMax: 78 } }))).toThrow(/velocity/i)
+  })
+
+  it('refuses an unknown velocity kind', () => {
+    expect(() => decodeProfile(tampered((p) => { p.global.velocity = { kind: 'rainbow' } }))).toThrow(/velocity/i)
+  })
+
+  it('accepts a valid gradient scheme', () => {
+    const stops = [{ at: 0, color: '#000000' }, { at: 1, color: '#ffffff' }]
+    const p = decodeProfile(tampered((x) => { x.global.velocity = { kind: 'gradient', stops } }))
+    expect(p.global.velocity).toEqual({ kind: 'gradient', stops })
+  })
+
+  it('refuses an empty audio block', () => {
+    expect(() => decodeProfile(tampered((p) => { p.global.audio = {} }))).toThrow(/audio/i)
+  })
+
+  it('refuses a non-numeric master volume', () => {
+    expect(() => decodeProfile(tampered((p) => { p.global.audio.masterVolume = 'loud' }))).toThrow(/audio/i)
+  })
+
+  it('refuses a master volume outside 0-1', () => {
+    expect(() => decodeProfile(tampered((p) => { p.global.audio.masterVolume = 5 }))).toThrow(/audio/i)
+  })
+
+  it('refuses a missing metronome volume', () => {
+    expect(() => decodeProfile(tampered((p) => { delete p.global.audio.metronomeVolume }))).toThrow(/audio/i)
+  })
+
+  it('drops voice entries that are not objects with a string id', () => {
+    const p = decodeProfile(tampered((x) => { x.voices = [null, 7, { hue: 3 }, { id: 5 }, { id: 'l', hue: 40 }] }))
+    expect(p.voices).toEqual([{ id: 'l', hue: 40 }])
+  })
+
+  it('omits voice fields of the wrong type so the parsed value survives the merge', () => {
+    const p = decodeProfile(tampered((x) => {
+      x.voices = [{ id: 'l', volume: 'x', hue: null, visible: 'yes', audible: 1, label: 9, instrument: {} }]
+    }))
+    expect(p.voices).toEqual([{ id: 'l' }])
+    expect(mergeVoices([voice('l')], p.voices)[0]).toEqual(voice('l'))
+  })
+
+  it('clamps voice volume to 0-1 and hue to 0-360', () => {
+    const p = decodeProfile(tampered((x) => { x.voices = [{ id: 'l', volume: 4, hue: -20 }] }))
+    expect(p.voices[0]).toEqual({ id: 'l', volume: 1, hue: 0 })
+  })
+
+  it('refuses an unknown display mode', () => {
+    expect(() => decodeProfile(tampered((p) => { p.display.mode = 'notation' }))).toThrow(/display mode/i)
+  })
+
+  it('refuses a non-numeric fall time', () => {
+    expect(() => decodeProfile(tampered((p) => { p.display.fallSeconds = 'slow' }))).toThrow(/fall/i)
+  })
+
+  it('clamps a zero or huge fall time to the slider range', () => {
+    expect(decodeProfile(tampered((p) => { p.display.fallSeconds = 0 })).display.fallSeconds).toBe(0.5)
+    expect(decodeProfile(tampered((p) => { p.display.fallSeconds = -3 })).display.fallSeconds).toBe(0.5)
+    expect(decodeProfile(tampered((p) => { p.display.fallSeconds = 99 })).display.fallSeconds).toBe(8)
+  })
+
+  it('drops an invalid display settings block instead of applying it', () => {
+    const p = decodeProfile(tampered((x) => { x.display.settings = {} }))
+    expect(p.display.settings).toBeUndefined()
+    expect(p.display.mode).toBe('keyboard')
+  })
+
+  it('drops display settings with an unknown zoom', () => {
+    const p = decodeProfile(tampered((x) => { x.display.settings.zoom = 'huge' }))
+    expect(p.display.settings).toBeUndefined()
+  })
+})
+
 describe('mergeVoices', () => {
   it('adopts the saved fields for voices matched by id', () => {
     const merged = mergeVoices([voice('l'), voice('r')], [voice('r', { hue: 12, label: 'Top', volume: 0.3 })])
@@ -118,6 +210,16 @@ describe('localStorage persistence', () => {
   it('returns null rather than throwing on a corrupt stored value', () => {
     localStorage.setItem('tmi.profile.broken', '{{{')
     expect(loadProfile('broken')).toBeNull()
+  })
+
+  it('returns null for stored globals with an invalid velocity scheme', () => {
+    localStorage.setItem('tmi.globals', JSON.stringify({ velocity: { kind: 'gradient' }, audio: DEFAULT_SETTINGS.audio }))
+    expect(loadGlobals()).toBeNull()
+  })
+
+  it('returns null for stored globals with invalid audio values', () => {
+    localStorage.setItem('tmi.globals', JSON.stringify({ velocity: DEFAULT_SETTINGS.velocity, audio: { masterVolume: 'x' } }))
+    expect(loadGlobals()).toBeNull()
   })
 
   it('stores globals under their own key, independent of any song', () => {

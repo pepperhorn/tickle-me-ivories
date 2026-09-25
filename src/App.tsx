@@ -340,21 +340,34 @@ export default function App() {
       setProfileError((e as Error).message)
       return
     }
-    setProfileError(null)
+    // Compute everything derived from the file BEFORE the first mutation, so a
+    // failure here leaves the app exactly as it was.
     const tr = useTransport.getState()
-    useSettings.getState().replaceAll({
-      ...currentSettings(), theme: p.theme, text: p.text,
-      ...(p.display.settings ? { display: p.display.settings } : {}),
-      ...(applyGlobals ? { velocity: p.global.velocity, audio: p.global.audio } : {}),
-    })
-    if (applyGlobals) engine.setMasterVolume(p.global.audio.masterVolume)
-    if (tr.score) {
-      const voices = mergeVoices(tr.score.voices, p.voices)
-      useTransport.setState({ score: { ...tr.score, voices } })
-      for (const v of voices) { engine.setVoiceVolume(v.id, v.volume); void engine.loadVoice(v) }
-      changeTempo(p.tempo)
-      tr.setMode(p.display.mode)
-      tr.setFallSeconds(p.display.fallSeconds)
+    let next, voices
+    try {
+      next = {
+        ...currentSettings(), theme: p.theme, text: p.text,
+        ...(p.display.settings ? { display: p.display.settings } : {}),
+        ...(applyGlobals ? { velocity: p.global.velocity, audio: p.global.audio } : {}),
+      }
+      voices = tr.score ? mergeVoices(tr.score.voices, p.voices) : null
+    } catch (e) {
+      setProfileError(`Could not import profile: ${(e as Error).message}`)
+      return
+    }
+    try {
+      useSettings.getState().replaceAll(next)
+      if (applyGlobals) engine.setMasterVolume(p.global.audio.masterVolume)
+      if (tr.score && voices) {
+        useTransport.setState({ score: { ...tr.score, voices } })
+        for (const v of voices) { engine.setVoiceVolume(v.id, v.volume); void engine.loadVoice(v) }
+        changeTempo(p.tempo)
+        tr.setMode(p.display.mode)
+        tr.setFallSeconds(p.display.fallSeconds)
+      }
+      setProfileError(null)
+    } catch (e) {
+      setProfileError(`Profile was only partly applied: ${(e as Error).message}`)
     }
   }, [engine, changeTempo])
 

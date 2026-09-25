@@ -1,4 +1,6 @@
-import type { AudioSettings, DisplaySettings, Settings, TextSettings, ThemeSettings, VelocityScheme } from './types'
+import type {
+  AudioSettings, DisplaySettings, GradientStop, Settings, TextSettings, ThemeSettings, VelocityScheme,
+} from './types'
 import type { ScoreDocument, TempoSetting, Voice } from '../model/types'
 import type { DisplayMode } from '../transport/useTransport'
 import { MAX_TEMPO_SCALE, MIN_TEMPO_SCALE } from '../model/tempoMap'
@@ -11,6 +13,11 @@ const GLOBALS_KEY = 'tmi.globals'
 /** The absolute-BPM range the tempo control accepts. */
 const MIN_BPM = 20
 const MAX_BPM = 300
+/** The fall-time slider's range (DisplaySettings). */
+const MIN_FALL_SECONDS = 0.5
+const MAX_FALL_SECONDS = 8
+const MAX_FLASH_SCALE = 1.5
+const DISPLAY_MODES: readonly DisplayMode[] = ['keyboard', 'roll']
 
 /** App-wide preferences: they follow the user, not the song. */
 export interface GlobalPrefs {
@@ -18,13 +25,18 @@ export interface GlobalPrefs {
   audio: AudioSettings
 }
 
+/** A voice as stored in a profile. Only `id` is guaranteed: a decoded entry
+    omits any field that failed validation, and mergeVoices keeps the parsed value. */
+export type SavedVoice = Partial<Voice> & { id: string }
+
 export interface SongProfile {
   schemaVersion: number
   song: { id: string; name: string; format: ScoreDocument['sourceFormat'] }
-  voices: Voice[]
+  voices: SavedVoice[]
   tempo: TempoSetting
-  /** `settings` is the song-scoped display block: zoom, grid, flash, middle C. */
-  display: { mode: DisplayMode; fallSeconds: number; settings: DisplaySettings }
+  /** `settings` is the song-scoped display block: zoom, grid, flash, middle C.
+      Optional on decode: an invalid block is dropped rather than applied. */
+  display: { mode: DisplayMode; fallSeconds: number; settings?: DisplaySettings }
   theme: ThemeSettings
   text: TextSettings
   /** A snapshot of the globals at export time. Import applies it only on request. */
@@ -63,13 +75,83 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
  * control itself enforces; refuse anything that is not a number at all.
  */
 function sanitiseTempo(t: TempoSetting): TempoSetting {
-  if (t.mode === 'scale' && Number.isFinite(t.scale)) {
+  if (t.mode === 'scale' && isNum(t.scale)) {
     return { mode: 'scale', scale: clamp(t.scale, MIN_TEMPO_SCALE, MAX_TEMPO_SCALE) }
   }
-  if (t.mode === 'absolute' && Number.isFinite(t.bpm)) {
+  if (t.mode === 'absolute' && isNum(t.bpm)) {
     return { mode: 'absolute', bpm: clamp(t.bpm, MIN_BPM, MAX_BPM) }
   }
   throw new Error('Profile has an invalid tempo setting.')
+}
+
+// ---- Validators for untrusted JSON (imported files and localStorage). ----
+// A value that reaches the render path or an AudioParam with the wrong type
+// either unmounts the app or throws inside the engine, so every field is
+// checked here, before anything is applied.
+
+type Obj = Record<string, unknown>
+const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+const isUnit = (v: unknown): v is number => isNum(v) && v >= 0 && v <= 1
+
+/** Returns a clean copy of a valid velocity scheme, or null. */
+export function validVelocity(v: unknown): VelocityScheme | null {
+  if (!isObj(v)) return null
+  if (v.kind === 'lightness') {
+    if (!isNum(v.lMax) || !isNum(v.lMin) || !isNum(v.sat)) return null
+    return { kind: 'lightness', lMax: v.lMax, lMin: v.lMin, sat: v.sat }
+  }
+  if (v.kind === 'gradient') {
+    // The editor never goes below two stops; neither does an import.
+    if (!Array.isArray(v.stops) || v.stops.length < 2) return null
+    const stops: GradientStop[] = []
+    for (const st of v.stops as unknown[]) {
+      if (!isObj(st) || !isUnit(st.at) || typeof st.color !== 'string') return null
+      stops.push({ at: st.at, color: st.color })
+    }
+    return { kind: 'gradient', stops }
+  }
+  return null
+}
+
+/** Returns a clean copy of valid audio settings, or null. */
+export function validAudio(a: unknown): AudioSettings | null {
+  if (!isObj(a)) return null
+  if (!isUnit(a.masterVolume) || !isUnit(a.metronomeVolume) || typeof a.metronome !== 'boolean') return null
+  return { masterVolume: a.masterVolume, metronome: a.metronome, metronomeVolume: a.metronomeVolume }
+}
+
+/** Returns a clean copy of valid display settings, or null (the caller drops it). */
+export function validDisplaySettings(d: unknown): DisplaySettings | null {
+  if (!isObj(d)) return null
+  if (d.zoom !== 'full' && d.zoom !== 'fit') return null
+  if (typeof d.showGrid !== 'boolean' || typeof d.showFlash !== 'boolean' || typeof d.showMiddleC !== 'boolean') return null
+  if (!isNum(d.flashScale)) return null
+  return {
+    zoom: d.zoom, showGrid: d.showGrid, showFlash: d.showFlash,
+    flashScale: clamp(d.flashScale, 0, MAX_FLASH_SCALE), showMiddleC: d.showMiddleC,
+  }
+}
+
+/**
+ * Drops entries that are not objects with a string id, and omits any field of
+ * the wrong type so mergeVoices keeps the parsed value for it. Volume is
+ * clamped to 0-1 and hue to 0-360: both reach the engine or the colour maths.
+ */
+export function sanitiseVoices(list: unknown[]): SavedVoice[] {
+  const out: SavedVoice[] = []
+  for (const v of list) {
+    if (!isObj(v) || typeof v.id !== 'string') continue
+    const s: SavedVoice = { id: v.id }
+    if (typeof v.label === 'string') s.label = v.label
+    if (typeof v.instrument === 'string') s.instrument = v.instrument
+    if (isNum(v.hue)) s.hue = clamp(v.hue, 0, 360)
+    if (isNum(v.volume)) s.volume = clamp(v.volume, 0, 1)
+    if (typeof v.visible === 'boolean') s.visible = v.visible
+    if (typeof v.audible === 'boolean') s.audible = v.audible
+    out.push(s)
+  }
+  return out
 }
 
 /**
@@ -85,12 +167,34 @@ export function decodeProfile(json: string): SongProfile {
     )
   }
   if (
-    !raw.song?.id || !Array.isArray(raw.voices) || !raw.tempo || !raw.display
-    || !raw.theme || !raw.text || !raw.global?.velocity || !raw.global.audio
+    !isObj(raw.song) || typeof raw.song.id !== 'string' || !raw.song.id
+    || !Array.isArray(raw.voices) || !isObj(raw.tempo) || !isObj(raw.display)
+    || !isObj(raw.theme) || !isObj(raw.text) || !isObj(raw.global)
   ) {
     throw new Error('Profile is missing required fields.')
   }
-  return { ...raw, tempo: sanitiseTempo(raw.tempo) } as SongProfile
+  const velocity = validVelocity(raw.global.velocity)
+  if (!velocity) throw new Error('Profile has an invalid velocity colour scheme.')
+  const audio = validAudio(raw.global.audio)
+  if (!audio) throw new Error('Profile has invalid audio settings.')
+
+  const { mode, fallSeconds, settings } = raw.display as Obj
+  if (!DISPLAY_MODES.includes(mode as DisplayMode)) throw new Error('Profile has an invalid display mode.')
+  if (!isNum(fallSeconds)) throw new Error('Profile has an invalid fall time.')
+  const display: SongProfile['display'] = {
+    mode: mode as DisplayMode,
+    fallSeconds: clamp(fallSeconds, MIN_FALL_SECONDS, MAX_FALL_SECONDS),
+  }
+  const ds = validDisplaySettings(settings)
+  if (ds) display.settings = ds
+
+  return {
+    ...raw,
+    voices: sanitiseVoices(raw.voices),
+    tempo: sanitiseTempo(raw.tempo),
+    display,
+    global: { velocity, audio },
+  } as SongProfile
 }
 
 /**
@@ -100,7 +204,7 @@ export function decodeProfile(json: string): SongProfile {
  * can never rename an id -- otherwise a stale profile would orphan every note,
  * whose voiceId still points at the parsed value.
  */
-export function mergeVoices(parsed: Voice[], saved: Voice[]): Voice[] {
+export function mergeVoices(parsed: Voice[], saved: SavedVoice[]): Voice[] {
   const by = new Map(saved.map((v) => [v.id, v]))
   return parsed.map((v) => {
     const s = by.get(v.id)
@@ -144,7 +248,10 @@ export function loadGlobals(): GlobalPrefs | null {
   const raw = read(GLOBALS_KEY)
   if (!raw) return null
   try {
-    const g = JSON.parse(raw) as Partial<GlobalPrefs>
-    return g.velocity && g.audio ? (g as GlobalPrefs) : null
+    const g: unknown = JSON.parse(raw)
+    if (!isObj(g)) return null
+    const velocity = validVelocity(g.velocity)
+    const audio = validAudio(g.audio)
+    return velocity && audio ? { velocity, audio } : null
   } catch { return null }
 }
