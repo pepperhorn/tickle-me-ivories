@@ -14,6 +14,8 @@ export interface KeyboardLayout {
   keyboardH: number
   blackH: number
   hitY: number
+  stageW: number
+  whiteCount: number
 }
 
 export interface GeometryOpts {
@@ -21,6 +23,8 @@ export interface GeometryOpts {
   blackWRatio: number     // black key width as a fraction of white
   blackLenRatio: number   // black key length as a fraction of keyboard height
   trueOffsets: boolean    // false reproduces the naive boundary-centred bug
+  firstPitch: number      // lowest pitch on the visible keyboard
+  lastPitch: number       // highest pitch on the visible keyboard
 }
 
 export const FIRST_PITCH = 21
@@ -51,17 +55,74 @@ export const DEFAULT_GEOMETRY: GeometryOpts = {
   blackWRatio: 0.5652,    // 13/23, matching chordl
   blackLenRatio: 0.655,   // JIS 95mm / DIN 145mm = 0.6552; reference measures 0.6554
   trueOffsets: true,
+  firstPitch: FIRST_PITCH,
+  lastPitch: LAST_PITCH,
 }
 
 export function isBlackKey(pitch: number): boolean {
   return BLACK_PC.has(((pitch % 12) + 12) % 12)
 }
 
+export function whiteKeyCount(lo: number, hi: number): number {
+  let n = 0
+  for (let p = lo; p <= hi; p++) if (!isBlackKey(p)) n++
+  return n
+}
+
+/** White-key pitch classes a range boundary may safely land on. Anything else
+    cuts a black-key group in half, which reads as a broken keyboard. */
+const START_SAFE = new Set([0, 4, 5, 11])   // C, E, F, B
+const END_SAFE = new Set([0, 4, 5, 11])     // C, E, F, B
+
+export const MIN_FIT_SEMITONES = 24
+
+const pc = (p: number) => ((p % 12) + 12) % 12
+
+/**
+ * chordl's ensureFullBlackKeyGroups, per spec §8: extend the start down to C
+ * when it lands on D, to F when it lands on G or A; extend the end up to E when
+ * it lands on D, to B when it lands on G or A. A black-key bound is snapped out
+ * to its neighbouring white key first. Never widens past the 88-key keyboard --
+ * the A0/A#0/B0 partial group at the bottom is inherent to a real piano.
+ */
+export function ensureFullBlackKeyGroups(lo: number, hi: number): [number, number] {
+  let a = Math.max(FIRST_PITCH, Math.min(LAST_PITCH, lo))
+  let b = Math.max(FIRST_PITCH, Math.min(LAST_PITCH, hi))
+  if (isBlackKey(a)) a--
+  if (isBlackKey(b)) b++
+  a = Math.max(FIRST_PITCH, a)
+  b = Math.min(LAST_PITCH, b)
+  while (a > FIRST_PITCH && !START_SAFE.has(pc(a))) a--
+  while (b < LAST_PITCH && !END_SAFE.has(pc(b))) b++
+  return [a, b]
+}
+
+/** The piece's own pitch range, floored at two octaves so a sparse piece does
+    not blow the keys up to absurd size, then widened to whole groups. */
+export function fitRange(notes: { pitch: number }[]): [number, number] {
+  if (notes.length === 0) return [FIRST_PITCH, LAST_PITCH]
+  let lo = Infinity
+  let hi = -Infinity
+  for (const n of notes) {
+    if (n.pitch < lo) lo = n.pitch
+    if (n.pitch > hi) hi = n.pitch
+  }
+  lo = Math.max(FIRST_PITCH, Math.min(LAST_PITCH, lo))
+  hi = Math.max(FIRST_PITCH, Math.min(LAST_PITCH, hi))
+  let short = MIN_FIT_SEMITONES - (hi - lo)
+  while (short > 0 && (lo > FIRST_PITCH || hi < LAST_PITCH)) {
+    if (hi < LAST_PITCH) { hi++; short-- }
+    if (short > 0 && lo > FIRST_PITCH) { lo--; short-- }
+  }
+  return ensureFullBlackKeyGroups(lo, hi)
+}
+
 export function computeLayout(
   stageW: number, stageH: number, opts: Partial<GeometryOpts> = {},
 ): KeyboardLayout {
   const o = { ...DEFAULT_GEOMETRY, ...opts }
-  const whiteW = stageW / WHITE_KEY_COUNT
+  const count = Math.max(1, whiteKeyCount(o.firstPitch, o.lastPitch))
+  const whiteW = stageW / count
   const blackW = Math.max(3, whiteW * o.blackWRatio)
   // Height derives from key WIDTH, never from the viewport. Taking it from stage
   // height gave 19.5:1 in phone portrait. The cap only bites on short windows.
@@ -71,7 +132,7 @@ export function computeLayout(
 
   const keys: KeyRect[] = []
   let wi = 0
-  for (let p = FIRST_PITCH; p <= LAST_PITCH; p++) {
+  for (let p = o.firstPitch; p <= o.lastPitch; p++) {
     if (isBlackKey(p)) {
       const off = o.trueOffsets ? BLACK_OFFSET[p % 12] * blackW : 0
       keys.push({ pitch: p, black: true, x: wi * whiteW + off - blackW / 2, w: blackW, h: blackH })
@@ -84,6 +145,7 @@ export function computeLayout(
     keys,
     byPitch: new Map(keys.map((k) => [k.pitch, k])),
     whiteW, blackW, keyboardH, blackH, hitY,
+    stageW, whiteCount: count,
   }
 }
 

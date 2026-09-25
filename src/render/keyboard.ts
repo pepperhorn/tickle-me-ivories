@@ -26,7 +26,7 @@ export function drawKeyboard(
 
     // Middle C carries a dark border and a "C4" label so orientation
     // survives phone scale, where 88 keys means ~16px per white key.
-    if (k.pitch === MIDDLE_C) {
+    if (k.pitch === MIDDLE_C && state.showMiddleC) {
       ctx.fillStyle = 'rgba(0,0,0,0.55)'
       ctx.fillRect(k.x, hitY, 1.5, keyboardH)
       ctx.fillRect(k.x + k.w - 2.5, hitY, 1.5, keyboardH)
@@ -56,5 +56,5 @@ export function drawKeyboard(
   }
 
   ctx.fillStyle = 'rgba(255,255,255,0.16)'
-  ctx.fillRect(0, hitY, layout.whiteW * 52, 1)
+  ctx.fillRect(0, hitY, layout.stageW, 1)
 }

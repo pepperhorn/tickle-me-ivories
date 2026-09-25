@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { computeLayout, pitchAt } from './geometry'
+import {
+  computeLayout, pitchAt, ensureFullBlackKeyGroups, fitRange, whiteKeyCount,
+  FIRST_PITCH, LAST_PITCH,
+} from './geometry'
 
 const BLACK_PC = new Set([1, 3, 6, 8, 10])
 const REF_W = 1220          // reference frame width; whiteW = 23.462
@@ -121,5 +124,92 @@ describe('pitchAt', () => {
     const l = computeLayout(1000, 600)
     const c = l.byPitch.get(60)!     // C4
     expect(pitchAt(l, c.x + 2, l.hitY + l.keyboardH - 4)).toBe(60)
+  })
+})
+
+describe('whiteKeyCount', () => {
+  it('counts the full 88-key keyboard as 52 whites', () => {
+    expect(whiteKeyCount(FIRST_PITCH, LAST_PITCH)).toBe(52)
+  })
+
+  it('counts one octave C-B as 7 whites', () => {
+    expect(whiteKeyCount(60, 71)).toBe(7)
+  })
+})
+
+describe('ensureFullBlackKeyGroups', () => {
+  it('extends a start on D down to C, and an end on G up to B', () => {
+    expect(ensureFullBlackKeyGroups(62, 79)).toEqual([60, 83])   // D4..G5 -> C4..B5
+  })
+
+  it('extends a start on A down to F, and an end on D up to E', () => {
+    expect(ensureFullBlackKeyGroups(69, 74)).toEqual([65, 76])   // A4..D5 -> F4..E5
+  })
+
+  it('leaves a C..B range untouched', () => {
+    expect(ensureFullBlackKeyGroups(60, 71)).toEqual([60, 71])
+  })
+
+  it('leaves a start on E and an end on C untouched -- neither cuts a group', () => {
+    expect(ensureFullBlackKeyGroups(64, 72)).toEqual([64, 72])
+  })
+
+  it('snaps a black-key bound out to its neighbouring white key first', () => {
+    expect(ensureFullBlackKeyGroups(61, 82)).toEqual([60, 83])   // C#4..A#5
+  })
+
+  it('never widens past the 88-key keyboard', () => {
+    expect(ensureFullBlackKeyGroups(FIRST_PITCH, LAST_PITCH)).toEqual([FIRST_PITCH, LAST_PITCH])
+  })
+})
+
+describe('fitRange', () => {
+  it('returns the whole keyboard for an empty score', () => {
+    expect(fitRange([])).toEqual([FIRST_PITCH, LAST_PITCH])
+  })
+
+  it('widens a narrow piece to at least two octaves, then to whole groups', () => {
+    // C4..E4 is 4 semitones; padded alternately up and down to 24 gives D3..D5,
+    // which then widens to C3..E5 because both bounds land on D.
+    expect(fitRange([{ pitch: 60 }, { pitch: 64 }])).toEqual([48, 76])
+  })
+
+  it('fits a wide piece to its own range, widened to whole groups', () => {
+    // D3..G#5 already spans more than two octaves, so only the group rule applies.
+    expect(fitRange([{ pitch: 50 }, { pitch: 80 }])).toEqual([48, 83])
+  })
+})
+
+describe('computeLayout with a pitch range', () => {
+  it('is unchanged at the default full range', () => {
+    const l = computeLayout(1220, 700)
+    expect(l.whiteCount).toBe(52)
+    expect(l.stageW).toBeCloseTo(1220, 6)
+    expect(l.whiteW).toBeCloseTo(1220 / 52, 9)
+    expect(l.keys).toHaveLength(88)
+  })
+
+  it('tiles a narrower range across the SAME stage width, with wider keys', () => {
+    const l = computeLayout(1220, 700, { firstPitch: 60, lastPitch: 71 })
+    expect(l.whiteCount).toBe(7)
+    expect(l.whiteW).toBeCloseTo(1220 / 7, 9)
+    expect(l.keys[0].pitch).toBe(60)
+    expect(l.keys[0].x).toBeCloseTo(0, 9)
+    expect(l.byPitch.get(59)).toBeUndefined()
+  })
+
+  it('still tiles the whites edge to edge with no gap or overhang', () => {
+    const l = computeLayout(1220, 700, { firstPitch: 65, lastPitch: 88 })
+    const whites = l.keys.filter((k) => !k.black)
+    expect(whites[0].x).toBeCloseTo(0, 9)
+    const last = whites[whites.length - 1]
+    expect(last.x + last.w).toBeCloseTo(l.stageW, 6)
+  })
+
+  it('keeps G# exactly on the white-key boundary inside a zoomed range', () => {
+    const l = computeLayout(1220, 700, { firstPitch: 60, lastPitch: 71 })
+    const gSharp = l.byPitch.get(68)!
+    const a = l.byPitch.get(69)!
+    expect(gSharp.x + gSharp.w / 2).toBeCloseTo(a.x, 6)
   })
 })

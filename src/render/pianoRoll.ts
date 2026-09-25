@@ -18,6 +18,8 @@ export interface RenderState {
   showRoll: boolean            // false in keyboard-only mode
   showGrid: boolean
   showFlash: boolean
+  flashScale: number           // 0-1.5 multiplier on flash intensity
+  showMiddleC: boolean
 }
 
 const BAR_RADIUS = 4
@@ -115,7 +117,7 @@ function drawImpact(
   for (const n of vis) {
     const v = voices.get(n.voiceId)
     if (!v || !v.visible) continue
-    const i = flashIntensity(t - n.startSec, n.velocity)
+    const i = flashIntensity(t - n.startSec, n.velocity) * state.flashScale
     if (i <= 0.003) continue
     const k = layout.byPitch.get(n.pitch)
     if (!k) continue
@@ -158,7 +160,7 @@ export function drawStage(
   ctx: CanvasRenderingContext2D, state: RenderState, t: number, progress: number,
 ): void {
   const { layout } = state
-  const stageW = layout.whiteW * 52
+  const stageW = layout.stageW
   const stageH = layout.hitY + layout.keyboardH
 
   ctx.fillStyle = '#000'

@@ -3,12 +3,13 @@ import { AudioEngine } from './audio/engine'
 import { Scheduler, TICK_MS } from './audio/scheduler'
 import { parseMidi } from './io/parseMidi'
 import { hashFile } from './io/hashFile'
-import { computeLayout } from './render/geometry'
+import { computeLayout, fitRange, FIRST_PITCH, LAST_PITCH } from './render/geometry'
 import { drawStage } from './render/pianoRoll'
 import { useCanvasStage } from './render/useCanvasStage'
 import { effectiveBpmAt } from './model/tempoMap'
 import { playheadAt, useTransport } from './transport/useTransport'
 import { useSettings } from './settings/useSettings'
+import { DisplaySettings } from './ui/DisplaySettings'
 import { FileDropZone } from './ui/FileDropZone'
 import { SettingsPanel, SettingsSection } from './ui/SettingsPanel'
 import { TempoControl } from './ui/TempoControl'
@@ -18,6 +19,7 @@ import { VoicePanel } from './ui/VoicePanel'
 import type { RenderState } from './render/pianoRoll'
 import type { KeyboardLayout } from './render/geometry'
 import type { ScoreDocument, TempoSetting, Voice } from './model/types'
+import type { ZoomMode } from './settings/types'
 
 export default function App() {
   const t = useTransport()
@@ -31,7 +33,10 @@ export default function App() {
   const voicesRef = useRef<{ score: ScoreDocument | null; map: Map<string, Voice> }>({
     score: null, map: new Map(),
   })
-  const layoutRef = useRef<{ w: number; h: number; layout: KeyboardLayout } | null>(null)
+  const layoutRef = useRef<{ w: number; h: number; first: number; last: number; layout: KeyboardLayout } | null>(null)
+  const rangeRef = useRef<{ score: ScoreDocument | null; zoom: ZoomMode; range: [number, number] }>({
+    score: null, zoom: 'full', range: [FIRST_PITCH, LAST_PITCH],
+  })
   // Bumped on every loadFile/loadAnother so a slow, now-superseded load can't
   // prune the CURRENT score's voice buses out from under it once it finally
   // resolves (voice ids like 'hand-left'/'hand-right' repeat across files).
@@ -49,17 +54,29 @@ export default function App() {
     return voicesRef.current.map
   }
 
-  // Cached by (w, h) so the draw loop does not allocate 88 KeyRects, an
-  // array, and an 88-entry Map 60x/sec for a layout that only changes on
-  // resize -- the same rule that keeps voicesFor() out of this hot path.
-  function layoutFor(w: number, h: number): KeyboardLayout {
+  // Cached by (w, h, first, last) so the draw loop does not allocate 88
+  // KeyRects, an array, and an 88-entry Map 60x/sec for a layout that only
+  // changes on resize or a zoom switch -- the same rule that keeps voicesFor()
+  // out of this hot path.
+  function layoutFor(w: number, h: number, first: number, last: number): KeyboardLayout {
     const cached = layoutRef.current
-    if (!cached || cached.w !== w || cached.h !== h) {
-      const layout = computeLayout(w, h)
-      layoutRef.current = { w, h, layout }
+    if (!cached || cached.w !== w || cached.h !== h || cached.first !== first || cached.last !== last) {
+      const layout = computeLayout(w, h, { firstPitch: first, lastPitch: last })
+      layoutRef.current = { w, h, first, last, layout }
       return layout
     }
     return cached.layout
+  }
+
+  // Cached for the same reason voicesFor and layoutFor are: fitRange scans every
+  // note in the score, and the range only changes on load or on a zoom switch.
+  function rangeFor(score: ScoreDocument | null, zoom: ZoomMode): [number, number] {
+    const c = rangeRef.current
+    if (c.score === score && c.zoom === zoom) return c.range
+    const range: [number, number] =
+      zoom === 'fit' && score ? fitRange(score.notes) : [FIRST_PITCH, LAST_PITCH]
+    rangeRef.current = { score, zoom, range }
+    return range
   }
 
   // Rebuild the scheduler whenever the note array is REPLACED (load or retime).
@@ -114,8 +131,9 @@ export default function App() {
       const tenth = Math.round(head * 10)
       if (tenth !== lastTenthRef.current) { lastTenthRef.current = tenth; setPlayhead(head) }
 
-      const layout = layoutFor(w, h)
       const st = useSettings.getState()
+      const [first, last] = rangeFor(state.score, st.display.zoom)
+      const layout = layoutFor(w, h, first, last)
       const rs: RenderState = {
         notes: state.score?.notes ?? [],
         voices: voicesFor(state.score),
@@ -124,8 +142,10 @@ export default function App() {
         fallSeconds: state.fallSeconds,
         maxNoteDur: state.maxNoteDur,
         showRoll: state.mode === 'roll',
-        showGrid: state.mode === 'roll',
-        showFlash: true,
+        showGrid: state.mode === 'roll' && st.display.showGrid,
+        showFlash: st.display.showFlash,
+        flashScale: st.display.flashScale,
+        showMiddleC: st.display.showMiddleC,
       }
       drawStage(ctx, rs, head, state.score ? head / state.score.durationSec : 0)
     }, [engine]),
@@ -263,6 +283,14 @@ export default function App() {
                 </SettingsSection>
                 <SettingsSection id="velocity" title="Velocity colour">
                   <VelocityEditor scheme={settings.velocity} onChange={settings.setVelocity} />
+                </SettingsSection>
+                <SettingsSection id="display" title="Display">
+                  <DisplaySettings
+                    display={settings.display}
+                    fallSeconds={t.fallSeconds}
+                    onDisplay={settings.setDisplay}
+                    onFallSeconds={t.setFallSeconds}
+                  />
                 </SettingsSection>
               </SettingsPanel>
             </>

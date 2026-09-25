@@ -114,6 +114,8 @@ describe('drawStage', () => {
     showRoll: true,
     showGrid: true,
     showFlash: true,
+    flashScale: 1,
+    showMiddleC: true,
   })
 
   it('draws without throwing on an empty score', () => {
