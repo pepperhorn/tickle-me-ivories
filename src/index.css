@@ -14,6 +14,31 @@
   --accent: #ff9c1a;
 }
 
+/* Canvas theme tokens (spec §14.1). A <canvas> has no DOM, so these are read
+   once per layout or theme change by readTheme() and handed to the renderers.
+   Every colour literal that used to be hardcoded in keyboard.ts and
+   pianoRoll.ts lives here. */
+:root {
+  --tmi-stage-bg: #000000;
+  --tmi-key-white: #f6f2e4;
+  --tmi-key-black: #0c0c10;
+  --tmi-key-border: rgba(255, 255, 255, 0.16);
+  --tmi-key-border-width: 1px;
+  --tmi-key-radius: 0px;
+  --tmi-key-gap: 1px;
+  --tmi-middle-c-mark: rgba(0, 0, 0, 0.55);
+  --tmi-black-key-top: rgba(255, 255, 255, 0.35);
+  --tmi-grid-line: rgba(255, 255, 255, 0.06);
+  --tmi-grid-line-c4: rgba(255, 255, 255, 0.14);
+  --tmi-grid-line-width: 1px;
+  --tmi-grid-line-style: solid;
+  --tmi-bar-radius: 4px;
+  --tmi-flash-core-rgb: 255, 255, 255;
+  --tmi-flash-warm-rgb: 255, 242, 214;
+  --tmi-progress-track: rgba(255, 255, 255, 0.06);
+  --tmi-progress-fill: #e8384f;
+}
+
 html, body, #root { height: 100%; }
 body {
   margin: 0;

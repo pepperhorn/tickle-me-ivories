@@ -452,10 +452,17 @@ These replace the sixteen colour literals currently hardcoded across
 | `--tmi-grid-line-width` | `1px` | Grid thickness |
 | `--tmi-grid-line-style` | `solid` | `solid` \| `dashed` \| `dotted` — via `setLineDash` |
 | `--tmi-bar-radius` | `4px` | Falling note corner rounding |
-| `--tmi-flash-core` | `rgba(255,255,255,…)` | Bloom centre |
-| `--tmi-flash-warm` | `rgba(255,242,214,…)` | Bloom mid-stop |
+| `--tmi-flash-core-rgb` | `255, 255, 255` | Bloom centre |
+| `--tmi-flash-warm-rgb` | `255, 242, 214` | Bloom mid-stop |
 | `--tmi-progress-track` | `rgba(255,255,255,0.06)` | Progress bar track |
 | `--tmi-progress-fill` | `#e8384f` | Progress bar fill |
+
+**Deviation from the token names above.** The two flash tokens are named
+`--tmi-flash-core-rgb` and `--tmi-flash-warm-rgb` and hold a bare `r, g, b`
+triple rather than a complete `rgba()` literal. The flash's alpha is computed
+per frame from velocity and age, so a complete colour literal cannot express
+it; the triple composes as `rgba(${theme.flashCoreRgb}, ${alpha})`. Every
+other token is exactly as named above.
 
 Voice hues stay in the profile rather than in CSS — they are per-song data the
 user assigns, not a theme.
