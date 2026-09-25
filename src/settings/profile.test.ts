@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   PROFILE_SCHEMA_VERSION, buildProfile, decodeProfile, encodeProfile,
-  loadGlobals, loadProfile, mergeVoices, saveGlobals, saveProfile,
+  isCssColor, loadGlobals, loadProfile, mergeVoices, saveGlobals, saveProfile,
 } from './profile'
-import { DEFAULT_SETTINGS } from './types'
+import { DEFAULT_SETTINGS, DEFAULT_TEXT_STYLE } from './types'
 import { MAX_TEMPO_SCALE, MIN_TEMPO_SCALE } from '../model/tempoMap'
 import type { Voice } from '../model/types'
 
@@ -143,6 +143,33 @@ describe('decodeProfile validation of untrusted input', () => {
   it('accepts a valid theme, including a matte override colour', () => {
     const p = decodeProfile(tampered((x) => { x.theme = { name: 'contrast', stageBgOverride: '#00b140' } }))
     expect(p.theme).toEqual({ name: 'contrast', stageBgOverride: '#00b140' })
+  })
+
+  it('drops a stageBgOverride that is not a colour, keeping the theme', () => {
+    // A junk string reaches --tmi-stage-bg, the canvas cannot parse it, and
+    // keeps whatever fill it last had -- so it is dropped to the theme token.
+    const p = decodeProfile(tampered((x) => { x.theme = { name: 'contrast', stageBgOverride: 'not a colour!' } }))
+    expect(p.theme).toEqual({ name: 'contrast', stageBgOverride: null })
+    const q = decodeProfile(tampered((x) => { x.theme = { name: 'classic', stageBgOverride: '' } }))
+    expect(q.theme.stageBgOverride).toBeNull()
+  })
+
+  it('drops text colours that are not colours back to the defaults', () => {
+    const p = decodeProfile(tampered((x) => {
+      x.text.style.color = 'url(javascript:1)'
+      x.text.style.strokeColor = '#12345'
+    }))
+    expect(p.text.style.color).toBe(DEFAULT_TEXT_STYLE.color)
+    expect(p.text.style.strokeColor).toBe(DEFAULT_TEXT_STYLE.strokeColor)
+  })
+
+  it('keeps valid text colours', () => {
+    const p = decodeProfile(tampered((x) => {
+      x.text.style.color = 'rgb(255, 200, 0)'
+      x.text.style.strokeColor = 'black'
+    }))
+    expect(p.text.style.color).toBe('rgb(255, 200, 0)')
+    expect(p.text.style.strokeColor).toBe('black')
   })
 
   it('drops voice entries that are not objects with a string id', () => {
@@ -290,5 +317,25 @@ describe('localStorage persistence', () => {
     saveGlobals({ velocity: DEFAULT_SETTINGS.velocity, audio: { ...DEFAULT_SETTINGS.audio, masterVolume: 0.2 } })
     expect(loadGlobals()!.audio.masterVolume).toBe(0.2)
     expect(loadProfile('sha-1')).toBeNull()
+  })
+})
+
+describe('isCssColor', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it("defers to the browser's CSS.supports when it has one", () => {
+    const supports = vi.fn((_p: string, v: string) => v === 'rebeccapurple')
+    vi.stubGlobal('CSS', { supports })
+    expect(isCssColor('rebeccapurple')).toBe(true)
+    expect(isCssColor('#fff')).toBe(false)
+    expect(supports).toHaveBeenCalledWith('color', 'rebeccapurple')
+  })
+
+  it('falls back to a syntax check where CSS.supports is missing (jsdom)', () => {
+    vi.stubGlobal('CSS', undefined)
+    for (const v of ['#fff', '#00b140', '#00b14080', 'rgba(0,0,0,0.35)', 'hsl(210 50% 40%)', 'black', 'transparent'])
+      expect(isCssColor(v), v).toBe(true)
+    for (const v of ['', ' ', '#12345', '#ggg', 'not a colour!', 'url(javascript:1)', 'red; background: x', 'rgb(1,2'])
+      expect(isCssColor(v), v).toBe(false)
   })
 })

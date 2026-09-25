@@ -2,6 +2,7 @@ import type {
   AudioSettings, ChordDisplay, ChordPlacement, DisplaySettings, GradientStop, NoteLabelContent,
   NoteLabelPlacement, Settings, TextSettings, TextStyle, ThemeName, ThemeSettings, VelocityScheme,
 } from './types'
+import { DEFAULT_TEXT_STYLE } from './types'
 import type { ScoreDocument, TempoSetting, Voice } from '../model/types'
 import type { DisplayMode } from '../transport/useTransport'
 import { MAX_TEMPO_SCALE, MIN_TEMPO_SCALE } from '../model/tempoMap'
@@ -109,6 +110,25 @@ const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 const isUnit = (v: unknown): v is number => isNum(v) && v >= 0 && v <= 1
 
+/** Hex (#rgb, #rgba, #rrggbb, #rrggbbaa), a colour function with balanced
+    parentheses, or a bare keyword. Only the fallback where the browser cannot
+    be asked (jsdom has no CSS.supports); it is a shape check, not a parser. */
+const COLOR_SYNTAX =
+  /^(#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})|(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\([^()]*\)|[a-z]+)$/i
+
+/**
+ * Whether a string is a colour the browser will actually paint. A string that
+ * is not (say `'not a colour!'`) is silently ignored by both CSS and the
+ * canvas's fillStyle, which then keeps its PREVIOUS fill -- so an imported junk
+ * stage colour renders as whatever was drawn last. Asks the browser via
+ * CSS.supports where it exists, and falls back to a syntax check otherwise.
+ */
+export function isCssColor(v: string): boolean {
+  const css = (globalThis as { CSS?: { supports?: (prop: string, value: string) => boolean } }).CSS
+  if (typeof css?.supports === 'function') return css.supports('color', v)
+  return COLOR_SYNTAX.test(v.trim())
+}
+
 /** Returns a clean copy of a valid velocity scheme, or null. */
 export function validVelocity(v: unknown): VelocityScheme | null {
   if (!isObj(v)) return null
@@ -159,7 +179,11 @@ export function validTheme(v: unknown): ThemeSettings | null {
   if (!isObj(v)) return null
   if (!THEME_NAMES.includes(v.name as ThemeName)) return null
   if (v.stageBgOverride !== null && typeof v.stageBgOverride !== 'string') return null
-  return { name: v.name as ThemeName, stageBgOverride: v.stageBgOverride as string | null }
+  // A string that is not a colour is dropped to the theme's own token, the
+  // same "drop the bad field, keep the block" treatment voices get.
+  const override = typeof v.stageBgOverride === 'string' && isCssColor(v.stageBgOverride)
+    ? v.stageBgOverride : null
+  return { name: v.name as ThemeName, stageBgOverride: override }
 }
 
 /** Returns a clean copy of a valid text style, clamped to the control ranges, or null. */
@@ -174,10 +198,12 @@ function validTextStyle(v: unknown): TextStyle | null {
     weight: clamp(weight, ...r.weight),
     sizeRatio: clamp(sizeRatio, ...r.sizeRatio),
     letterSpacing: clamp(letterSpacing, ...r.letterSpacing),
-    color,
+    // A string that is not a colour falls back to the default rather than
+    // refusing the whole profile over one field.
+    color: isCssColor(color) ? color : DEFAULT_TEXT_STYLE.color,
     opacity: clamp(opacity, ...r.opacity),
     strokeWidth: clamp(strokeWidth, ...r.strokeWidth),
-    strokeColor,
+    strokeColor: isCssColor(strokeColor) ? strokeColor : DEFAULT_TEXT_STYLE.strokeColor,
   }
 }
 
