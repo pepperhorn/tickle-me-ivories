@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { visibleNotes, heldNotes, drawStage } from './pianoRoll'
 import { computeLayout } from './geometry'
 import { DEFAULT_SCHEME } from './colors'
+import { DEFAULT_THEME } from './theme'
 import type { NoteEvent, Voice } from '../model/types'
 
 const n = (id: number, pitch: number, startSec: number, dur = 0.4): NoteEvent => ({
@@ -116,6 +117,7 @@ describe('drawStage', () => {
     showFlash: true,
     flashScale: 1,
     showMiddleC: true,
+    theme: DEFAULT_THEME,
   })
 
   it('draws without throwing on an empty score', () => {
@@ -145,5 +147,35 @@ describe('drawStage', () => {
     const a = stubCtx(); drawStage(a.ctx, hidden, 0, 0)
     const b = stubCtx(); drawStage(b.ctx, state([n(0, 60, 0)]), 0, 0)
     expect(a.calls.length).toBeLessThan(b.calls.length)
+  })
+
+  it('clears rather than fills when the stage background is transparent', () => {
+    const { ctx, calls } = stubCtx()
+    drawStage(ctx, { ...state([]), theme: { ...DEFAULT_THEME, stageBg: 'transparent' } }, 0, 0)
+    expect(calls.filter((c) => c.startsWith('clearRect('))).toHaveLength(1)
+  })
+
+  it('treats the computed form rgba(0, 0, 0, 0) as transparent too', () => {
+    const { ctx, calls } = stubCtx()
+    drawStage(ctx, { ...state([]), theme: { ...DEFAULT_THEME, stageBg: 'rgba(0, 0, 0, 0)' } }, 0, 0)
+    expect(calls.filter((c) => c.startsWith('clearRect('))).toHaveLength(1)
+  })
+
+  it('fills the stage when the background is an opaque colour', () => {
+    const { ctx, calls } = stubCtx()
+    drawStage(ctx, { ...state([]), theme: { ...DEFAULT_THEME, stageBg: '#00b140' } }, 0, 0)
+    expect(calls.filter((c) => c.startsWith('clearRect('))).toHaveLength(0)
+    expect(calls[0]).toBe('fillRect(4)')
+  })
+
+  it('strokes one grid line per C in range, dash scoped inside save/restore', () => {
+    const on = stubCtx(); drawStage(on.ctx, state([]), 0, 0)
+    const off = stubCtx(); drawStage(off.ctx, { ...state([]), showGrid: false }, 0, 0)
+    const strokes = (c: string[]) => c.filter((x) => x.startsWith('stroke(')).length
+    // Full 88-key range holds C1..C8 = 8 grid lines; no flash strokes on an empty score.
+    expect(strokes(on.calls) - strokes(off.calls)).toBe(8)
+    const dash = on.calls.indexOf('setLineDash(1)')
+    expect(dash).toBeGreaterThan(on.calls.indexOf('save(0)'))
+    expect(on.calls.indexOf('restore(0)')).toBeGreaterThan(dash)
   })
 })

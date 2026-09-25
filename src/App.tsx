@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { AudioEngine } from './audio/engine'
 import { BeatCursor, MetronomeVoice, beatTimes } from './audio/metronome'
 import { Scheduler, TICK_MS } from './audio/scheduler'
@@ -6,6 +7,7 @@ import { parseMidi } from './io/parseMidi'
 import { hashFile } from './io/hashFile'
 import { computeLayout, fitRange, FIRST_PITCH, LAST_PITCH } from './render/geometry'
 import { drawStage } from './render/pianoRoll'
+import { DEFAULT_THEME, readTheme } from './render/theme'
 import { useCanvasStage } from './render/useCanvasStage'
 import { effectiveBpmAt } from './model/tempoMap'
 import { playheadAt, useTransport } from './transport/useTransport'
@@ -25,8 +27,9 @@ import { VelocityEditor } from './ui/VelocityEditor'
 import { VoicePanel } from './ui/VoicePanel'
 import type { RenderState } from './render/pianoRoll'
 import type { KeyboardLayout } from './render/geometry'
+import type { Theme } from './render/theme'
 import type { ScoreDocument, TempoSetting, Voice } from './model/types'
-import type { ZoomMode } from './settings/types'
+import type { ThemeName, ZoomMode } from './settings/types'
 
 export default function App() {
   const t = useTransport()
@@ -46,6 +49,10 @@ export default function App() {
   const layoutRef = useRef<{ w: number; h: number; first: number; last: number; layout: KeyboardLayout } | null>(null)
   const rangeRef = useRef<{ score: ScoreDocument | null; zoom: ZoomMode; range: [number, number] }>({
     score: null, zoom: 'full', range: [FIRST_PITCH, LAST_PITCH],
+  })
+  const stageWrapRef = useRef<HTMLDivElement | null>(null)
+  const themeRef = useRef<{ key: string; layout: KeyboardLayout | null; theme: Theme }>({
+    key: '', layout: null, theme: DEFAULT_THEME,
   })
   // Bumped on every loadFile/loadAnother so a slow, now-superseded load can't
   // prune the CURRENT score's voice buses out from under it once it finally
@@ -87,6 +94,22 @@ export default function App() {
       zoom === 'fit' && score ? fitRange(score.notes) : [FIRST_PITCH, LAST_PITCH]
     rangeRef.current = { score, zoom, range }
     return range
+  }
+
+  // The third cache in the draw path, for the same reason as the other two:
+  // getComputedStyle forces a style recalculation and must never run per frame.
+  // Keyed on the theme class and the stage-background override -- the only two
+  // settings that change what the tokens resolve to -- plus the layout identity
+  // (F31), so a resize or zoom switch also re-reads, picking up any token edited
+  // in devtools. React commits the class to the DOM before the next rAF, so the
+  // first frame after a switch is correct.
+  function themeFor(name: ThemeName, override: string | null, layout: KeyboardLayout): Theme {
+    const key = `${name}|${override ?? ''}`
+    const c = themeRef.current
+    if (c.key !== key || c.layout !== layout) {
+      themeRef.current = { key, layout, theme: readTheme(stageWrapRef.current) }
+    }
+    return themeRef.current.theme
   }
 
   // Rebuild the scheduler whenever the note array is REPLACED (load or retime).
@@ -176,6 +199,7 @@ export default function App() {
         showFlash: st.display.showFlash,
         flashScale: st.display.flashScale,
         showMiddleC: st.display.showMiddleC,
+        theme: themeFor(st.theme.name, st.theme.stageBgOverride, layout),
       }
       drawStage(ctx, rs, head, state.score ? head / state.score.durationSec : 0)
     }, [engine]),
@@ -389,7 +413,15 @@ export default function App() {
 
   return (
     <div className="app-shell flex h-full flex-col bg-[var(--ground)]">
-      <div className="stage-wrap relative min-h-0 flex-1 bg-[var(--stage)]">
+      {/* No Tailwind background here: the canvas paints the stage itself, and a
+          background behind a transparent canvas would defeat spec §13.1. */}
+      <div
+        ref={stageWrapRef}
+        className={`stage-wrap theme-${settings.theme.name} relative min-h-0 flex-1`}
+        style={settings.theme.stageBgOverride
+          ? ({ '--tmi-stage-bg': settings.theme.stageBgOverride } as CSSProperties)
+          : undefined}
+      >
         <canvas ref={canvasRef} className="stage-canvas block h-full w-full" />
         {!t.score && (
           <div className="stage-empty absolute inset-0 flex items-center justify-center p-4">
