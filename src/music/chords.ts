@@ -56,6 +56,16 @@ export function detectChord(pitches: number[], key: KeyContext): string[] {
   return rankCandidates(Chord.detect(names, { assumePerfectFifth: true }))
 }
 
+/**
+ * tonal names a plain major triad `CM` (and its inversions `CM/E`), which is
+ * not how anyone writes a chord chart. For DISPLAY only, the bare `M` quality
+ * is dropped; every other quality, maj7 (`Cmaj7`/`CM7`) included, is kept.
+ * The raw symbol is still what toRomanNumeral takes -- it needs tonal's form.
+ */
+export function displayChordSymbol(symbol: string): string {
+  return symbol.replace(/^([A-G][#b]*)M(?=\/|$)/, '$1')
+}
+
 export interface ChordReading { symbol: string; alternates: string[] }
 
 /**

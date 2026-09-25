@@ -12,6 +12,7 @@ import { useCanvasStage } from './render/useCanvasStage'
 import { effectiveBpmAt } from './model/tempoMap'
 import { keyOfScore } from './music/keyOf'
 import { ChordFeed } from './music/chordFeed'
+import { displayChordSymbol } from './music/chords'
 import { toRomanNumeral } from './music/romanNumerals'
 import { playheadAt, useTransport } from './transport/useTransport'
 import { currentSettings, useSettings } from './settings/useSettings'
@@ -288,7 +289,12 @@ export default function App() {
           lastReadingRef.current = reading
           lastReadingKeyRef.current = key
           setChord(reading
-            ? { symbol: reading.symbol, alternates: reading.alternates, numeral: toRomanNumeral(reading.symbol, key) }
+            ? {
+                // Display spelling for the readout; the numeral needs tonal's raw symbol.
+                symbol: displayChordSymbol(reading.symbol),
+                alternates: reading.alternates.map(displayChordSymbol),
+                numeral: toRomanNumeral(reading.symbol, key),
+              }
             : null)
         }
       }

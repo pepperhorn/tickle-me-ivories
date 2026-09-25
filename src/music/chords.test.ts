@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ChordTracker, detectChord, pitchesInWindow, rankCandidates } from './chords'
+import { ChordTracker, detectChord, displayChordSymbol, pitchesInWindow, rankCandidates } from './chords'
 import { DEFAULT_KEY } from './spell'
 import type { NoteEvent } from '../model/types'
 
@@ -173,5 +173,23 @@ describe('ChordTracker', () => {
     t.update(C, 0); t.update(C, 60)
     t.reset()
     expect(t.update([], 100)).toBeNull()
+  })
+})
+
+describe('displayChordSymbol', () => {
+  it("drops tonal's M for a plain major triad", () => {
+    expect(displayChordSymbol('CM')).toBe('C')
+    expect(displayChordSymbol('F#M')).toBe('F#')
+    expect(displayChordSymbol('BbM')).toBe('Bb')
+  })
+
+  it('keeps the slash bass on an inverted major triad', () => {
+    expect(displayChordSymbol('CM/E')).toBe('C/E')
+    expect(displayChordSymbol('EbM/Bb')).toBe('Eb/Bb')
+  })
+
+  it('leaves every other quality alone, maj7 included', () => {
+    for (const s of ['Cmaj7', 'CM7', 'Cm', 'Cm/Eb', 'C7', 'Cdim', 'Caug', 'Cmaj9', 'CM9', 'Csus4', 'C6'])
+      expect(displayChordSymbol(s)).toBe(s)
   })
 })
