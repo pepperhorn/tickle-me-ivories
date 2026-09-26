@@ -369,31 +369,42 @@ export function mergeVoices(parsed: Voice[], saved: SavedVoice[]): Voice[] {
   })
 }
 
-/** localStorage can throw (private mode, quota). Persistence is a convenience,
-    never a correctness requirement, so every access is guarded. */
-function read(key: string): string | null {
+/**
+ * localStorage can throw (private mode, quota). Persistence is a convenience,
+ * never a correctness requirement, so every access is guarded.
+ *
+ * Exported (preflight F6): this file is the sole localStorage call site in
+ * the app. LocalStorageProvider (task 2.4, src/platform/local) must not call
+ * `localStorage` itself -- it calls these guarded wrappers instead, so
+ * `tmi.saves.*` lives behind the same single boundary as `tmi.profile.*` and
+ * `tmi.globals`, and inherits the same throw-tolerance for free.
+ */
+export function storageGet(key: string): string | null {
   try { return localStorage.getItem(key) } catch { return null }
 }
-function write(key: string, value: string): void {
+export function storageSet(key: string, value: string): void {
   try { localStorage.setItem(key, value) } catch { /* quota or private mode */ }
+}
+export function storageRemove(key: string): void {
+  try { localStorage.removeItem(key) } catch { /* quota or private mode */ }
 }
 
 export function saveProfile(p: SongProfile): void {
-  write(PROFILE_PREFIX + p.song.id, encodeProfile(p))
+  storageSet(PROFILE_PREFIX + p.song.id, encodeProfile(p))
 }
 
 export function loadProfile(songId: string): SongProfile | null {
-  const raw = read(PROFILE_PREFIX + songId)
+  const raw = storageGet(PROFILE_PREFIX + songId)
   if (!raw) return null
   try { return decodeProfile(raw) } catch { return null }
 }
 
 export function saveGlobals(g: GlobalPrefs): void {
-  write(GLOBALS_KEY, JSON.stringify(g))
+  storageSet(GLOBALS_KEY, JSON.stringify(g))
 }
 
 export function loadGlobals(): GlobalPrefs | null {
-  const raw = read(GLOBALS_KEY)
+  const raw = storageGet(GLOBALS_KEY)
   if (!raw) return null
   try {
     const g: unknown = JSON.parse(raw)
