@@ -529,10 +529,10 @@ export interface ContentClient {
 **The `otp-bearer-shim` hook** (in `ph-apps-extensions/hooks/otp-bearer-shim`) exists only if F3 is confirmed.
 
 - **`middlewares.before`:**
-  1. Delete any client-supplied `x-ph-otp-bearer`.
-  2. If the path starts with `/otp-auth/` or `/ph/`, and `Authorization` matches `^Bearer [0-9a-f-]{36}\.[A-Za-z0-9_-]{16,}$`, move the value into `x-ph-otp-bearer` and delete `authorization`.
-- **`middlewares.after`:** if `x-ph-otp-bearer` is present, restore it to `authorization`.
-- **Why it is safe:** Directus core then sees an unauthenticated request (the Public role), and only the two extension routers see the bearer. The legacy `app-session-auth` hook matches only bare UUIDs, so the two hooks never both claim a request.
+  1. Delete any client-supplied `x-ph-otp-bearer` (never honoured).
+  2. If the path starts with `/otp-auth/` or `/ph/` (case-insensitive), and `Authorization` matches `^Bearer [0-9a-f-]{36}\.[A-Za-z0-9_-]{16,}$`, stash it in a module-level `WeakMap` keyed by the request object and delete `authorization` — not a header: Directus's request logger redacts only `authorization`/`cookie`, so a stashed header would land in plaintext logs on any response sent before `middlewares.after` (the global rate limiter's 429, a body-parse error).
+- **`middlewares.after`:** if the request has a stashed bearer, restore it to `authorization` and drop the stash entry.
+- **Why it is safe:** Directus core then sees an unauthenticated request (the Public role) — the worst case is a downgrade to Public, never an escalation — and only the two extension routers see the bearer. The legacy `app-session-auth` hook matches only bare UUIDs, so the two hooks never both claim a request.
 
 ### 6.2 Mail template
 
@@ -582,6 +582,8 @@ interface AppConfig {
 ```ts
 { ok: false, error: PhErrorCode, detail?: string, retryAfterSec?: number }
 ```
+
+The gateway bundle's hook also maps core-raised errors on `/ph/*` — a core 401, the global rate limiter's 429 (with `Retry-After`), a JSON parse error, and a 413 — onto this same body, so no route ever leaks a raw Directus error shape.
 
 **Routes:**
 
