@@ -1,17 +1,16 @@
 import { useCallback, useRef, useState } from 'react'
+import { MIDI_FILE_ACCEPT } from '../io/parseMidi'
 
 export function FileDropZone({ onFile }: { onFile: (file: File) => void }) {
   const [over, setOver] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
+  // No filename/extension pre-filter here: a renamed or extension-less MIDI
+  // file (or one whose `type` is empty) must still get through. The content
+  // parse (loadFile -> parseMidi) is the real gate and already rejects
+  // non-MIDI content with a user-facing error.
   const accept = useCallback((file: File | undefined) => {
     if (!file) return
-    if (!/\.midi?$/i.test(file.name)) {
-      setError(`${file.name} is not a MIDI file. Choose a .mid or .midi file.`)
-      return
-    }
-    setError(null)
     onFile(file)
   }, [onFile])
 
@@ -36,11 +35,10 @@ export function FileDropZone({ onFile }: { onFile: (file: File) => void }) {
         id="file-input"
         ref={inputRef}
         type="file"
-        accept=".mid,.midi"
+        accept={MIDI_FILE_ACCEPT}
         className="file-input hidden"
         onChange={(e) => accept(e.target.files?.[0])}
       />
-      {error && <p className="file-drop-error text-sm text-[#ff6b6b]">{error}</p>}
     </div>
   )
 }

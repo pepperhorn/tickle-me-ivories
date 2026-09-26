@@ -8,6 +8,16 @@ import type { NoteEvent, ScoreDocument, TempoSetting, Voice } from '../model/typ
 
 const DEFAULT_INSTRUMENT = 'acoustic_grand_piano'
 
+// Extension-only `accept` values (".mid,.midi") let Chrome on Android filter
+// by MIME type internally, and it has no mapping from those extensions to a
+// MIME type -- so it filters out every file, hidden ones included. Listing
+// the MIME types MIDI files actually show up with alongside the extensions
+// fixes the picker; the extensions still help desktop browsers and screen
+// readers. Content is still the real gate (see parseMidi below), so a file
+// whose type or name doesn't match this list is never rejected on that basis
+// alone.
+export const MIDI_FILE_ACCEPT = '.mid,.midi,audio/midi,audio/mid,audio/x-midi,audio/sp-midi'
+
 function makeVoice(id: string, label: string, index: number, total: number): Voice {
   return {
     id, label,
