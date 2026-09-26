@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties } from 'react'
 import { AudioEngine } from './audio/engine'
 import { BeatCursor, MetronomeVoice, beatTimes } from './audio/metronome'
@@ -33,6 +33,15 @@ import { ThemeSettings } from './ui/ThemeSettings'
 import { TransportBar } from './ui/TransportBar'
 import { VelocityEditor } from './ui/VelocityEditor'
 import { VoicePanel } from './ui/VoicePanel'
+import { ScenesPanel } from './ui/ScenesPanel'
+import { SharePanel } from './ui/SharePanel'
+import { SharedPreviewBanner } from './ui/SharedPreviewBanner'
+import { SceneFilePrompt } from './ui/SceneFilePrompt'
+import { useScenes } from './ui/useScenes'
+import { getPlatform, subscribePlatform } from './platform/registry'
+import { sceneApplyPlan, sceneFromState } from './platform/scene'
+import { applyLook, lookFromSettings } from './platform/look'
+import type { LookV1, SceneV1, SongRefWithTitle } from './platform/types'
 import type { RenderState } from './render/pianoRoll'
 import type { KeyboardLayout } from './render/geometry'
 import type { Theme } from './render/theme'
@@ -304,16 +313,20 @@ export default function App() {
     }, [engine, chordFeed]),
   )
 
-  const loadFile = useCallback(async (file: File) => {
+  // Resolves false if the file was refused. `onLoaded` fires as soon as the
+  // file is the loaded score, BEFORE the audio half: engine.resume() can wait
+  // indefinitely for a user gesture (autoplay policy), and the scene file
+  // prompt (§8.3) must not hang on it before applying its scene.
+  const loadFile = useCallback(async (file: File, onLoaded?: () => void): Promise<boolean> => {
     let score
     try {
       const bytes = await file.arrayBuffer()
       score = parseMidi(bytes, file.name, useTransport.getState().tempo)
       score.id = await hashFile(bytes)
-      if (score.notes.length === 0) { setError(`${file.name} contains no notes.`); return }
+      if (score.notes.length === 0) { setError(`${file.name} contains no notes.`); return false }
     } catch (e) {
       setError(`Could not read ${file.name}: ${(e as Error).message}`)
-      return
+      return false
     }
 
     // Claim this load's slot before the first await below. If a newer
@@ -349,6 +362,7 @@ export default function App() {
       useTransport.getState().setMode(saved.display.mode)
       useTransport.getState().setFallSeconds(saved.display.fallSeconds)
     }
+    onLoaded?.()
 
     try {
       await engine.resume()
@@ -359,6 +373,7 @@ export default function App() {
       // The score is loaded and visible; only sound is affected.
       setError(`${file.name} is loaded, but audio could not start: ${(e as Error).message}`)
     }
+    return true
   }, [engine, chordFeed])
 
   const toggle = useCallback(async () => {
@@ -546,6 +561,90 @@ export default function App() {
     }
   }, [engine, changeTempo])
 
+  // ---- scenes, looks and shares (task 2.5) ----
+
+  // Read through useSyncExternalStore (preflight F15): getPlatform returns the
+  // same object until a plugin installs, so this never loops. The draw loop
+  // never reads it.
+  const platform = useSyncExternalStore(subscribePlatform, getPlatform)
+
+  /** The loaded song as a scene (spec §8.1). Phase 2's only song source is a
+      dropped file, so the ref is always `local`. Throws with nothing loaded. */
+  const buildScene = useCallback((): SceneV1 => {
+    const tr = useTransport.getState()
+    if (!tr.score) throw new Error('Load a song first.')
+    const song: SongRefWithTitle = {
+      kind: 'local', sha256: tr.score.id, name: tr.score.name, format: tr.score.sourceFormat,
+      title: tr.score.name.replace(/\.[^.]+$/, '') || tr.score.name,
+    }
+    const profile = buildProfile({
+      song: { id: tr.score.id, name: tr.score.name, format: tr.score.sourceFormat },
+      voices: tr.score.voices, tempo: tr.tempo, mode: tr.mode,
+      fallSeconds: tr.fallSeconds, settings: currentSettings(),
+    })
+    // sceneFromState asserts profile.song.id === songKey(song) (preflight F10a).
+    return sceneFromState({ song, profile })
+  }, [])
+
+  const buildLook = useCallback((): LookV1 => {
+    const tr = useTransport.getState()
+    return lookFromSettings(currentSettings(), tr.mode, tr.fallSeconds)
+  }, [])
+
+  // Applies a scene to the loaded score, all or nothing like importProfile:
+  // everything derived is computed before the first mutation. A shared
+  // scene's plan never carries audio (sceneApplyPlan, spec §8.1). The 400ms
+  // autosave then records the result under tmi.profile.<id> as usual.
+  const applySceneToScore = useCallback((scene: SceneV1, shared: boolean) => {
+    const tr = useTransport.getState()
+    if (!tr.score) throw new Error('Load the scene’s song first.')
+    const plan = sceneApplyPlan(scene, { shared })
+    const cur = currentSettings()
+    const next = {
+      ...cur,
+      theme: plan.settings.theme,
+      text: plan.settings.text,
+      velocity: plan.settings.velocity,
+      ...(plan.settings.display ? { display: plan.settings.display } : {}),
+      ...(plan.audio ? { audio: plan.audio } : {}),
+    }
+    const voices = mergeVoices(tr.score.voices, plan.voices)
+    useSettings.getState().replaceAll(next)
+    if (plan.audio) engine.setMasterVolume(plan.audio.masterVolume)
+    useTransport.setState({ score: { ...tr.score, voices } })
+    for (const v of voices) { engine.setVoiceVolume(v.id, v.volume); void engine.loadVoice(v) }
+    changeTempo(plan.tempo)
+    tr.setMode(plan.mode)
+    tr.setFallSeconds(plan.fallSeconds)
+  }, [engine, changeTempo])
+
+  // A look needs no song. keyOverride is song-specific, so the current one stays.
+  const applyLookSettings = useCallback((look: LookV1) => {
+    const a = applyLook(look)
+    const cur = currentSettings()
+    useSettings.getState().replaceAll({
+      ...cur, theme: a.theme, display: a.display, velocity: a.velocity,
+      text: { ...a.text, keyOverride: cur.text.keyOverride },
+    })
+    useTransport.getState().setMode(a.mode)
+    useTransport.getState().setFallSeconds(a.fallSeconds)
+  }, [])
+
+  // Swapping songs for a scene goes through "Load another" first, so playback
+  // stops and the outgoing song's pending autosave is flushed.
+  // Resolves true as soon as the file is the loaded score (not after audio).
+  const replaceSong = useCallback((file: File) => new Promise<boolean>((resolve) => {
+    if (useTransport.getState().score) loadAnother()
+    void loadFile(file, () => resolve(true)).then((ok) => { if (!ok) resolve(false) })
+  }), [loadAnother, loadFile])
+
+  const scenes = useScenes({
+    scoreId: () => useTransport.getState().score?.id ?? null,
+    applyScene: applySceneToScore,
+    applyLook: applyLookSettings,
+    replaceSong,
+  })
+
   // Reset reaches the engine too, or the master gain stays at the old level.
   const resetSettings = useCallback(() => {
     useSettings.getState().reset()
@@ -590,8 +689,45 @@ export default function App() {
         <ChordReadout layout={stageText.layout} value={chord} text={settings.text} />
         {!t.score && (
           <div className="stage-empty absolute inset-0 flex items-center justify-center p-4">
-            <FileDropZone onFile={loadFile} />
+            {/* While a scene waits for its song (§8.3), a file dropped here is
+                checked against the scene's hash rather than loaded blind. */}
+            <FileDropZone onFile={scenes.pending ? scenes.provideFile : (f) => void loadFile(f)} />
           </div>
+        )}
+        {scenes.pending ? (
+          <SceneFilePrompt
+            songName={scenes.pendingSongName}
+            mismatch={scenes.pending.mismatch?.name ?? null}
+            busy={scenes.busy}
+            onFile={scenes.provideFile}
+            onUseAnyway={scenes.acceptMismatch}
+            onCancel={scenes.cancelPending}
+          />
+        ) : (
+          <SharedPreviewBanner
+            preview={scenes.preview}
+            error={scenes.shareError}
+            busy={scenes.busy}
+            onApply={scenes.applyPreview}
+            onSaveCopy={() => void scenes.saveCopy()}
+            onDismiss={scenes.dismissPreview}
+          />
+        )}
+        {scenes.message && (
+          <p
+            role="alert"
+            className="scenes-message absolute bottom-4 left-1/2 z-20 flex max-w-[90%] -translate-x-1/2 items-center gap-2 rounded bg-black/70 px-3 py-2 text-sm text-[#ff6b6b]"
+          >
+            <span className="scenes-message-text">{scenes.message}</span>
+            <button
+              type="button"
+              aria-label="Dismiss message"
+              className="btn-dismiss-scenes-message text-xs text-[var(--ink-dim)]"
+              onClick={scenes.clearMessage}
+            >
+              ×
+            </button>
+          </p>
         )}
         {error && (
           <p className="stage-error absolute left-4 top-4 rounded bg-black/70 px-3 py-2 text-sm text-[#ff6b6b]">
@@ -677,6 +813,24 @@ export default function App() {
                       onChange={(e) => settings.setAudio({ metronomeVolume: Number(e.target.value) })}
                     />
                   </SettingsRow>
+                </SettingsSection>
+                <SettingsSection id="scenes" title="Scenes &amp; looks">
+                  <ScenesPanel
+                    storage={platform.storage}
+                    refreshKey={scenes.savesVersion}
+                    canSaveScene={t.score !== null}
+                    defaultName={t.score?.name.replace(/\.[^.]+$/, '') || 'Untitled'}
+                    buildScene={buildScene}
+                    buildLook={buildLook}
+                    onOpenScene={(s) => void scenes.openScene(s, false)}
+                    onApplyLook={scenes.applyLook}
+                  />
+                  <SharePanel
+                    share={platform.share}
+                    canShareScene={t.score !== null}
+                    buildScene={buildScene}
+                    buildLook={buildLook}
+                  />
                 </SettingsSection>
                 <SettingsSection id="profile" title="Profile">
                   <ProfileSettings

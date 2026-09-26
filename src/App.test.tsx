@@ -9,6 +9,11 @@ import { DEFAULT_SETTINGS } from './settings/types'
 import { hashFile } from './io/hashFile'
 import { LEFT_VOICE, RIGHT_VOICE } from './io/handSplit'
 import type { Voice } from './model/types'
+import { HashShareProvider } from './platform/local/HashShareProvider'
+import { getDefaults } from './platform/registry'
+import { sceneFromState } from './platform/scene'
+import { lookFromSettings } from './platform/look'
+import type { SceneV1 } from './platform/types'
 
 // The engine owns an AudioContext and smplr, neither of which jsdom has. The
 // fake records what App asks of it; everything App decides is still real.
@@ -232,5 +237,181 @@ describe('App: exporting a profile', () => {
     expect(URL.revokeObjectURL).not.toHaveBeenCalled()
     await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:x'))
     expect(document.querySelector('a[download]')).toBeNull()
+  })
+})
+
+// ---- task 2.5: scenes, looks and share links ----
+
+const shareOrigin = () => location.origin
+
+async function shareHash(kind: 'scene' | 'look', payload: unknown): Promise<string> {
+  const p = new HashShareProvider(shareOrigin())
+  const r = await p.share({ kind, payload } as Parameters<HashShareProvider['share']>[0])
+  return new URL(r.url).hash
+}
+
+function sceneFor(id: string, name = 'song.mid', over: { masterVolume?: number } = {}): SceneV1 {
+  const profile = buildProfile({
+    song: { id, name, format: 'midi' },
+    voices: [voice(RIGHT_VOICE, { label: 'Lead', hue: 99, volume: 0.4 })],
+    tempo: { mode: 'absolute', bpm: 60 },
+    mode: 'keyboard',
+    fallSeconds: 6,
+    settings: {
+      ...DEFAULT_SETTINGS,
+      theme: { name: 'outline', stageBgOverride: null },
+      audio: { ...DEFAULT_SETTINGS.audio, masterVolume: over.masterVolume ?? DEFAULT_SETTINGS.audio.masterVolume },
+    },
+  })
+  return sceneFromState({ song: { kind: 'local', sha256: id, name, format: 'midi', title: 'Song' }, profile })
+}
+
+const outlineLook = () => lookFromSettings(
+  { ...DEFAULT_SETTINGS, theme: { name: 'contrast', stageBgOverride: '#123456' } }, 'keyboard', 7,
+)
+
+async function mountAt(hash: string) {
+  history.replaceState(null, '', `/${hash}`)
+  render(<App />)
+}
+
+describe('App: shared links (#share=)', () => {
+  afterEach(() => { history.replaceState(null, '', '/') })
+
+  it('shows the banner on mount and changes nothing until Apply; Apply applies and clears the hash', async () => {
+    await mountAt(await shareHash('look', outlineLook()))
+    const banner = await screen.findByRole('region', { name: 'Shared preview' })
+    expect(banner.textContent).toMatch(/Shared look/)
+    // Nothing applied yet.
+    expect(useSettings.getState().theme).toEqual(DEFAULT_SETTINGS.theme)
+    expect(location.hash).toMatch(/^#share=/)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    expect(useSettings.getState().theme).toEqual({ name: 'contrast', stageBgOverride: '#123456' })
+    expect(useTransport.getState().fallSeconds).toBe(7)
+    expect(location.hash).toBe('')
+    expect(screen.queryByRole('region', { name: 'Shared preview' })).toBeNull()
+  })
+
+  it('Dismiss clears the hash and applies nothing', async () => {
+    await mountAt(await shareHash('look', outlineLook()))
+    fireEvent.click(await screen.findByRole('button', { name: 'Dismiss' }))
+    expect(location.hash).toBe('')
+    expect(useSettings.getState().theme).toEqual(DEFAULT_SETTINGS.theme)
+    expect(document.querySelector('.shared-preview-banner')).toBeNull()
+  })
+
+  it('Save a copy stores the shared look locally and clears the hash', async () => {
+    await mountAt(await shareHash('look', outlineLook()))
+    const btn = await screen.findByRole('button', { name: 'Save a copy' })
+    await act(async () => { fireEvent.click(btn) })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Saved' })).toBeTruthy())
+    expect(await getDefaults().storage.list('look')).toHaveLength(1)
+    expect(location.hash).toBe('')
+    expect(useSettings.getState().theme).toEqual(DEFAULT_SETTINGS.theme)
+  })
+
+  it('shows the "made with a newer version" message for a newer payload', async () => {
+    await mountAt(await shareHash('look', { ...outlineLook(), v: 2 }))
+    expect((await screen.findByRole('alert')).textContent).toMatch(/made with a newer version/)
+    expect(document.querySelector('.btn-apply-share')).toBeNull()
+  })
+
+  it('a shared scene asks for its file (§8.3), then loads it and applies the scene without its audio', async () => {
+    const bytes = midiBytes()
+    const id = await idOf(bytes)
+    await mountAt(await shareHash('scene', sceneFor(id, 'song.mid', { masterVolume: 0.1 })))
+    expect((await screen.findByRole('region', { name: 'Shared preview' })).textContent)
+      .toMatch(/Shared scene: Song/)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    expect(document.querySelector('.scene-file-prompt')?.textContent)
+      .toMatch(/This scene uses song\.mid\. Drop the file to continue\./)
+    expect(location.hash).toBe('')
+
+    fireEvent.change(screen.getByLabelText('Scene song file'), { target: { files: [midiFile(bytes)] } })
+    await waitFor(() => expect(useTransport.getState().tempo).toEqual({ mode: 'absolute', bpm: 60 }))
+    const tr = useTransport.getState()
+    expect(tr.score!.id).toBe(id)
+    expect(tr.fallSeconds).toBe(6)
+    expect(tr.score!.voices.find((v) => v.id === RIGHT_VOICE)).toMatchObject({ label: 'Lead', hue: 99 })
+    expect(useSettings.getState().theme).toEqual({ name: 'outline', stageBgOverride: null })
+    // A shared scene never sets the recipient's volume.
+    expect(useSettings.getState().audio.masterVolume).toBe(DEFAULT_SETTINGS.audio.masterVolume)
+    expect(document.querySelector('.scene-file-prompt')).toBeNull()
+  })
+
+  it('applies the scene even when audio never starts (resume waits for a gesture)', async () => {
+    engine.resume.mockImplementation(() => new Promise<void>(() => {}))
+    try {
+      const bytes = midiBytes()
+      await mountAt(await shareHash('scene', sceneFor(await idOf(bytes))))
+      fireEvent.click(await screen.findByRole('button', { name: 'Apply' }))
+      fireEvent.change(screen.getByLabelText('Scene song file'), { target: { files: [midiFile(bytes)] } })
+      await waitFor(() => expect(useSettings.getState().theme).toEqual({ name: 'outline', stageBgOverride: null }))
+      expect(document.querySelector('.scene-file-prompt')).toBeNull()
+    } finally {
+      engine.resume.mockImplementation(async () => {})
+    }
+  })
+
+  it('refuses a file whose hash does not match, then "use anyway" loads it', async () => {
+    const want = midiBytes([60, 64])
+    const other = midiBytes([67, 72])
+    await mountAt(await shareHash('scene', sceneFor(await idOf(want))))
+    fireEvent.click(await screen.findByRole('button', { name: 'Apply' }))
+
+    fireEvent.change(screen.getByLabelText('Scene song file'), { target: { files: [midiFile(other, 'other.mid')] } })
+    await waitFor(() => expect(document.querySelector('.scene-file-mismatch')).not.toBeNull())
+    expect(useTransport.getState().score).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use anyway (voices may not match)' }))
+    await waitFor(() => expect(useTransport.getState().score?.name).toBe('other.mid'))
+    await waitFor(() => expect(useSettings.getState().theme).toEqual({ name: 'outline', stageBgOverride: null }))
+  })
+
+  it('a midi ref whose bytes do not match its sha256 is treated like a local mismatch', async () => {
+    const bytes = midiBytes()
+    const id = await idOf(bytes)
+    const s = sceneFor(id)
+    let bin = ''
+    for (const b of bytes) bin += String.fromCharCode(b)
+    const midiScene = { ...s, song: { kind: 'midi', sha256: 'd'.repeat(64), name: 'song.mid', dataB64: btoa(bin), title: 'Song' },
+      profile: { ...s.profile, song: { ...s.profile.song, id: 'd'.repeat(64) } } }
+    // A midi scene cannot go through HashShareProvider (it refuses), so it is
+    // saved and loaded through the panel instead.
+    await getDefaults().storage.save({ kind: 'scene', name: 'Embedded', payload: midiScene as SceneV1 })
+    render(<App />)
+    await loadFile(midiFile(midiBytes([67, 72]), 'b.mid'))
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    fireEvent.click(screen.getByRole('button', { name: /Scenes/ }))
+    const load = await screen.findByRole('button', { name: 'Load Embedded' })
+    await act(async () => { fireEvent.click(load) })
+    await waitFor(() => expect(document.querySelector('.scene-file-mismatch')).not.toBeNull())
+    expect(useTransport.getState().score?.name).toBe('b.mid')
+  })
+})
+
+describe('App: saved scenes', () => {
+  it('saves the current scene and loads it back over later edits, audio included', async () => {
+    const bytes = midiBytes()
+    render(<App />)
+    await loadFile(midiFile(bytes))
+    act(() => { useSettings.getState().setTheme({ name: 'outline' }) })
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    fireEvent.click(screen.getByRole('button', { name: /Scenes/ }))
+    fireEvent.change(screen.getByLabelText('Save name'), { target: { value: 'Mine' } })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save scene' })) })
+    const load = await screen.findByRole('button', { name: 'Load Mine' })
+
+    act(() => {
+      useSettings.getState().setTheme({ name: 'contrast' })
+      useSettings.getState().setAudio({ masterVolume: 0.2 })
+    })
+    await act(async () => { fireEvent.click(load) })
+    expect(useSettings.getState().theme.name).toBe('outline')
+    // An own scene restores its audio (only a shared one never does).
+    expect(useSettings.getState().audio.masterVolume).toBe(DEFAULT_SETTINGS.audio.masterVolume)
+    expect(engine.setMasterVolume).toHaveBeenLastCalledWith(DEFAULT_SETTINGS.audio.masterVolume)
   })
 })
