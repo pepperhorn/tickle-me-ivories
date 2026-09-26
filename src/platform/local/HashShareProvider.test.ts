@@ -86,6 +86,16 @@ describe('HashShareProvider', () => {
       expect(p.match({ pathname: '/s/abc', hash: '' })).toBeNull()
       expect(p.match({ pathname: '/', hash: '#other=x' })).toBeNull()
     })
+
+    // Finding 2 (phase 2 review): the code is capped at share()'s own 8 KiB
+    // encoded-blob cap, checked before anything is decoded.
+    it('returns null for a code longer than MAX_SHARE_ENCODED_BYTES', () => {
+      const p = new HashShareProvider('https://example.com')
+      const okCode = 'a'.repeat(MAX_SHARE_ENCODED_BYTES)
+      const tooLong = 'a'.repeat(MAX_SHARE_ENCODED_BYTES + 1)
+      expect(p.match({ pathname: '/', hash: `#share=${okCode}` })).toBe(okCode)
+      expect(p.match({ pathname: '/', hash: `#share=${tooLong}` })).toBeNull()
+    })
   })
 
   describe('refusals', () => {
@@ -133,6 +143,30 @@ describe('HashShareProvider', () => {
       const code = await deflateAndEncode(bigButCompressible)
       const p = new HashShareProvider('https://example.com')
       expect(await p.resolve(code)).toBeNull()
+    })
+
+    // Finding 2: the same 8 KiB cap share() encodes to, enforced again in
+    // resolve() before any decode work -- a caller reaching resolve() without
+    // going through match() first (a plugin, a future caller) cannot hand it
+    // an oversized string.
+    it('returns null for a code longer than MAX_SHARE_ENCODED_BYTES, without attempting to decode it', async () => {
+      const p = new HashShareProvider('https://example.com')
+      const tooLong = 'a'.repeat(MAX_SHARE_ENCODED_BYTES + 1)
+      expect(await p.resolve(tooLong)).toBeNull()
+    })
+  })
+
+  describe('resolve refuses an embedded-midi scene', () => {
+    it('throws the same too_large error share() refuses one with', async () => {
+      const p = new HashShareProvider('https://example.com')
+      let shareError: unknown
+      try { await p.share({ kind: 'scene', payload: midiSong() }) } catch (e) { shareError = e }
+      expect(isPlatformError(shareError) && shareError.code === 'too_large').toBe(true)
+
+      const code = await deflateAndEncode(JSON.stringify(midiSong()))
+      const attempt = p.resolve(code)
+      await expect(attempt).rejects.toSatisfy((e: unknown) => isPlatformError(e) && e.code === 'too_large')
+      await expect(attempt).rejects.toThrow((shareError as Error).message)
     })
   })
 })

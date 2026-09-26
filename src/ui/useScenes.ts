@@ -119,6 +119,13 @@ export function useScenes(host: ScenesHost) {
   // The state drives the buttons; the ref is the synchronous guard, so a
   // second drop (or a Cancel) cannot race a hash check or a load in flight.
   const busyRef = useRef(false)
+  // Finding 4 (phase 2 review): applyPreview clears the banner and the
+  // `#share=` hash before it knows whether the scene can apply immediately
+  // or needs the §8.3 file prompt. If it ends up needing the file, this
+  // holds the preview that was showing, so cancelPending can bring the
+  // banner back rather than stranding the share with nothing left to open
+  // it from. Cleared once the scene actually applies.
+  const sharedPreviewBackupRef = useRef<Preview | null>(null)
   const runBusy = useCallback(async (fn: () => Promise<void>) => {
     if (busyRef.current) return
     busyRef.current = true
@@ -153,6 +160,7 @@ export function useScenes(host: ScenesHost) {
   const finishWithFile = useCallback(async (scene: SceneV1, shared: boolean, file: File) => {
     await hostRef.current.replaceSong(file, () => {
       setPending(null)
+      sharedPreviewBackupRef.current = null
       applyNow(scene, shared)
     })
   }, [applyNow])
@@ -218,35 +226,41 @@ export function useScenes(host: ScenesHost) {
     if (!p) return
     clearShareHash()
     setPreview(null)
-    if (p.kind === 'look') applyLookNow(p.payload)
-    else void openScene(p.payload, true)
+    if (p.kind === 'look') { applyLookNow(p.payload); return }
+    // A scene may still need the §8.3 file prompt below -- keep a way back
+    // to this banner in case the prompt is cancelled (finding 4).
+    sharedPreviewBackupRef.current = p
+    void openScene(p.payload, true)
   }, [preview, applyLookNow, openScene])
 
-  const saveCopy = useCallback(async () => {
+  // Finding 5 (phase 2 review): this used to set `busy` state directly
+  // without the `busyRef` guard runBusy gives every other busy action, so it
+  // was not covered by the guard cancelPending (and a concurrent call to
+  // this itself) relies on. Routed through runBusy like checkFile.
+  const saveCopy = useCallback(() => {
     const p = preview
-    if (!p) return
-    setBusy(true)
-    try {
-      const storage = getPlatform().storage
-      if (p.kind === 'scene') {
-        // A later load of this copy is an own scene (shared:false), which
-        // applies global.audio -- so the sharer's device audio must not be
-        // what is stored. Stamp in the recipient's own.
-        const copy = structuredClone(p.payload)
-        copy.profile.global.audio = hostRef.current.currentAudio()
-        await storage.save({ kind: 'scene', name: p.payload.song.title || 'Shared scene', payload: copy })
+    if (!p) return Promise.resolve()
+    return runBusy(async () => {
+      try {
+        const storage = getPlatform().storage
+        if (p.kind === 'scene') {
+          // A later load of this copy is an own scene (shared:false), which
+          // applies global.audio -- so the sharer's device audio must not be
+          // what is stored. Stamp in the recipient's own.
+          const copy = structuredClone(p.payload)
+          copy.profile.global.audio = hostRef.current.currentAudio()
+          await storage.save({ kind: 'scene', name: p.payload.song.title || 'Shared scene', payload: copy })
+        }
+        else await storage.save({ kind: 'look', name: 'Shared look', payload: p.payload })
+        clearShareHash()
+        setPreview({ ...p, saved: true })
+        setSavesVersion((n) => n + 1)
+        setMessage(null)
+      } catch (e) {
+        setMessage(saveErrorMessage(e, `Could not save a copy of the ${p.kind}`))
       }
-      else await storage.save({ kind: 'look', name: 'Shared look', payload: p.payload })
-      clearShareHash()
-      setPreview({ ...p, saved: true })
-      setSavesVersion((n) => n + 1)
-      setMessage(null)
-    } catch (e) {
-      setMessage(saveErrorMessage(e, `Could not save a copy of the ${p.kind}`))
-    } finally {
-      setBusy(false)
-    }
-  }, [preview])
+    })
+  }, [preview, runBusy])
 
   const dismissPreview = useCallback(() => {
     clearShareHash()
@@ -269,9 +283,17 @@ export function useScenes(host: ScenesHost) {
 
   const cancelPending = useCallback(() => {
     if (busyRef.current) return
+    // Finding 4: a pending scene that came from an applied share has a
+    // backed-up preview to restore -- Cancel re-offers the banner instead of
+    // leaving the share unreachable (its hash and banner were already
+    // cleared by applyPreview before the file prompt ever showed).
+    if (pending?.shared && sharedPreviewBackupRef.current) {
+      setPreview(sharedPreviewBackupRef.current)
+      sharedPreviewBackupRef.current = null
+    }
     setPending(null)
     setMessage(null)
-  }, [])
+  }, [pending])
   const clearMessage = useCallback(() => setMessage(null), [])
 
   const previewView: SharePreviewView | null = preview

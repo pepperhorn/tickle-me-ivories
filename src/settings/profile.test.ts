@@ -186,6 +186,21 @@ describe('decodeProfile validation of untrusted input', () => {
     expect(mergeVoices([voice('l')], p.voices)[0]).toEqual(voice('l'))
   })
 
+  it('drops an instrument name getSoundfontNames() does not recognise, keeping the parsed value', () => {
+    const p = decodeProfile(tampered((x) => {
+      x.voices = [{ id: 'l', instrument: 'not_a_real_instrument' }]
+    }))
+    expect(p.voices).toEqual([{ id: 'l' }])
+    expect(mergeVoices([voice('l')], p.voices)[0]).toEqual(voice('l'))
+  })
+
+  it('keeps a known soundfont instrument name', () => {
+    const p = decodeProfile(tampered((x) => {
+      x.voices = [{ id: 'l', instrument: 'trumpet' }]
+    }))
+    expect(p.voices).toEqual([{ id: 'l', instrument: 'trumpet' }])
+  })
+
   it('clamps voice volume to 0-1 and hue to 0-360', () => {
     const p = decodeProfile(tampered((x) => { x.voices = [{ id: 'l', volume: 4, hue: -20 }] }))
     expect(p.voices[0]).toEqual({ id: 'l', volume: 1, hue: 0 })
@@ -356,6 +371,21 @@ describe('localStorage persistence', () => {
     expect(loadGlobals()!.audio.masterVolume).toBe(0.2)
     expect(loadProfile('sha-1')).toBeNull()
   })
+
+  // A pre-phase-2 editor could save more than 16 gradient stops. Refusing
+  // the whole scheme used to fail loadGlobals entirely, resetting velocity
+  // AND audio (controller ruling on finding 1).
+  it('loads a >16-stop global autosave, keeping its audio intact', () => {
+    const stops = Array.from({ length: 40 }, (_, i) => ({ at: i / 39, color: '#123456' }))
+    localStorage.setItem('tmi.globals', JSON.stringify({
+      velocity: { kind: 'gradient', stops },
+      audio: { ...DEFAULT_SETTINGS.audio, masterVolume: 0.42 },
+    }))
+    const g = loadGlobals()
+    expect(g).not.toBeNull()
+    expect(g!.audio.masterVolume).toBe(0.42)
+    expect(g!.velocity.kind === 'gradient' && g!.velocity.stops).toHaveLength(16)
+  })
 })
 
 describe('isCssColor', () => {
@@ -378,17 +408,34 @@ describe('isCssColor', () => {
   })
 })
 
-// preflight F8: spec §8.5 caps gradient stops at 2-16, and a stop colour is
-// cleaned (to #ffffff) rather than trusted.
+// spec §8.5 requires at least 2 gradient stops; more than 16 keeps the
+// first 16 rather than refusing the scheme (controller ruling, supersedes
+// preflight F8's "refuse more than 16" -- a pre-phase-2 save with >16 stops
+// must still load), and a stop colour is cleaned (to #ffffff) rather than
+// trusted.
 describe('validVelocity stop cap and colour check', () => {
   const stops = (n: number) => Array.from({ length: n }, (_, i) => ({ at: i / Math.max(1, n - 1), color: '#123456' }))
 
-  it('accepts 2 to 16 stops and refuses more', () => {
+  it('accepts 2 to 16 stops, and refuses fewer than 2', () => {
     expect(MAX_GRADIENT_STOPS).toBe(16)
     expect(validVelocity({ kind: 'gradient', stops: stops(2) })).not.toBeNull()
     expect(validVelocity({ kind: 'gradient', stops: stops(16) })).not.toBeNull()
-    expect(validVelocity({ kind: 'gradient', stops: stops(17) })).toBeNull()
-    expect(validVelocity({ kind: 'gradient', stops: stops(1000) })).toBeNull()
+    expect(validVelocity({ kind: 'gradient', stops: stops(1) })).toBeNull()
+    expect(validVelocity({ kind: 'gradient', stops: stops(0) })).toBeNull()
+  })
+
+  it('keeps only the first 16 stops of a 17-stop scheme', () => {
+    const v = validVelocity({ kind: 'gradient', stops: stops(17) })
+    expect(v).not.toBeNull()
+    expect(v!.kind === 'gradient' && v!.stops).toHaveLength(16)
+    if (v!.kind === 'gradient') expect(v!.stops).toEqual(stops(17).slice(0, 16))
+  })
+
+  it('keeps exactly the first 16 stops of a 1000-stop payload', () => {
+    const v = validVelocity({ kind: 'gradient', stops: stops(1000) })
+    expect(v).not.toBeNull()
+    expect(v!.kind === 'gradient' && v!.stops).toHaveLength(16)
+    if (v!.kind === 'gradient') expect(v!.stops).toEqual(stops(1000).slice(0, 16))
   })
 
   it('replaces a stop colour that is not a colour (or is over 64 chars) with #ffffff', () => {

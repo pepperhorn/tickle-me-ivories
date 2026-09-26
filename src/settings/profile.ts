@@ -6,6 +6,7 @@ import type {
 import { DEFAULT_TEXT_STYLE, MAX_GRADIENT_STOPS, MIN_GRADIENT_STOPS } from './types'
 import type { DisplayMode, TempoSetting, Voice } from '../model/types'
 import { MAX_TEMPO_SCALE, MIN_TEMPO_SCALE } from '../model/tempoMap'
+import { getSoundfontNames } from 'smplr'
 
 // GlobalPrefs, SavedVoice and SongProfile now live in ./types (preflight F4);
 // re-exported here so no call site of `../settings/profile` needs to change.
@@ -119,8 +120,10 @@ export function isCssColor(v: string): boolean {
 
 /**
  * Returns a clean copy of a valid velocity scheme, or null. A gradient must
- * have 2-16 stops (spec §8.5); a stop colour that is a string but not a
- * colour is replaced with #ffffff rather than refusing the whole scheme.
+ * have at least 2 stops (spec §8.5); more than 16 keeps only the first 16
+ * rather than refusing the scheme (controller ruling, supersedes preflight
+ * F8), and a stop colour that is a string but not a colour is replaced with
+ * #ffffff rather than refusing the whole scheme.
  */
 export function validVelocity(v: unknown): VelocityScheme | null {
   if (!isObj(v)) return null
@@ -129,11 +132,16 @@ export function validVelocity(v: unknown): VelocityScheme | null {
     return { kind: 'lightness', lMax: v.lMax, lMin: v.lMin, sat: v.sat }
   }
   if (v.kind === 'gradient') {
-    // The editor stays within 2-16 stops; so does an import. The upper bound
-    // is checked before the loop, so 1000 stops cost nothing to refuse.
-    if (!Array.isArray(v.stops) || v.stops.length < MIN_GRADIENT_STOPS || v.stops.length > MAX_GRADIENT_STOPS) return null
+    // The editor stays within 2-16 stops. An import with fewer than 2 is
+    // refused outright, but one with more than 16 (a pre-phase-2 save, or a
+    // hostile payload) keeps its first 16 rather than losing the whole
+    // scheme -- controller ruling, supersedes preflight F8's "refuse more
+    // than 16". The slice happens BEFORE any per-stop work, so a 1000-stop
+    // payload still costs nothing beyond the slice.
+    if (!Array.isArray(v.stops) || v.stops.length < MIN_GRADIENT_STOPS) return null
+    const capped = v.stops.length > MAX_GRADIENT_STOPS ? v.stops.slice(0, MAX_GRADIENT_STOPS) : v.stops
     const stops: GradientStop[] = []
-    for (const st of v.stops as unknown[]) {
+    for (const st of capped as unknown[]) {
       if (!isObj(st) || !isUnit(st.at) || typeof st.color !== 'string') return null
       stops.push({ at: st.at, color: isCssColor(st.color) ? st.color : FALLBACK_STOP_COLOR })
     }
@@ -264,10 +272,15 @@ export function validFallSeconds(v: unknown): number | null {
   return isNum(v) ? clamp(v, MIN_FALL_SECONDS, MAX_FALL_SECONDS) : null
 }
 
+/** The soundfont instrument names the engine can actually load. */
+const VALID_INSTRUMENT_NAMES = new Set(getSoundfontNames())
+
 /**
  * Drops entries that are not objects with a string id, and omits any field of
  * the wrong type so mergeVoices keeps the parsed value for it. Volume is
  * clamped to 0-1 and hue to 0-360: both reach the engine or the colour maths.
+ * An instrument name that getSoundfontNames() does not recognise is dropped
+ * the same way -- mergeVoices then keeps the parsed voice's own instrument.
  */
 export function sanitiseVoices(list: unknown[]): SavedVoice[] {
   const out: SavedVoice[] = []
@@ -275,7 +288,7 @@ export function sanitiseVoices(list: unknown[]): SavedVoice[] {
     if (!isObj(v) || typeof v.id !== 'string') continue
     const s: SavedVoice = { id: v.id }
     if (typeof v.label === 'string') s.label = v.label
-    if (typeof v.instrument === 'string') s.instrument = v.instrument
+    if (typeof v.instrument === 'string' && VALID_INSTRUMENT_NAMES.has(v.instrument)) s.instrument = v.instrument
     if (isNum(v.hue)) s.hue = clamp(v.hue, 0, 360)
     if (isNum(v.volume)) s.volume = clamp(v.volume, 0, 1)
     if (typeof v.visible === 'boolean') s.visible = v.visible

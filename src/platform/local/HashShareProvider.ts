@@ -98,6 +98,16 @@ async function readAll(stream: ReadableStream<Uint8Array>, maxBytes?: number): P
   return out
 }
 
+/** F20 / controller ruling: the error an uploaded-MIDI scene is refused
+    with, shared by share() (before encoding) and resolve() (after decoding
+    an untrusted payload) so both refuse the same way with the same message. */
+function midiSceneRefusal(): PlatformError {
+  return new PlatformError(
+    'too_large',
+    'A scene with an uploaded MIDI file cannot be shared as a link. Save it and share that instead.',
+  )
+}
+
 export class HashShareProvider implements ShareProvider {
   readonly id = 'hash'
   readonly supports = { anonymous: true, owned: false, revoke: false, fork: false }
@@ -115,10 +125,7 @@ export class HashShareProvider implements ShareProvider {
     // -- it can be up to ~171 KiB of base64 on its own, far past the 8 KiB
     // share cap, so there is no point compressing it first.
     if (input.kind === 'scene' && input.payload.song.kind === 'midi') {
-      throw new PlatformError(
-        'too_large',
-        'A scene with an uploaded MIDI file cannot be shared as a link. Save it and share that instead.',
-      )
+      throw midiSceneRefusal()
     }
 
     const json = JSON.stringify(input.payload)
@@ -134,12 +141,21 @@ export class HashShareProvider implements ShareProvider {
     return { code: blob, url: `${this.origin}/#share=${blob}`, shortUrl: null }
   }
 
+  // Finding 2 (phase 2 review): the code is capped at the same 8 KiB share()
+  // encodes to, checked before it is anything but a matched string -- a
+  // hash carrying a far larger "code" is not a link this provider ever
+  // produced, and match() should not treat it as one.
   match(loc: { pathname: string; hash: string }): string | null {
     const m = /^#share=([A-Za-z0-9_-]+)$/.exec(loc.hash)
-    return m ? m[1] : null
+    const code = m ? m[1] : null
+    return code && code.length <= MAX_SHARE_ENCODED_BYTES ? code : null
   }
 
   async resolve(code: string): Promise<ResolvedShare | null> {
+    // Same cap, checked again here (before any decode work) so a caller that
+    // reaches resolve() without going through match() first -- a plugin, a
+    // future caller -- cannot hand a huge string to atob/DecompressionStream.
+    if (code.length > MAX_SHARE_ENCODED_BYTES) return null
     let bytes: Uint8Array
     try {
       bytes = base64UrlToBytes(code)
@@ -159,6 +175,14 @@ export class HashShareProvider implements ShareProvider {
       return null
     }
     if (!isObj(payload) || (payload.kind !== 'scene' && payload.kind !== 'look')) return null
+
+    // Finding 2: an embedded-midi scene is refused the same way share()
+    // refuses one going out -- a link this provider itself would never have
+    // produced (share() rejects it before encoding), so decoding one here
+    // means the payload was hand-crafted or came from elsewhere.
+    if (payload.kind === 'scene' && isObj(payload.song) && payload.song.kind === 'midi') {
+      throw midiSceneRefusal()
+    }
 
     return {
       code,
