@@ -4,7 +4,7 @@
 // option to "use anyway (voices may not match)".
 
 import { useRef, useState } from 'react'
-import { MIDI_FILE_ACCEPT } from '../io/parseMidi'
+import { SCORE_FILE_ACCEPT } from '../io/loadScoreFile'
 
 const BTN = 'rounded-full px-3 py-1 text-xs font-semibold'
 
@@ -76,7 +76,7 @@ export function SceneFilePrompt(props: {
       <input
         ref={inputRef}
         type="file"
-        accept={MIDI_FILE_ACCEPT}
+        accept={SCORE_FILE_ACCEPT}
         aria-label="Scene song file"
         className="scene-file-input hidden"
         onChange={(e) => {

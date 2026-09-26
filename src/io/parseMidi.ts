@@ -18,7 +18,8 @@ const DEFAULT_INSTRUMENT = 'acoustic_grand_piano'
 // alone.
 export const MIDI_FILE_ACCEPT = '.mid,.midi,audio/midi,audio/mid,audio/x-midi,audio/sp-midi'
 
-function makeVoice(id: string, label: string, index: number, total: number): Voice {
+/** A fresh voice with the default instrument and the palette hue for its index. */
+export function makeVoice(id: string, label: string, index: number, total: number): Voice {
   return {
     id, label,
     hue: hueForVoiceIndex(index, total),

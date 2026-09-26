@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react'
 import { AudioEngine } from './audio/engine'
 import { BeatCursor, MetronomeVoice, beatTimes } from './audio/metronome'
 import { Scheduler, TICK_MS } from './audio/scheduler'
-import { parseMidi } from './io/parseMidi'
+import { parseScoreFile } from './io/loadScoreFile'
 import { hashFile } from './io/hashFile'
 import { computeLayout, fitRange, FIRST_PITCH, LAST_PITCH } from './render/geometry'
 import { drawStage } from './render/pianoRoll'
@@ -334,7 +334,7 @@ export default function App() {
     let score
     try {
       const bytes = await file.arrayBuffer()
-      score = parseMidi(bytes, file.name, useTransport.getState().tempo)
+      score = parseScoreFile(bytes, file.name, useTransport.getState().tempo)
       score.id = await hashFile(bytes)
       if (score.notes.length === 0) { setError(`${file.name} contains no notes.`); return false }
     } catch (e) {

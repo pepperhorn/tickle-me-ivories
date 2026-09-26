@@ -504,3 +504,86 @@ describe('App: task 2.5 fix round 1', () => {
     await waitFor(() => expect((screen.getByRole('button', { name: 'Cancel' }) as HTMLButtonElement).disabled).toBe(false))
   })
 })
+
+describe('App: MusicXML files', () => {
+  /** A two-staff piano part: C5 over C3, then E5 over G3, one bar of 4/4 at 60 bpm. */
+  const PIANO_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1"><measure number="1">
+    <attributes><divisions>1</divisions><staves>2</staves><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+    <direction><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>60</per-minute></metronome></direction-type></direction>
+    <note><pitch><step>C</step><octave>5</octave></pitch><duration>2</duration><staff>1</staff></note>
+    <note><pitch><step>E</step><octave>5</octave></pitch><duration>2</duration><staff>1</staff></note>
+    <backup><duration>4</duration></backup>
+    <note><pitch><step>C</step><octave>3</octave></pitch><duration>2</duration><staff>2</staff></note>
+    <note><pitch><step>G</step><octave>3</octave></pitch><duration>2</duration><staff>2</staff></note>
+  </measure></part>
+</score-partwise>`
+  const xmlBytes = () => new TextEncoder().encode(PIANO_XML) as Uint8Array<ArrayBuffer>
+  // An empty type, as Android often reports: content decides, not MIME or name.
+  const xmlFile = (name = 'song.musicxml') => new File([xmlBytes()], name, { type: '' })
+
+  it('loads a MusicXML file onto the roll with a voice per staff', async () => {
+    render(<App />)
+    await loadFile(xmlFile())
+    const s = useTransport.getState().score!
+    expect(s.sourceFormat).toBe('musicxml')
+    expect(s.id).toBe(await idOf(xmlBytes()))
+    expect(s.notes.map((n) => [n.pitch, n.startSec])).toEqual([[48, 0], [72, 0], [55, 2], [76, 2]])
+    expect(s.voices.map((v) => v.label)).toEqual(['Left hand', 'Right hand'])
+    expect(document.querySelector('.stage-error')).toBeNull()
+  })
+
+  it('autosaves under the file hash with format musicxml, and restores it on reload', async () => {
+    render(<App />)
+    await loadFile(xmlFile())
+    const id = await idOf(xmlBytes())
+    act(() => { useTransport.getState().setTempo({ mode: 'absolute', bpm: 72 }, engine.currentTime) })
+    fireEvent.click(screen.getByRole('button', { name: /load another/i }))
+    expect(loadProfile(id)).toMatchObject({ song: { id, name: 'song.musicxml', format: 'musicxml' }, tempo: { mode: 'absolute', bpm: 72 } })
+
+    await loadFile(xmlFile())
+    expect(useTransport.getState().tempo).toEqual({ mode: 'absolute', bpm: 72 })
+  })
+
+  it('saves a scene with a local musicxml ref, and loading it asks for the file then applies', async () => {
+    render(<App />)
+    await loadFile(xmlFile())
+    act(() => { useSettings.getState().setTheme({ name: 'outline' }) })
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    fireEvent.click(screen.getByRole('button', { name: /Scenes/ }))
+    fireEvent.change(screen.getByLabelText('Save name'), { target: { value: 'Xml' } })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save scene' })) })
+    await screen.findByRole('button', { name: 'Load Xml' })
+
+    const saved = (await getDefaults().storage.list('scene')).find((e) => e.name === 'Xml')!
+    const payload = (await getDefaults().storage.load('scene', saved.id))!
+    expect(payload.song).toMatchObject({ kind: 'local', format: 'musicxml', name: 'song.musicxml', sha256: await idOf(xmlBytes()) })
+
+    // Unload the song, then load the scene: it needs its file.
+    fireEvent.click(screen.getByRole('button', { name: /load another/i }))
+    act(() => { useSettings.getState().setTheme({ name: 'contrast' }) })
+    if (!screen.queryByRole('button', { name: 'Load Xml' })) {
+      fireEvent.click(screen.getByRole('button', { name: 'Scenes & looks' }))
+    }
+    const load = await screen.findByRole('button', { name: 'Load Xml' })
+    await act(async () => { fireEvent.click(load) })
+    expect(document.querySelector('.scene-file-prompt')?.textContent)
+      .toMatch(/This scene uses song\.musicxml\. Drop the file to continue\./)
+
+    fireEvent.change(screen.getByLabelText('Scene song file'), { target: { files: [xmlFile('renamed.xml')] } })
+    await waitFor(() => expect(useTransport.getState().score?.sourceFormat).toBe('musicxml'))
+    await waitFor(() => expect(useSettings.getState().theme.name).toBe('outline'))
+    expect(document.querySelector('.scene-file-prompt')).toBeNull()
+  })
+
+  it('shows a clear error for a file that is neither MIDI nor MusicXML', async () => {
+    render(<App />)
+    fireEvent.change(document.getElementById('file-input')!, {
+      target: { files: [new File(['<html></html>'], 'page.xml', { type: 'text/xml' })] },
+    })
+    await waitFor(() => expect(document.querySelector('.stage-error')?.textContent)
+      .toMatch(/Could not read page\.xml: it is not a MIDI or MusicXML file/))
+  })
+})

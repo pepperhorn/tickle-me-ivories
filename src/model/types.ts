@@ -20,6 +20,8 @@ export interface Voice {
   label: string
   hue: number            // 0-360
   instrument: string     // smplr instrument id
+  /** Where the voice came from (spec §4). Set for MusicXML voices; absent otherwise. */
+  source?: { kind: 'midi-track'; index: number; channel: number } | { kind: 'xml-part'; partId: string; staff: number }
   visible: boolean
   audible: boolean
   volume: number         // 0-1
@@ -56,4 +58,6 @@ export interface ScoreDocument {
   timeSignatures: TimeSigEvent[]
   /** From the MIDI key-signature meta event; null when the file carries none. */
   keySignature: { key: string; scale: string } | null
+  /** MusicXML only: the score's XML text, retained verbatim for a later notation view (spec §4). */
+  rawXml?: string
 }
