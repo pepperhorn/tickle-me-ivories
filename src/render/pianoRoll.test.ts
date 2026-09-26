@@ -123,6 +123,24 @@ describe('drawStage', () => {
     expect(drawStage(stubCtx().ctx, hidden, 0.5, 0).size).toBe(0)
   })
 
+  // Spec §6.1: percussion falls on the roll but never lights keys (nor the
+  // key flash, nor the held set the chord readout reads).
+  it('leaves percussion voices out of key lighting and the flash, but keeps their bars', () => {
+    const notes = [n(0, 38, 0, 1)]
+    const drums = state(notes)
+    drums.voices.get('v')!.percussion = true
+    expect(drawStage(stubCtx().ctx, drums, 0.05, 0).size).toBe(0)
+    const plain = stubCtx(); drawStage(plain.ctx, state(notes), 0.05, 0)
+    const perc = stubCtx(); drawStage(perc.ctx, drums, 0.05, 0)
+    expect(perc.calls.filter((c) => c.startsWith('arc(')).length).toBe(0)
+    expect(plain.calls.filter((c) => c.startsWith('arc(')).length).toBeGreaterThan(0)
+    // The bar itself is still drawn: more than for the same note in a hidden voice.
+    const hidden = state(notes)
+    hidden.voices.get('v')!.visible = false
+    const none = stubCtx(); drawStage(none.ctx, hidden, 0.05, 0)
+    expect(perc.calls.length).toBeGreaterThan(none.calls.length)
+  })
+
   it('clears rather than fills when the stage background is transparent', () => {
     const { ctx, calls } = stubCtx()
     drawStage(ctx, { ...state([]), theme: { ...DEFAULT_THEME, stageBg: 'transparent' } }, 0, 0)

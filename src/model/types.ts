@@ -25,6 +25,9 @@ export interface Voice {
   visible: boolean
   audible: boolean
   volume: number         // 0-1
+  /** Unpitched percussion (spec §6.1): its bars fall on the roll, but it never
+      lights keyboard keys (or the key flash, or the chord readout). */
+  percussion?: boolean
 }
 
 export interface TempoEvent {

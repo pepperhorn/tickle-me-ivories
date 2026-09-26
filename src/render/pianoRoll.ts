@@ -99,7 +99,7 @@ function drawImpact(
   ctx.globalCompositeOperation = 'lighter'
   for (const n of vis) {
     const v = voices.get(n.voiceId)
-    if (!v || !v.visible) continue
+    if (!v || !v.visible || v.percussion) continue   // percussion never lights keys (§6.1)
     const i = flashIntensity(t - n.startSec, n.velocity) * state.flashScale
     if (i <= 0.003) continue
     const k = layout.byPitch.get(n.pitch)
@@ -188,8 +188,12 @@ export function drawStage(
   // so a tiny value turns every held note into a full-height colour column.
   if (state.showRoll) drawRoll(ctx, state, t, vis)
 
+  // Hidden voices, and percussion (spec §6.1: on the roll, never on the keys).
   const held = heldNotes(
-    vis.filter((n) => state.voices.get(n.voiceId)?.visible !== false), t,
+    vis.filter((n) => {
+      const v = state.voices.get(n.voiceId)
+      return v?.visible !== false && !v?.percussion
+    }), t,
   )
   drawKeyboard(ctx, state, held)
 

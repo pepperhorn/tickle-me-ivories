@@ -3,7 +3,7 @@
 // Android hands over as application/octet-stream, must still load.
 
 import { MIDI_FILE_ACCEPT, parseMidi } from './parseMidi'
-import { MUSICXML_FILE_ACCEPT, decodeXmlText, parseMusicXml, unpackMxl } from './parseMusicXml'
+import { MAX_XML_BYTES, MUSICXML_FILE_ACCEPT, decodeXmlText, parseMusicXml, unpackMxl } from './parseMusicXml'
 import type { ScoreDocument, TempoSetting } from '../model/types'
 
 /**
@@ -33,7 +33,11 @@ export function parseScoreFile(bytes: ArrayBuffer, name: string, setting: TempoS
   switch (sniffScoreFile(view)) {
     case 'midi': return parseMidi(bytes, name, setting)
     case 'mxl': return parseMusicXml(unpackMxl(view), name, setting)
-    case 'musicxml': return parseMusicXml(decodeXmlText(view), name, setting)
+    case 'musicxml':
+      if (view.length > MAX_XML_BYTES) {
+        throw new Error(`the MusicXML file is larger than ${MAX_XML_BYTES / (1024 * 1024)} MiB.`)
+      }
+      return parseMusicXml(decodeXmlText(view), name, setting)
     default: throw new Error('it is not a MIDI or MusicXML file.')
   }
 }
