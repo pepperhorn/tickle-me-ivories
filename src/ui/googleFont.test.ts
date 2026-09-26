@@ -39,6 +39,13 @@ describe('ensureGoogleFont', () => {
     expect(links()).toHaveLength(0)
   })
 
+  // Parked finding (2026-09-15 handover:46) / spec §9.2: an untrusted family
+  // string must never reach a URL or a <link>.
+  it('refuses an unsafe family, with no link added', () => {
+    ensureGoogleFont('x"; background:url(//evil)')
+    expect(links()).toHaveLength(0)
+  })
+
   // F36: the id is keyed on family AND weights, or a weight change never loads.
   it('loads a new weight of a family it already requested', () => {
     ensureGoogleFont('Inter', [400])

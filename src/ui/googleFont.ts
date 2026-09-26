@@ -1,3 +1,5 @@
+import { isSafeFontFamily } from '../settings/profile'
+
 const DEFAULT_WEIGHTS = [400, 500, 600, 700]
 
 const familyParam = (name: string) => encodeURIComponent(name).replace(/%20/g, '+')
@@ -11,10 +13,13 @@ const familyParam = (name: string) => encodeURIComponent(name).replace(/%20/g, '
  * a family already requested actually loads that weight. Google answers a
  * weight the family does not have with an error rather than a fallback, so on
  * `error` the link retries once without the `:wght@` axis (the family default).
+ *
+ * Refuses a family that fails FONT_FAMILY_RE (spec §8.5, §9.2): an untrusted
+ * family (a share, an import) must never reach a URL or a `<link>`.
  */
 export function ensureGoogleFont(family: string, weights: number[] = DEFAULT_WEIGHTS): void {
   const name = family.trim()
-  if (!name) return
+  if (!name || !isSafeFontFamily(name)) return
   const id = `gf-${name.toLowerCase().replace(/\s+/g, '-')}-${weights.join('-')}`
   if (document.getElementById(id)) return
 

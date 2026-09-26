@@ -60,6 +60,18 @@ describe('textCss', () => {
     const css = textCss({ ...DEFAULT_SETTINGS.text.style, strokeWidth: 0 }, 20) as Record<string, string>
     expect(css.WebkitTextStroke).toBeUndefined()
   })
+
+  it('emits a quoted family with the Poppins/sans-serif fallback chain', () => {
+    const css = textCss({ ...DEFAULT_SETTINGS.text.style, family: 'Inter' }, 20) as Record<string, string>
+    expect(css.fontFamily).toBe('"Inter", Poppins, sans-serif')
+  })
+
+  // Parked finding (2026-09-15 handover:46) / spec §9.2: an unsafe family
+  // (quotes, a CSS breakout) must never reach the declaration.
+  it('falls back an unsafe family to Poppins', () => {
+    const css = textCss({ ...DEFAULT_SETTINGS.text.style, family: 'x"; background:url(//evil)' }, 20) as Record<string, string>
+    expect(css.fontFamily).toBe('"Poppins", Poppins, sans-serif')
+  })
 })
 
 describe('StageText', () => {

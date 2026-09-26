@@ -186,6 +186,18 @@ export function validTheme(v: unknown): ThemeSettings | null {
   return { name: v.name as ThemeName, stageBgOverride: override }
 }
 
+/**
+ * A Google Fonts family name: letters, digits and spaces only, starting with
+ * an alphanumeric, up to 64 characters. Spec §8.5. Anything else can break out
+ * of the `font-family` CSS declaration (a quote, a `;`, a `url(...)`), so a
+ * family that fails this is never trusted verbatim.
+ */
+export const FONT_FAMILY_RE = /^[A-Za-z0-9][A-Za-z0-9 ]{0,63}$/
+
+export function isSafeFontFamily(s: string): boolean {
+  return FONT_FAMILY_RE.test(s)
+}
+
 /** Returns a clean copy of a valid text style, clamped to the control ranges, or null. */
 function validTextStyle(v: unknown): TextStyle | null {
   if (!isObj(v)) return null
@@ -194,7 +206,10 @@ function validTextStyle(v: unknown): TextStyle | null {
   if (!isNum(weight) || !isNum(sizeRatio) || !isNum(letterSpacing) || !isNum(opacity) || !isNum(strokeWidth)) return null
   const r = TEXT_RANGES
   return {
-    family,
+    // An unsafe family (quotes, CSS breakout) falls back to the default
+    // rather than refusing the whole profile over one field -- the same
+    // treatment colour gets below.
+    family: isSafeFontFamily(family) ? family : DEFAULT_TEXT_STYLE.family,
     weight: clamp(weight, ...r.weight),
     sizeRatio: clamp(sizeRatio, ...r.sizeRatio),
     letterSpacing: clamp(letterSpacing, ...r.letterSpacing),

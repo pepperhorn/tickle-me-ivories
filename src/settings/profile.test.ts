@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
-  PROFILE_SCHEMA_VERSION, buildProfile, decodeProfile, encodeProfile,
-  isCssColor, loadGlobals, loadProfile, mergeVoices, saveGlobals, saveProfile,
+  FONT_FAMILY_RE, PROFILE_SCHEMA_VERSION, buildProfile, decodeProfile, encodeProfile,
+  isCssColor, isSafeFontFamily, loadGlobals, loadProfile, mergeVoices, saveGlobals, saveProfile,
 } from './profile'
 import { DEFAULT_SETTINGS, DEFAULT_TEXT_STYLE } from './types'
 import { MAX_TEMPO_SCALE, MIN_TEMPO_SCALE } from '../model/tempoMap'
@@ -260,6 +260,43 @@ describe('decodeProfile validation of untrusted input', () => {
     const p = decodeProfile(tampered((x) => { x.text.evil = '<script>'; x.text.style.extra = 1 }))
     expect(p.text).not.toHaveProperty('evil')
     expect(p.text.style).not.toHaveProperty('extra')
+  })
+
+  // Parked finding (2026-09-15 handover:46): an untrusted font family string
+  // with quotes must not break the font-family declaration.
+  it('falls back an unsafe font family to Poppins rather than refusing the profile', () => {
+    const p = decodeProfile(tampered((x) => { x.text.style.family = 'x"; background:url(//evil)' }))
+    expect(p.text.style.family).toBe(DEFAULT_TEXT_STYLE.family)
+    expect(p.text.style.family).toBe('Poppins')
+  })
+
+  it('keeps a safe multi-word family unchanged', () => {
+    const p = decodeProfile(tampered((x) => { x.text.style.family = 'Space Grotesk' }))
+    expect(p.text.style.family).toBe('Space Grotesk')
+  })
+})
+
+describe('isSafeFontFamily / FONT_FAMILY_RE', () => {
+  it('accepts letters, digits and spaces, starting with an alphanumeric', () => {
+    expect(isSafeFontFamily('Poppins')).toBe(true)
+    expect(isSafeFontFamily('Space Grotesk')).toBe(true)
+    expect(isSafeFontFamily('Roboto Mono 2')).toBe(true)
+  })
+
+  it('refuses quotes, punctuation, and a CSS breakout attempt', () => {
+    expect(isSafeFontFamily('x"; background:url(//evil)')).toBe(false)
+    expect(isSafeFontFamily("Arial', sans-serif")).toBe(false)
+    expect(isSafeFontFamily('')).toBe(false)
+    expect(isSafeFontFamily(' Poppins')).toBe(false)
+  })
+
+  it('refuses a family longer than 64 characters', () => {
+    expect(isSafeFontFamily('A'.repeat(64))).toBe(true)
+    expect(isSafeFontFamily('A'.repeat(65))).toBe(false)
+  })
+
+  it('is exported as the exact spec §8.5 regex', () => {
+    expect(FONT_FAMILY_RE.source).toBe('^[A-Za-z0-9][A-Za-z0-9 ]{0,63}$')
   })
 })
 

@@ -5,6 +5,7 @@ import { spellPitch } from '../music/spell'
 import type { KeyboardLayout } from '../render/geometry'
 import type { KeyContext } from '../music/spell'
 import type { NoteLabelContent, TextSettings as TextSettingsType, TextStyle } from '../settings/types'
+import { isSafeFontFamily } from '../settings/profile'
 
 /** Self-hosted via @fontsource/poppins; never requested from the CDN (F37). */
 const BUNDLED_FAMILY = 'poppins'
@@ -38,8 +39,11 @@ export function labelText(midi: number, content: NoteLabelContent, key: KeyConte
  * illegible the moment the background matches its colour.
  */
 export function textCss(style: TextStyle, whiteW: number): CSSProperties {
+  // An unsafe family (quotes, a CSS breakout) falls back to Poppins rather
+  // than reaching the declaration verbatim (spec §9.2).
+  const family = isSafeFontFamily(style.family) ? style.family : 'Poppins'
   const css: CSSProperties = {
-    fontFamily: `'${style.family}', Poppins, system-ui, sans-serif`,
+    fontFamily: `"${family}", Poppins, sans-serif`,
     fontWeight: style.weight,
     fontSize: `${(style.sizeRatio * whiteW).toFixed(2)}px`,
     letterSpacing: `${style.letterSpacing}em`,

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { SettingsRow } from './SettingsPanel'
 import { KEY_OPTIONS } from '../music/keyOf'
+import { isSafeFontFamily } from '../settings/profile'
 import type {
   ChordDisplay, ChordPlacement, NoteLabelContent, NoteLabelPlacement,
   TextSettings as TextSettingsType, TextStyle,
@@ -47,9 +48,14 @@ export function TextSettings(props: {
   // draft: keep a local draft string and commit once, on blur or Enter.
   const [familyDraft, setFamilyDraft] = useState(text.style.family)
   useEffect(() => { setFamilyDraft(text.style.family) }, [text.style.family])
+  // An unsafe family (quotes, a CSS breakout) is refused at commit and the
+  // draft reverts to the last-committed value, same as an unedited blur.
   const commitFamily = () => {
-    if (familyDraft.trim() && familyDraft !== text.style.family) onStyle({ family: familyDraft })
-    else setFamilyDraft(text.style.family)
+    if (familyDraft.trim() && familyDraft !== text.style.family && isSafeFontFamily(familyDraft)) {
+      onStyle({ family: familyDraft })
+    } else {
+      setFamilyDraft(text.style.family)
+    }
   }
 
   return (

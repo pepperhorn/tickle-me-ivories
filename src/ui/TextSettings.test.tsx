@@ -49,6 +49,17 @@ describe('TextSettings font family', () => {
     expect(onStyle).not.toHaveBeenCalled()
   })
 
+  // Parked finding (2026-09-15 handover:46) / spec §9.2: TextSettings must
+  // refuse an unsafe family at commit, not just fall back downstream.
+  it('refuses an unsafe family at commit and reverts the draft', () => {
+    const { onStyle } = setup()
+    const input = screen.getByLabelText('Font family') as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'x"; background:url(//evil)' } })
+    fireEvent.blur(input)
+    expect(onStyle).not.toHaveBeenCalled()
+    expect(input.value).toBe(DEFAULT_SETTINGS.text.style.family)
+  })
+
   it('resyncs the draft when the committed family changes externally', () => {
     const text = DEFAULT_SETTINGS.text
     const { rerender } = render(
