@@ -48,8 +48,11 @@ import type { Theme } from './render/theme'
 import type { ChordReading } from './music/chords'
 import type { KeyContext } from './music/spell'
 import type { ChordDisplayValue } from './ui/ChordReadout'
-import type { ScoreDocument, TempoSetting, Voice } from './model/types'
-import type { ThemeName, ZoomMode } from './settings/types'
+import type { DisplayMode, ScoreDocument, TempoSetting, Voice } from './model/types'
+import type {
+  AudioSettings, DisplaySettings as DisplaySettingsValue, SavedVoice, Settings,
+  TextSettings as TextSettingsValue, ThemeName, ThemeSettings as ThemeSettingsValue, VelocityScheme, ZoomMode,
+} from './settings/types'
 
 /** The tempo a song with no saved profile starts at: the file's own tempi. */
 const DEFAULT_TEMPO: TempoSetting = { mode: 'scale', scale: 1 }
@@ -68,6 +71,9 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
+  // The "Scenes & looks" card on the empty stage (no song loaded, so no
+  // TransportBar and no Settings panel to host it).
+  const [emptyScenesOpen, setEmptyScenesOpen] = useState(false)
   const lastTenthRef = useRef(-1)
   // What the DOM text overlay is showing. The ref is the draw loop's copy, so
   // it can compare against the last push without reading React state.
@@ -313,11 +319,18 @@ export default function App() {
     }, [engine, chordFeed]),
   )
 
-  // Resolves false if the file was refused. `onLoaded` fires as soon as the
-  // file is the loaded score, BEFORE the audio half: engine.resume() can wait
-  // indefinitely for a user gesture (autoplay policy), and the scene file
-  // prompt (§8.3) must not hang on it before applying its scene.
-  const loadFile = useCallback(async (file: File, onLoaded?: () => void): Promise<boolean> => {
+  // Resolves false if the file was refused. Two optional hooks serve the
+  // scene file prompt (§8.3):
+  // - `beforeLoad` runs once the file has parsed, before anything changes,
+  //   so a caller can unload the current song only for a file that is good;
+  // - `onLoaded` runs synchronously as soon as the file is the loaded score,
+  //   BEFORE the audio half: engine.resume() can wait indefinitely for a user
+  //   gesture (autoplay policy), and a scene applied in onLoaded must be what
+  //   the audio half then loads.
+  const loadFile = useCallback(async (
+    file: File,
+    hooks: { beforeLoad?: () => void; onLoaded?: () => void } = {},
+  ): Promise<boolean> => {
     let score
     try {
       const bytes = await file.arrayBuffer()
@@ -328,6 +341,7 @@ export default function App() {
       setError(`Could not read ${file.name}: ${(e as Error).message}`)
       return false
     }
+    hooks.beforeLoad?.()
 
     // Claim this load's slot before the first await below. If a newer
     // loadFile or loadAnother runs before this one's instruments finish
@@ -362,13 +376,20 @@ export default function App() {
       useTransport.getState().setMode(saved.display.mode)
       useTransport.getState().setFallSeconds(saved.display.fallSeconds)
     }
-    onLoaded?.()
+    hooks.onLoaded?.()
 
     try {
       await engine.resume()
       engine.setMasterVolume(useSettings.getState().audio.masterVolume)
-      await Promise.all(score.voices.map((v) => engine.loadVoice(v)))
-      if (loadTokenRef.current === token) engine.retainVoices(score.voices.map((v) => v.id))
+      // While this load is still current, load the voices as they are NOW,
+      // not this function's pre-resume copy: a scene applied in onLoaded (or
+      // any voice edit made while resume waited) must not have its
+      // instruments and gains overwritten by the file's defaults.
+      const voices = loadTokenRef.current === token
+        ? useTransport.getState().score?.voices ?? score.voices
+        : score.voices
+      await Promise.all(voices.map((v) => engine.loadVoice(v)))
+      if (loadTokenRef.current === token) engine.retainVoices(voices.map((v) => v.id))
     } catch (e) {
       // The score is loaded and visible; only sound is affected.
       setError(`${file.name} is loaded, but audio could not start: ${(e as Error).message}`)
@@ -521,6 +542,51 @@ export default function App() {
     setTimeout(() => URL.revokeObjectURL(url), 0)
   }, [])
 
+  // The apply half shared by a profile import and a scene. Everything derived
+  // is computed before the first mutation, so a refusal leaves the app as it
+  // was ({ partial: false }); a failure mid-apply reports { partial: true }.
+  // Voices, tempo, mode and fall time need a loaded score; with none, only
+  // the settings apply. `velocity`/`audio` apply only when given.
+  const applyProfileParts = useCallback((p: {
+    theme: ThemeSettingsValue
+    text: TextSettingsValue
+    display?: DisplaySettingsValue
+    velocity?: VelocityScheme
+    audio?: AudioSettings | null
+    voices: SavedVoice[]
+    tempo: TempoSetting
+    mode: DisplayMode
+    fallSeconds: number
+  }): { partial: boolean; message: string } | null => {
+    const tr = useTransport.getState()
+    let next: Settings, voices: Voice[] | null
+    try {
+      next = {
+        ...currentSettings(), theme: p.theme, text: p.text,
+        ...(p.display ? { display: p.display } : {}),
+        ...(p.velocity ? { velocity: p.velocity } : {}),
+        ...(p.audio ? { audio: p.audio } : {}),
+      }
+      voices = tr.score ? mergeVoices(tr.score.voices, p.voices) : null
+    } catch (e) {
+      return { partial: false, message: (e as Error).message }
+    }
+    try {
+      useSettings.getState().replaceAll(next)
+      if (p.audio) engine.setMasterVolume(p.audio.masterVolume)
+      if (tr.score && voices) {
+        useTransport.setState({ score: { ...tr.score, voices } })
+        for (const v of voices) { engine.setVoiceVolume(v.id, v.volume); void engine.loadVoice(v) }
+        changeTempo(p.tempo)
+        tr.setMode(p.mode)
+        tr.setFallSeconds(p.fallSeconds)
+      }
+      return null
+    } catch (e) {
+      return { partial: true, message: (e as Error).message }
+    }
+  }, [engine, changeTempo])
+
   const importProfile = useCallback(async (file: File, applyGlobals: boolean) => {
     let p
     try {
@@ -530,36 +596,15 @@ export default function App() {
       setProfileError((e as Error).message)
       return
     }
-    // Compute everything derived from the file BEFORE the first mutation, so a
-    // failure here leaves the app exactly as it was.
-    const tr = useTransport.getState()
-    let next, voices
-    try {
-      next = {
-        ...currentSettings(), theme: p.theme, text: p.text,
-        ...(p.display.settings ? { display: p.display.settings } : {}),
-        ...(applyGlobals ? { velocity: p.global.velocity, audio: p.global.audio } : {}),
-      }
-      voices = tr.score ? mergeVoices(tr.score.voices, p.voices) : null
-    } catch (e) {
-      setProfileError(`Could not import profile: ${(e as Error).message}`)
-      return
-    }
-    try {
-      useSettings.getState().replaceAll(next)
-      if (applyGlobals) engine.setMasterVolume(p.global.audio.masterVolume)
-      if (tr.score && voices) {
-        useTransport.setState({ score: { ...tr.score, voices } })
-        for (const v of voices) { engine.setVoiceVolume(v.id, v.volume); void engine.loadVoice(v) }
-        changeTempo(p.tempo)
-        tr.setMode(p.display.mode)
-        tr.setFallSeconds(p.display.fallSeconds)
-      }
-      setProfileError(null)
-    } catch (e) {
-      setProfileError(`Profile was only partly applied: ${(e as Error).message}`)
-    }
-  }, [engine, changeTempo])
+    const r = applyProfileParts({
+      theme: p.theme, text: p.text, display: p.display.settings,
+      ...(applyGlobals ? { velocity: p.global.velocity, audio: p.global.audio } : {}),
+      voices: p.voices, tempo: p.tempo, mode: p.display.mode, fallSeconds: p.display.fallSeconds,
+    })
+    if (!r) setProfileError(null)
+    else if (r.partial) setProfileError(`Profile was only partly applied: ${r.message}`)
+    else setProfileError(`Could not import profile: ${r.message}`)
+  }, [applyProfileParts])
 
   // ---- scenes, looks and shares (task 2.5) ----
 
@@ -591,32 +636,20 @@ export default function App() {
     return lookFromSettings(currentSettings(), tr.mode, tr.fallSeconds)
   }, [])
 
-  // Applies a scene to the loaded score, all or nothing like importProfile:
-  // everything derived is computed before the first mutation. A shared
+  // Applies a scene to the loaded score through the same apply half as a
+  // profile import (same refusal and partial-apply handling). A shared
   // scene's plan never carries audio (sceneApplyPlan, spec §8.1). The 400ms
   // autosave then records the result under tmi.profile.<id> as usual.
   const applySceneToScore = useCallback((scene: SceneV1, shared: boolean) => {
-    const tr = useTransport.getState()
-    if (!tr.score) throw new Error('Load the scene’s song first.')
+    if (!useTransport.getState().score) throw new Error('Load the scene’s song first.')
     const plan = sceneApplyPlan(scene, { shared })
-    const cur = currentSettings()
-    const next = {
-      ...cur,
-      theme: plan.settings.theme,
-      text: plan.settings.text,
-      velocity: plan.settings.velocity,
-      ...(plan.settings.display ? { display: plan.settings.display } : {}),
-      ...(plan.audio ? { audio: plan.audio } : {}),
-    }
-    const voices = mergeVoices(tr.score.voices, plan.voices)
-    useSettings.getState().replaceAll(next)
-    if (plan.audio) engine.setMasterVolume(plan.audio.masterVolume)
-    useTransport.setState({ score: { ...tr.score, voices } })
-    for (const v of voices) { engine.setVoiceVolume(v.id, v.volume); void engine.loadVoice(v) }
-    changeTempo(plan.tempo)
-    tr.setMode(plan.mode)
-    tr.setFallSeconds(plan.fallSeconds)
-  }, [engine, changeTempo])
+    const r = applyProfileParts({
+      ...plan.settings, audio: plan.audio,
+      voices: plan.voices, tempo: plan.tempo, mode: plan.mode, fallSeconds: plan.fallSeconds,
+    })
+    if (r?.partial) throw new Error(`The scene was only partly applied: ${r.message}`)
+    if (r) throw new Error(`Could not apply the scene: ${r.message}`)
+  }, [applyProfileParts])
 
   // A look needs no song. keyOverride is song-specific, so the current one stays.
   const applyLookSettings = useCallback((look: LookV1) => {
@@ -631,11 +664,16 @@ export default function App() {
   }, [])
 
   // Swapping songs for a scene goes through "Load another" first, so playback
-  // stops and the outgoing song's pending autosave is flushed.
-  // Resolves true as soon as the file is the loaded score (not after audio).
-  const replaceSong = useCallback((file: File) => new Promise<boolean>((resolve) => {
-    if (useTransport.getState().score) loadAnother()
-    void loadFile(file, () => resolve(true)).then((ok) => { if (!ok) resolve(false) })
+  // stops and the outgoing song's pending autosave is flushed -- but only once
+  // the new file has parsed, so a bad file leaves the current song alone.
+  // Resolves true right after onLoaded (not after audio); false if the file
+  // was refused or loadFile threw. Never rejects, so the prompt's busy state
+  // always clears.
+  const replaceSong = useCallback((file: File, onLoaded: () => void) => new Promise<boolean>((resolve) => {
+    loadFile(file, {
+      beforeLoad: () => { if (useTransport.getState().score) loadAnother() },
+      onLoaded: () => { try { onLoaded() } finally { resolve(true) } },
+    }).then((ok) => { if (!ok) resolve(false) }, () => resolve(false))
   }), [loadAnother, loadFile])
 
   const scenes = useScenes({
@@ -643,6 +681,7 @@ export default function App() {
     applyScene: applySceneToScore,
     applyLook: applyLookSettings,
     replaceSong,
+    currentAudio: () => currentSettings().audio,
   })
 
   // Reset reaches the engine too, or the master gain stays at the old level.
@@ -668,6 +707,30 @@ export default function App() {
     engine.setMasterVolume(v)
   }, [engine])
 
+  // One instance of the panel pair, hosted by the Settings panel with a song
+  // loaded and by the empty-stage card without one. Loading a scene with no
+  // song starts the §8.3 drop-the-file flow.
+  const scenesSection = (
+    <>
+      <ScenesPanel
+        storage={platform.storage}
+        refreshKey={scenes.savesVersion}
+        canSaveScene={t.score !== null}
+        defaultName={t.score?.name.replace(/\.[^.]+$/, '') || 'Untitled'}
+        buildScene={buildScene}
+        buildLook={buildLook}
+        onOpenScene={(s) => void scenes.openScene(s, false)}
+        onApplyLook={scenes.applyLook}
+      />
+      <SharePanel
+        share={platform.share}
+        canShareScene={t.score !== null}
+        buildScene={buildScene}
+        buildLook={buildLook}
+      />
+    </>
+  )
+
   return (
     <div className="app-shell flex h-full flex-col bg-[var(--ground)]">
       {/* No Tailwind background here: the canvas paints the stage itself, and a
@@ -688,10 +751,27 @@ export default function App() {
         />
         <ChordReadout layout={stageText.layout} value={chord} text={settings.text} />
         {!t.score && (
-          <div className="stage-empty absolute inset-0 flex items-center justify-center p-4">
+          <div className="stage-empty absolute inset-0 flex flex-col items-center justify-center gap-3 overflow-y-auto p-4">
             {/* While a scene waits for its song (§8.3), a file dropped here is
                 checked against the scene's hash rather than loaded blind. */}
             <FileDropZone onFile={scenes.pending ? scenes.provideFile : (f) => void loadFile(f)} />
+            <button
+              type="button"
+              aria-expanded={emptyScenesOpen}
+              className="btn-open-scenes rounded-md border border-[var(--line)] px-3 py-1 text-xs text-[var(--ink-dim)]"
+              onClick={() => setEmptyScenesOpen((v) => !v)}
+            >
+              Scenes &amp; looks
+            </button>
+            {emptyScenesOpen && (
+              <div
+                role="region"
+                aria-label="Scenes and looks"
+                className="scenes-empty-card flex w-80 max-w-full flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4"
+              >
+                {scenesSection}
+              </div>
+            )}
           </div>
         )}
         {scenes.pending ? (
@@ -815,22 +895,7 @@ export default function App() {
                   </SettingsRow>
                 </SettingsSection>
                 <SettingsSection id="scenes" title="Scenes &amp; looks">
-                  <ScenesPanel
-                    storage={platform.storage}
-                    refreshKey={scenes.savesVersion}
-                    canSaveScene={t.score !== null}
-                    defaultName={t.score?.name.replace(/\.[^.]+$/, '') || 'Untitled'}
-                    buildScene={buildScene}
-                    buildLook={buildLook}
-                    onOpenScene={(s) => void scenes.openScene(s, false)}
-                    onApplyLook={scenes.applyLook}
-                  />
-                  <SharePanel
-                    share={platform.share}
-                    canShareScene={t.score !== null}
-                    buildScene={buildScene}
-                    buildLook={buildLook}
-                  />
+                  {scenesSection}
                 </SettingsSection>
                 <SettingsSection id="profile" title="Profile">
                   <ProfileSettings

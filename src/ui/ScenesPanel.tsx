@@ -158,6 +158,9 @@ export function ScenesPanel(props: {
             Save look
           </button>
         </div>
+        {!props.canSaveScene && (
+          <p className="save-scene-hint text-[11px] text-[var(--ink-dim)]">Load a song to save a scene.</p>
+        )}
       </div>
 
       {list('scene', scenes)}

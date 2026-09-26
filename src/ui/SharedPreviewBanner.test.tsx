@@ -67,4 +67,13 @@ describe('SceneFilePrompt', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Use anyway (voices may not match)' }))
     expect(h.onUseAnyway).toHaveBeenCalled()
   })
+
+  it('while busy, ignores drops and disables Cancel', () => {
+    const h = p()
+    render(<SceneFilePrompt songName="demo.mid" mismatch="other.mid" busy {...h} />)
+    fireEvent.drop(document.querySelector('.scene-file-prompt')!, { dataTransfer: { files: [new File(['x'], 'demo.mid')] } })
+    expect(h.onFile).not.toHaveBeenCalled()
+    expect((document.querySelector('.btn-cancel-scene') as HTMLButtonElement).disabled).toBe(true)
+    expect((document.querySelector('.btn-use-anyway') as HTMLButtonElement).disabled).toBe(true)
+  })
 })

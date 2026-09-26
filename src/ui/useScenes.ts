@@ -24,6 +24,7 @@ import { decodeScene, songKey } from '../platform/scene'
 import { decodeLook } from '../platform/look'
 import { isPayloadVersionError } from '../platform/codec'
 import { hashFile } from '../io/hashFile'
+import type { AudioSettings } from '../settings/types'
 import { saveErrorMessage } from './saveErrors'
 import type { SharePreviewView } from './SharedPreviewBanner'
 
@@ -34,8 +35,16 @@ export interface ScenesHost {
   /** Applies a scene to the loaded score. Throws with a user-facing message. */
   applyScene: (scene: SceneV1, shared: boolean) => void
   applyLook: (look: LookV1) => void
-  /** Replaces whatever is loaded with this file. Resolves true once it is the loaded score. */
-  replaceSong: (file: File) => Promise<boolean>
+  /**
+   * Replaces whatever is loaded with this file (the current song is unloaded
+   * only once the new file has parsed). `onLoaded` runs synchronously the
+   * moment the file is the loaded score, before the audio half of the load
+   * starts, so a scene applied there is what the audio half loads. Resolves
+   * true after `onLoaded`, false if the file was refused; never rejects.
+   */
+  replaceSong: (file: File, onLoaded: () => void) => Promise<boolean>
+  /** The recipient's own device audio, stamped into a saved copy of a shared scene. */
+  currentAudio: () => AudioSettings
 }
 
 type Preview =
@@ -107,6 +116,15 @@ export function useScenes(host: ScenesHost) {
   const [pending, setPending] = useState<PendingScene | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // The state drives the buttons; the ref is the synchronous guard, so a
+  // second drop (or a Cancel) cannot race a hash check or a load in flight.
+  const busyRef = useRef(false)
+  const runBusy = useCallback(async (fn: () => Promise<void>) => {
+    if (busyRef.current) return
+    busyRef.current = true
+    setBusy(true)
+    try { await fn() } finally { busyRef.current = false; setBusy(false) }
+  }, [])
   /** Bumped whenever a save is written from outside the panel ("Save a copy"). */
   const [savesVersion, setSavesVersion] = useState(0)
 
@@ -124,26 +142,23 @@ export function useScenes(host: ScenesHost) {
       hostRef.current.applyScene(scene, shared)
       setMessage(null)
     } catch (e) {
-      setMessage(saveErrorMessage(e, 'Could not apply the scene'))
+      // applyScene throws messages already written for the user.
+      setMessage(e instanceof Error && e.message ? e.message : 'Could not apply the scene.')
     }
   }, [])
 
-  /** Loads `file` as the song, then applies the scene over it. */
+  /** Loads `file` as the song and applies the scene the moment it is loaded
+      (inside replaceSong's onLoaded, before the audio half runs). Not guarded:
+      callers run it inside runBusy. */
   const finishWithFile = useCallback(async (scene: SceneV1, shared: boolean, file: File) => {
-    setBusy(true)
-    try {
-      const ok = await hostRef.current.replaceSong(file)
-      if (ok) {
-        setPending(null)
-        applyNow(scene, shared)
-      }
-    } finally {
-      setBusy(false)
-    }
+    await hostRef.current.replaceSong(file, () => {
+      setPending(null)
+      applyNow(scene, shared)
+    })
   }, [applyNow])
 
-  /** Checks a candidate song file against the scene's hash. */
-  const checkFile = useCallback(async (scene: SceneV1, shared: boolean, file: File) => {
+  /** Checks a candidate song file against the scene's hash, busy throughout. */
+  const checkFile = useCallback((scene: SceneV1, shared: boolean, file: File) => runBusy(async () => {
     const song = scene.song
     if (song.kind !== 'local' && song.kind !== 'midi') return
     let hash: string
@@ -158,7 +173,7 @@ export function useScenes(host: ScenesHost) {
     } else {
       setPending({ scene, shared, mismatch: file })
     }
-  }, [finishWithFile])
+  }), [runBusy, finishWithFile])
 
   /** Opens a scene (from a save or an applied share). */
   const openScene = useCallback(async (scene: SceneV1, shared: boolean) => {
@@ -213,7 +228,14 @@ export function useScenes(host: ScenesHost) {
     setBusy(true)
     try {
       const storage = getPlatform().storage
-      if (p.kind === 'scene') await storage.save({ kind: 'scene', name: p.payload.song.title || 'Shared scene', payload: p.payload })
+      if (p.kind === 'scene') {
+        // A later load of this copy is an own scene (shared:false), which
+        // applies global.audio -- so the sharer's device audio must not be
+        // what is stored. Stamp in the recipient's own.
+        const copy = structuredClone(p.payload)
+        copy.profile.global.audio = hostRef.current.currentAudio()
+        await storage.save({ kind: 'scene', name: p.payload.song.title || 'Shared scene', payload: copy })
+      }
       else await storage.save({ kind: 'look', name: 'Shared look', payload: p.payload })
       clearShareHash()
       setPreview({ ...p, saved: true })
@@ -241,10 +263,15 @@ export function useScenes(host: ScenesHost) {
 
   const acceptMismatch = useCallback(() => {
     if (!pending?.mismatch) return
-    void finishWithFile(pending.scene, pending.shared, pending.mismatch)
-  }, [pending, finishWithFile])
+    const { scene, shared, mismatch } = pending
+    void runBusy(() => finishWithFile(scene, shared, mismatch))
+  }, [pending, runBusy, finishWithFile])
 
-  const cancelPending = useCallback(() => { setPending(null); setMessage(null) }, [])
+  const cancelPending = useCallback(() => {
+    if (busyRef.current) return
+    setPending(null)
+    setMessage(null)
+  }, [])
   const clearMessage = useCallback(() => setMessage(null), [])
 
   const previewView: SharePreviewView | null = preview

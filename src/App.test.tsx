@@ -253,7 +253,7 @@ async function shareHash(kind: 'scene' | 'look', payload: unknown): Promise<stri
 function sceneFor(id: string, name = 'song.mid', over: { masterVolume?: number } = {}): SceneV1 {
   const profile = buildProfile({
     song: { id, name, format: 'midi' },
-    voices: [voice(RIGHT_VOICE, { label: 'Lead', hue: 99, volume: 0.4 })],
+    voices: [voice(RIGHT_VOICE, { label: 'Lead', hue: 99, volume: 0.4, instrument: 'electric_piano_1' })],
     tempo: { mode: 'absolute', bpm: 60 },
     mode: 'keyboard',
     fallSeconds: 6,
@@ -413,5 +413,80 @@ describe('App: saved scenes', () => {
     // An own scene restores its audio (only a shared one never does).
     expect(useSettings.getState().audio.masterVolume).toBe(DEFAULT_SETTINGS.audio.masterVolume)
     expect(engine.setMasterVolume).toHaveBeenLastCalledWith(DEFAULT_SETTINGS.audio.masterVolume)
+  })
+})
+
+describe('App: task 2.5 fix round 1', () => {
+  afterEach(() => { history.replaceState(null, '', '/') })
+
+  it("the audio half of the file load does not overwrite the scene's voices in the engine", async () => {
+    const bytes = midiBytes()
+    await mountAt(await shareHash('scene', sceneFor(await idOf(bytes))))
+    fireEvent.click(await screen.findByRole('button', { name: 'Apply' }))
+    fireEvent.change(screen.getByLabelText('Scene song file'), { target: { files: [midiFile(bytes)] } })
+    await waitFor(() => expect(engine.retainVoices).toHaveBeenCalled())
+    const rightLoads = engine.loadVoice.mock.calls
+      .map((c) => (c as unknown as [Voice])[0])
+      .filter((v) => v.id === RIGHT_VOICE)
+    expect(rightLoads.at(-1)).toMatchObject({ instrument: 'electric_piano_1', volume: 0.4 })
+  })
+
+  it("Save a copy of a shared scene stores the recipient's audio, so a later Load keeps their volume", async () => {
+    const bytes = midiBytes()
+    await mountAt(await shareHash('scene', sceneFor(await idOf(bytes), 'song.mid', { masterVolume: 0.1 })))
+    act(() => { useSettings.getState().setAudio({ masterVolume: 0.33 }) })
+    const save = await screen.findByRole('button', { name: 'Save a copy' })
+    await act(async () => { fireEvent.click(save) })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Saved' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+
+    await loadFile(midiFile(bytes))
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    fireEvent.click(screen.getByRole('button', { name: /Scenes/ }))
+    const load = await screen.findByRole('button', { name: 'Load Song' })
+    await act(async () => { fireEvent.click(load) })
+    expect(useSettings.getState().theme).toEqual({ name: 'outline', stageBgOverride: null })
+    expect(useSettings.getState().audio.masterVolume).toBe(0.33)
+  })
+
+  it('Scenes & looks works with no song loaded: Save scene is disabled, and loading a scene asks for its file', async () => {
+    const bytes = midiBytes()
+    await getDefaults().storage.save({ kind: 'scene', name: 'Kept', payload: sceneFor(await idOf(bytes)) })
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Scenes & looks' }))
+    const card = screen.getByRole('region', { name: 'Scenes and looks' })
+    expect((screen.getByRole('button', { name: 'Save scene' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(card.querySelector('.save-scene-hint')?.textContent).toMatch(/Load a song to save a scene/)
+    expect((screen.getByRole('button', { name: /share link \(scene\)/ }) as HTMLButtonElement).disabled).toBe(true)
+
+    const load = await screen.findByRole('button', { name: 'Load Kept' })
+    await act(async () => { fireEvent.click(load) })
+    expect(document.querySelector('.scene-file-prompt')?.textContent).toMatch(/This scene uses song\.mid/)
+
+    // The main drop zone now routes through the hash check too.
+    fireEvent.change(document.getElementById('file-input')!, { target: { files: [midiFile(bytes)] } })
+    await waitFor(() => expect(useTransport.getState().tempo).toEqual({ mode: 'absolute', bpm: 60 }))
+    expect(useSettings.getState().theme).toEqual({ name: 'outline', stageBgOverride: null })
+    expect(document.querySelector('.scene-file-prompt')).toBeNull()
+  })
+
+  it('"use anyway" with an unreadable file keeps the current song and clears busy', async () => {
+    const a = midiBytes([60, 64])
+    await getDefaults().storage.save({ kind: 'scene', name: 'Other', payload: sceneFor('e'.repeat(64)) })
+    render(<App />)
+    await loadFile(midiFile(a, 'a.mid'))
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    fireEvent.click(screen.getByRole('button', { name: /Scenes/ }))
+    const load = await screen.findByRole('button', { name: 'Load Other' })
+    await act(async () => { fireEvent.click(load) })
+
+    const junk = new File([new Uint8Array([1, 2, 3])], 'junk.mid', { type: 'audio/midi' })
+    fireEvent.change(screen.getByLabelText('Scene song file'), { target: { files: [junk] } })
+    await waitFor(() => expect(document.querySelector('.scene-file-mismatch')).not.toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: 'Use anyway (voices may not match)' }))
+
+    await waitFor(() => expect(document.querySelector('.stage-error')?.textContent).toMatch(/Could not read junk\.mid/))
+    expect(useTransport.getState().score?.name).toBe('a.mid')
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Cancel' }) as HTMLButtonElement).disabled).toBe(false))
   })
 })

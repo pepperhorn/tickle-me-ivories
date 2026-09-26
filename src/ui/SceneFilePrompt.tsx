@@ -32,7 +32,7 @@ export function SceneFilePrompt(props: {
         e.preventDefault()
         setOver(false)
         const f = e.dataTransfer.files[0]
-        if (f) props.onFile(f)
+        if (f && !props.busy) props.onFile(f)
       }}
     >
       <p className="scene-file-prompt-text">
@@ -66,6 +66,7 @@ export function SceneFilePrompt(props: {
         <button
           type="button"
           className={`btn-cancel-scene ${BTN} border border-[var(--line)] text-[var(--ink-dim)]`}
+          disabled={props.busy}
           onClick={props.onCancel}
         >
           Cancel
