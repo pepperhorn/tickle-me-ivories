@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { Midi } from '@tonejs/midi'
 import App from './App'
 import { playheadAt, useTransport } from './transport/useTransport'
+import { LOOKAHEAD_SEC } from './audio/scheduler'
 import { useSettings } from './settings/useSettings'
 import { buildProfile, encodeProfile, loadProfile, saveProfile } from './settings/profile'
 import { DEFAULT_SETTINGS } from './settings/types'
@@ -32,13 +33,21 @@ vi.mock('./audio/engine', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./audio/engine')>()),
   AudioEngine: function AudioEngine() { return engine },
 }))
+// Records the metronome's clicks instead of building oscillators.
+const clicks = vi.hoisted(() => [] as { time: number; accent: boolean }[])
+vi.mock('./audio/metronome', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./audio/metronome')>()),
+  MetronomeVoice: function MetronomeVoice() {
+    return { click: (time: number, accent: boolean) => { clicks.push({ time, accent }) }, stop: () => {} }
+  },
+}))
 // The rAF + canvas loop is the draw path, covered by the render tests.
 vi.mock('./render/useCanvasStage', () => ({ useCanvasStage: () => ({ current: null }) }))
 
 /** A one-track file: C4 at 0s and E4 at 1s, at 120bpm (so tick 960 = 1s). */
-function midiBytes(pitches = [60, 64]): Uint8Array<ArrayBuffer> {
+function midiBytes(pitches = [60, 64], bpm = 120): Uint8Array<ArrayBuffer> {
   const midi = new Midi()
-  midi.header.setTempo(120)
+  midi.header.setTempo(bpm)
   const track = midi.addTrack()
   track.name = 'Piano'
   pitches.forEach((p, i) => track.addNote({ midi: p, time: i, duration: 0.5, velocity: 0.8 }))
@@ -98,6 +107,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   engine.currentTime = 0
   engine.running = true
+  clicks.length = 0
 })
 
 describe('App: loading a file', () => {
@@ -630,8 +640,88 @@ describe('App: lead-in, count-in and audio unlock', () => {
     engine.currentTime = 5
     play()
     await waitFor(() => expect(useTransport.getState().playing).toBe(true))
-    expect(playheadAt(useTransport.getState(), 5)).toBeCloseTo(-2, 9)
-    expect(playheadAt(useTransport.getState(), 7)).toBeCloseTo(0, 9)
+    // The bar starts one scheduler lookahead from now, so its first click is
+    // scheduled ahead of the clock rather than clamped late.
+    expect(playheadAt(useTransport.getState(), 5 + LOOKAHEAD_SEC)).toBeCloseTo(-2, 9)
+    expect(playheadAt(useTransport.getState(), 7 + LOOKAHEAD_SEC)).toBeCloseTo(0, 9)
+  })
+
+  it('schedules the first count-in click ahead of the clock, where the "1" shows', async () => {
+    useSettings.getState().setAudio({ metronome: true })
+    render(<App />)
+    await loadFile(midiFile(midiBytes()))
+    engine.currentTime = 5
+    play()
+    await waitFor(() => expect(useTransport.getState().playing).toBe(true))
+    engine.currentTime = 5.01
+    await waitFor(() => expect(clicks.length).toBeGreaterThan(0))
+    expect(clicks[0].time).toBeCloseTo(5 + LOOKAHEAD_SEC, 9)
+  })
+
+  it('the accented "1" clicks on every start, whatever the float error in the start time', async () => {
+    useSettings.getState().setAudio({ metronome: true })
+    render(<App />)
+    // 146bpm 4/4: now=7.1 lands the computed playhead 1 ulp ABOVE -lead.
+    await loadFile(midiFile(midiBytes([60, 64], 146)))
+    engine.currentTime = 7.1
+    play()
+    await waitFor(() => expect(useTransport.getState().playing).toBe(true))
+    engine.currentTime = 7.3
+    await waitFor(() => expect(clicks.length).toBeGreaterThan(0))
+    expect(clicks[0].accent).toBe(true)
+  })
+
+  it('Play while "Tap to start sound" shows is itself the tap: it starts, not cancels', async () => {
+    render(<App />)
+    await loadFile(midiFile(midiBytes()))
+    engine.running = false
+    engine.resume.mockImplementation(() => new Promise<void>(() => {}))
+    try {
+      play()
+      await screen.findByRole('button', { name: /tap to start sound/i })
+      engine.resume.mockImplementation(async () => { engine.running = true })
+      play()
+      await waitFor(() => expect(useTransport.getState().playing).toBe(true))
+    } finally {
+      engine.resume.mockImplementation(async () => {})
+    }
+  })
+
+  it('never flashes "Tap to start sound" when the Play press itself resumes audio', async () => {
+    render(<App />)
+    await loadFile(midiFile(midiBytes()))
+    engine.running = false
+    // As in a browser: resume() inside the gesture takes a moment to settle.
+    engine.resume.mockImplementation(() => new Promise<void>((r) => setTimeout(() => { engine.running = true; r() }, 30)))
+    try {
+      play()
+      expect(screen.queryByRole('button', { name: /tap to start sound/i })).toBeNull()
+      await act(async () => { await new Promise((r) => setTimeout(r, 10)) })
+      expect(screen.queryByRole('button', { name: /tap to start sound/i })).toBeNull()
+      await waitFor(() => expect(useTransport.getState().playing).toBe(true))
+      expect(screen.queryByRole('button', { name: /tap to start sound/i })).toBeNull()
+    } finally {
+      engine.resume.mockImplementation(async () => {})
+    }
+  })
+
+  it('a press in the drop zone unlocks audio once, not twice', () => {
+    render(<App />)
+    fireEvent.pointerDown(document.querySelector('.file-drop')!)
+    expect(engine.resume).toHaveBeenCalledTimes(1)
+  })
+
+  it('importing an older profile\'s globals (no countIn) keeps the current Count-in', async () => {
+    const bytes = midiBytes()
+    render(<App />)
+    await loadFile(midiFile(bytes))
+    act(() => { useSettings.getState().setAudio({ countIn: false }) })
+    openProfileSection()
+    fireEvent.click(document.querySelector('.profile-globals-checkbox')!)
+    const p = profileFor(await idOf(bytes))
+    delete (p.global.audio as { countIn?: boolean }).countIn
+    await importProfile(encodeProfile(p))
+    expect(useSettings.getState().audio.countIn).toBe(false)
   })
 
   it('resuming mid-song does not count in', async () => {
@@ -648,6 +738,11 @@ describe('App: lead-in, count-in and audio unlock', () => {
     render(<App />)
     await loadFile(midiFile(midiBytes()))
     play()
+    // Nothing until the bar actually begins, one lookahead after the press...
+    await waitFor(() => expect(useTransport.getState().playing).toBe(true))
+    expect(document.querySelector('.count-in-number')).toBeNull()
+    // ...then the "1", in step with its click.
+    engine.currentTime = LOOKAHEAD_SEC + 0.01
     await waitFor(() => expect(document.querySelector('.count-in-number')?.textContent).toBe('1'))
     // Pause (parks at 0), switch the count-in off, play again: no numbers.
     fireEvent.click(screen.getByRole('button', { name: 'Pause' }))
@@ -674,7 +769,7 @@ describe('App: lead-in, count-in and audio unlock', () => {
       fireEvent.click(tap)
       expect(engine.resume).toHaveBeenCalledTimes(1)
       await waitFor(() => expect(useTransport.getState().playing).toBe(true))
-      expect(playheadAt(useTransport.getState(), engine.currentTime)).toBeCloseTo(-2, 9)
+      expect(playheadAt(useTransport.getState(), engine.currentTime + LOOKAHEAD_SEC)).toBeCloseTo(-2, 9)
       expect(screen.queryByRole('button', { name: /tap to start sound/i })).toBeNull()
     } finally {
       engine.resume.mockImplementation(async () => {})

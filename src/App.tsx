@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { CSSProperties } from 'react'
 import { AudioEngine } from './audio/engine'
 import { BeatCursor, MetronomeVoice, beatTimes, countInBeats } from './audio/metronome'
-import { Scheduler, TICK_MS } from './audio/scheduler'
+import { LOOKAHEAD_SEC, Scheduler, TICK_MS } from './audio/scheduler'
 import { parseScoreFile } from './io/loadScoreFile'
 import { hashFile } from './io/hashFile'
 import { computeLayout, fitRange, FIRST_PITCH, LAST_PITCH } from './render/geometry'
@@ -59,6 +59,9 @@ import type {
 
 /** The tempo a song with no saved profile starts at: the file's own tempi. */
 const DEFAULT_TEMPO: TempoSetting = { mode: 'scale', scale: 1 }
+
+/** How long a start waits for resume() to settle before showing "Tap to start sound". */
+const START_GATE_GRACE_MS = 150
 
 /** Shared by identity so the labels-off overlay state never allocates. */
 const NO_PITCHES: number[] = []
@@ -439,8 +442,16 @@ export default function App() {
     if (!state.score || state.playing) return
     const now = engine.currentTime
     const lead = state.pausedAtSec <= 0 ? leadInFor(state.score, state.tempo).sec : 0
-    state.play(now, lead)
-    const head = playheadAt(useTransport.getState(), now)
+    // From the top, the bar begins one scheduler lookahead from now, so the
+    // first click is handed to Web Audio ahead of its time (not clamped late
+    // by up to a tick), and the "1", which shows when the playhead reaches
+    // -lead, appears as it sounds.
+    const pad = lead > 0 ? LOOKAHEAD_SEC : 0
+    state.play(now, lead + pad)
+    // Seek to the EXACT start rather than now - originSec: that subtraction
+    // lands an ulp either side of -(lead + pad), and a hair above it would
+    // skip the accented first count-in beat.
+    const head = lead > 0 ? -(lead + pad) : playheadAt(useTransport.getState(), now)
     schedulerRef.current?.seek(head)
     beatsRef.current?.seek(head)
   }, [engine])
@@ -458,10 +469,22 @@ export default function App() {
     resumed.catch(() => { /* handled below: the gate stays up */ })
     void (async () => {
       if (!engine.running) {
-        setStartGate('sound')
-        try { await resumed } catch { /* still suspended: the gate stays up */ }
+        // A resume() inside a real gesture settles within a few ms; give it a
+        // short grace before asking for a tap, so the gate never flashes up
+        // on a press that has just unlocked audio.
+        let grace: ReturnType<typeof setTimeout> | undefined
+        await Promise.race([
+          resumed.catch(() => {}),
+          new Promise<void>((r) => { grace = setTimeout(r, START_GATE_GRACE_MS) }),
+        ])
+        clearTimeout(grace)
         if (token !== startTokenRef.current) return
-        if (!engine.running) return   // a tap on the gate calls requestStart again
+        if (!engine.running) {
+          setStartGate('sound')
+          try { await resumed } catch { /* still suspended: the gate stays up */ }
+          if (token !== startTokenRef.current) return
+          if (!engine.running) return   // a tap on the gate (or Play) calls requestStart again
+        }
       }
       const voices = voicesReadyRef.current
       if (!voices.done) {
@@ -483,9 +506,10 @@ export default function App() {
     const state = useTransport.getState()
     if (state.playing) {
       state.pause(engine.currentTime); engine.stopAll(); metronomeRef.current?.stop()
-    } else if (startGate !== null) {
-      cancelStart()   // Play pressed again while waiting: stop waiting
+    } else if (startGate === 'loading') {
+      cancelStart()   // Play pressed again while the sounds load: stop waiting
     } else {
+      // Includes the 'sound' gate: this press is a real gesture, so it is the tap.
       requestStart()
     }
   }, [engine, startGate, cancelStart, requestStart])
@@ -649,7 +673,9 @@ export default function App() {
         ...currentSettings(), theme: p.theme, text: p.text,
         ...(p.display ? { display: p.display } : {}),
         ...(p.velocity ? { velocity: p.velocity } : {}),
-        ...(p.audio ? { audio: p.audio } : {}),
+        // Merged over the current audio: a save made before a setting existed
+        // (Count-in) must not switch it back to its default.
+        ...(p.audio ? { audio: { ...currentSettings().audio, ...p.audio } } : {}),
       }
       voices = tr.score ? mergeVoices(tr.score.voices, p.voices) : null
     } catch (e) {

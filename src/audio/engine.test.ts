@@ -273,6 +273,13 @@ describe('AudioEngine.resume / running', () => {
     expect(ctx.resume).toHaveBeenCalledTimes(1)
   })
 
+  it('resumes an iOS "interrupted" context too, not only a suspended one', () => {
+    const { ctx, engine } = harness()
+    ctx.state = 'interrupted' as AudioContextState
+    void engine.resume()
+    expect(ctx.resume).toHaveBeenCalledTimes(1)
+  })
+
   it('reports whether the context is actually running', () => {
     const { ctx, engine } = harness()
     ctx.state = 'suspended'

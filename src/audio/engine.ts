@@ -116,7 +116,9 @@ export class AudioEngine {
    */
   async resume(): Promise<void> {
     const ctx = this.context()
-    if (ctx.state === 'suspended') await ctx.resume()
+    // Not only 'suspended': iOS Safari parks a context in 'interrupted' (a
+    // call, another app taking audio) and it needs resume() just the same.
+    if (ctx.state !== 'running' && ctx.state !== 'closed') await ctx.resume()
   }
 
   /** True once the context is actually producing sound. */

@@ -2,9 +2,10 @@ import { useCallback, useRef, useState } from 'react'
 import { SCORE_FILE_ACCEPT } from '../io/loadScoreFile'
 
 /**
- * `onPick` runs synchronously inside the "Choose file" click (and on a press
- * anywhere in the zone): that click is the user gesture that unlocks audio, so
- * the AudioContext is running before the file has even been chosen.
+ * `onPick` runs synchronously inside the "Choose file" click: that click is
+ * the user gesture that unlocks audio, so the AudioContext is running before
+ * the file has even been chosen. (A press elsewhere in the zone is covered by
+ * App's .stage-wrap pointer handlers.)
  */
 export function FileDropZone({ onFile, onPick }: { onFile: (file: File) => void; onPick?: () => void }) {
   const [over, setOver] = useState(false)
@@ -24,7 +25,6 @@ export function FileDropZone({ onFile, onPick }: { onFile: (file: File) => void;
       className={`file-drop flex flex-col items-center gap-3 rounded-xl border border-dashed px-8 py-10 transition-colors ${
         over ? 'border-[var(--accent)] bg-white/5' : 'border-[var(--line)]'
       }`}
-      onPointerDown={onPick}
       onDragOver={(e) => { e.preventDefault(); setOver(true) }}
       onDragLeave={() => setOver(false)}
       onDrop={(e) => { e.preventDefault(); setOver(false); accept(e.dataTransfer.files[0]) }}

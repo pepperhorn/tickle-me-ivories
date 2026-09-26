@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { countInBeatAt } from '../model/countIn'
 import type { LeadIn } from '../model/countIn'
 
@@ -32,6 +32,11 @@ export function CountIn(props: {
 }) {
   const { active, enabled, lead, head, gate, onTapToStart, keyboardH = 0 } = props
   const [beat, setBeat] = useState(0)
+  const tapRef = useRef<HTMLButtonElement | null>(null)
+
+  // The gate is the only thing to do next, so keyboard and screen-reader
+  // users land on it.
+  useEffect(() => { if (gate === 'sound') tapRef.current?.focus() }, [gate])
 
   useEffect(() => {
     if (!active || !enabled || lead.beats === 0) return
@@ -67,6 +72,7 @@ export function CountIn(props: {
       </p>
       {gate === 'sound' && (
         <button
+          ref={tapRef}
           type="button"
           className="btn-tap-to-start pointer-events-auto absolute rounded-full bg-[var(--accent)] px-6 py-3 text-base font-semibold text-black shadow-2xl"
           onClick={onTapToStart}
@@ -75,7 +81,7 @@ export function CountIn(props: {
         </button>
       )}
       {gate === 'loading' && (
-        <p className="count-in-loading absolute m-0 rounded bg-black/70 px-4 py-2 text-sm text-[var(--ink)]">
+        <p role="status" className="count-in-loading absolute m-0 rounded bg-black/70 px-4 py-2 text-sm text-[var(--ink)]">
           Loading sounds…
         </p>
       )}

@@ -42,10 +42,18 @@ describe('leadInFor', () => {
     expect(leadInFor(score({ tempoMap }), SCALE_1)).toEqual({ sec: 4, beats: 4, beatSec: 1 })
   })
 
-  it('counts the real metre over a pickup bar, not the pickup\'s own short signature', () => {
+  it('over a 1-beat pickup in 4/4 counts "1 2 3" and the pickup enters on 4', () => {
     // parseMusicXml gives a one-beat pickup its own 1/4 signature, then 4/4.
     const timeSignatures = [{ ticks: 0, numerator: 1, denominator: 4 }, { ticks: 480, numerator: 4, denominator: 4 }]
-    expect(leadInFor(score({ timeSignatures }), SCALE_1)).toEqual({ sec: 2, beats: 4, beatSec: 0.5 })
+    expect(leadInFor(score({ timeSignatures }), SCALE_1)).toEqual({ sec: 1.5, beats: 3, beatSec: 0.5 })
+  })
+
+  it('over an eighth-note pickup counts "1 2 3 4", the pickup on the "and" of 4', () => {
+    const timeSignatures = [{ ticks: 0, numerator: 1, denominator: 8 }, { ticks: 240, numerator: 4, denominator: 4 }]
+    const lead = leadInFor(score({ timeSignatures }), SCALE_1)
+    expect(lead).toEqual({ sec: 1.75, beats: 4, beatSec: 0.5 })
+    expect([-1.75, -1.3, -1.2, -0.8, -0.7, -0.3, -0.2, -0.01].map((h) => countInBeatAt(h, lead)))
+      .toEqual([1, 1, 2, 2, 3, 3, 4, 4])
   })
 
   it('keeps a genuine opening bar that is followed by a metre change', () => {

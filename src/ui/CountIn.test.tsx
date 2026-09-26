@@ -62,5 +62,11 @@ describe('CountIn', () => {
   it('says the sounds are loading while the instruments load', () => {
     render(<CountIn active={false} enabled lead={LEAD} head={head} gate="loading" onTapToStart={() => {}} />)
     expect(screen.getByText(/loading sounds/i)).toBeTruthy()
+    expect(screen.getByRole('status').textContent).toMatch(/loading sounds/i)
+  })
+
+  it('moves focus to "Tap to start sound" when it appears', () => {
+    render(<CountIn active={false} enabled lead={LEAD} head={head} gate="sound" onTapToStart={() => {}} />)
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /tap to start sound/i }))
   })
 })

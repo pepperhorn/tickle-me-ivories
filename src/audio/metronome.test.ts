@@ -232,6 +232,12 @@ describe('countInBeats', () => {
     ])
   })
 
+  it('follows a pickup lead-in: "1 2 3" before a 1-beat pickup, accent on 1', () => {
+    expect(countInBeats({ sec: 1.5, beats: 3, beatSec: 0.5 })).toEqual([
+      { sec: -1.5, accent: true }, { sec: -1, accent: false }, { sec: -0.5, accent: false },
+    ])
+  })
+
   it('a cursor seeked to the lead-in start collects the count-in clicks, one seeked to 0 skips them', () => {
     const all = [...countInBeats({ sec: 2, beats: 4, beatSec: 0.5 }), ...beatTimes(score(), SCALE_1)]
     const c = new BeatCursor(all)
