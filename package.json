@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "exports": {
+    "./platform": "./src/platform/types.ts"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

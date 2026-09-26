@@ -1,11 +1,15 @@
 import type {
-  AudioSettings, ChordDisplay, ChordPlacement, DisplaySettings, GradientStop, NoteLabelContent,
-  NoteLabelPlacement, Settings, TextSettings, TextStyle, ThemeName, ThemeSettings, VelocityScheme,
+  AudioSettings, ChordDisplay, ChordPlacement, DisplaySettings, GlobalPrefs, GradientStop,
+  NoteLabelContent, NoteLabelPlacement, SavedVoice, Settings, SongProfile, TextSettings, TextStyle,
+  ThemeName, ThemeSettings, VelocityScheme,
 } from './types'
 import { DEFAULT_TEXT_STYLE } from './types'
-import type { ScoreDocument, TempoSetting, Voice } from '../model/types'
-import type { DisplayMode } from '../transport/useTransport'
+import type { DisplayMode, TempoSetting, Voice } from '../model/types'
 import { MAX_TEMPO_SCALE, MIN_TEMPO_SCALE } from '../model/tempoMap'
+
+// GlobalPrefs, SavedVoice and SongProfile now live in ./types (preflight F4);
+// re-exported here so no call site of `../settings/profile` needs to change.
+export type { GlobalPrefs, SavedVoice, SongProfile } from './types'
 
 export const PROFILE_SCHEMA_VERSION = 1
 
@@ -34,30 +38,6 @@ const TEXT_RANGES = {
   opacity: [0, 1],
   strokeWidth: [0, 8],
 } as const
-
-/** App-wide preferences: they follow the user, not the song. */
-export interface GlobalPrefs {
-  velocity: VelocityScheme
-  audio: AudioSettings
-}
-
-/** A voice as stored in a profile. Only `id` is guaranteed: a decoded entry
-    omits any field that failed validation, and mergeVoices keeps the parsed value. */
-export type SavedVoice = Partial<Voice> & { id: string }
-
-export interface SongProfile {
-  schemaVersion: number
-  song: { id: string; name: string; format: ScoreDocument['sourceFormat'] }
-  voices: SavedVoice[]
-  tempo: TempoSetting
-  /** `settings` is the song-scoped display block: zoom, grid, flash, middle C.
-      Optional on decode: an invalid block is dropped rather than applied. */
-  display: { mode: DisplayMode; fallSeconds: number; settings?: DisplaySettings }
-  theme: ThemeSettings
-  text: TextSettings
-  /** A snapshot of the globals at export time. Import applies it only on request. */
-  global: GlobalPrefs
-}
 
 export function buildProfile(args: {
   song: SongProfile['song']

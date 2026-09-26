@@ -1,3 +1,9 @@
+/** Moved here from transport/useTransport.ts (preflight F4): this module has
+    no runtime imports, so anything platform/types.ts needs must live in a
+    type-only module like this one, not one that drags in zustand. useTransport
+    re-exports this so no call site changes. */
+export type DisplayMode = 'keyboard' | 'roll'
+
 export interface NoteEvent {
   id: number
   pitch: number          // MIDI 0-127; 21-108 are on the keyboard

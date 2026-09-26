@@ -1,3 +1,5 @@
+import type { DisplayMode, ScoreDocument, TempoSetting, Voice } from '../model/types'
+
 export type ThemeName = 'classic' | 'outline' | 'contrast' | 'transparent'
 export type ZoomMode = 'full' | 'fit'
 export type NoteLabelContent = 'off' | 'pitch' | 'midi' | 'both'
@@ -61,6 +63,36 @@ export interface Settings {
   velocity: VelocityScheme
   text: TextSettings
   audio: AudioSettings
+}
+
+/**
+ * App-wide preferences: they follow the user, not the song. Moved here from
+ * settings/profile.ts (preflight F4): src/platform/types.ts is type-checked
+ * standalone by the PepperHorn plugin bundle under its own tsconfig, so it
+ * (and everything it imports) must stay runtime-free -- no zustand, no
+ * @tonejs/midi. profile.ts re-exports this so no call site changes.
+ */
+export interface GlobalPrefs {
+  velocity: VelocityScheme
+  audio: AudioSettings
+}
+
+/** A voice as stored in a profile. Only `id` is guaranteed: a decoded entry
+    omits any field that failed validation, and mergeVoices keeps the parsed value. */
+export type SavedVoice = Partial<Voice> & { id: string }
+
+export interface SongProfile {
+  schemaVersion: number
+  song: { id: string; name: string; format: ScoreDocument['sourceFormat'] }
+  voices: SavedVoice[]
+  tempo: TempoSetting
+  /** `settings` is the song-scoped display block: zoom, grid, flash, middle C.
+      Optional on decode: an invalid block is dropped rather than applied. */
+  display: { mode: DisplayMode; fallSeconds: number; settings?: DisplaySettings }
+  theme: ThemeSettings
+  text: TextSettings
+  /** A snapshot of the globals at export time. Import applies it only on request. */
+  global: GlobalPrefs
 }
 
 /** The default gradient: blue -> green -> yellow -> red, per spec §7. */

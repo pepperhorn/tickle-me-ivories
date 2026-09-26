@@ -1,9 +1,9 @@
 import { create } from 'zustand'
 import { retimeScore } from '../io/parseMidi'
 import { secToTicks, ticksToSec } from '../model/tempoMap'
-import type { ScoreDocument, TempoSetting, Voice } from '../model/types'
+import type { DisplayMode, ScoreDocument, TempoSetting, Voice } from '../model/types'
 
-export type DisplayMode = 'keyboard' | 'roll'
+export type { DisplayMode } from '../model/types'
 
 export interface TransportState {
   score: ScoreDocument | null
