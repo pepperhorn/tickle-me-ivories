@@ -1,4 +1,4 @@
-import { DEFAULT_GRADIENT, DEFAULT_LIGHTNESS } from '../settings/types'
+import { DEFAULT_GRADIENT, DEFAULT_LIGHTNESS, MAX_GRADIENT_STOPS, MIN_GRADIENT_STOPS } from '../settings/types'
 import { SettingsRow } from './SettingsPanel'
 import type { VelocityScheme } from '../settings/types'
 
@@ -95,7 +95,7 @@ export function VelocityEditor(props: {
                 type="button"
                 aria-label={`Remove gradient stop ${i + 1}`}
                 className="btn-stop-remove rounded border border-[var(--line)] px-1.5 text-[10px] text-[var(--ink-dim)]"
-                disabled={scheme.stops.length <= 2}
+                disabled={scheme.stops.length <= MIN_GRADIENT_STOPS}
                 onClick={() => onChange({ kind: 'gradient', stops: scheme.stops.filter((_, j) => j !== i) })}
               >
                 ×
@@ -104,7 +104,8 @@ export function VelocityEditor(props: {
           ))}
           <button
             type="button"
-            className="btn-stop-add self-start rounded border border-[var(--line)] px-2 py-0.5 text-[10px] text-[var(--ink-dim)]"
+            className="btn-stop-add self-start rounded border border-[var(--line)] px-2 py-0.5 text-[10px] text-[var(--ink-dim)] disabled:opacity-40"
+            disabled={scheme.stops.length >= MAX_GRADIENT_STOPS}
             onClick={() => onChange({ kind: 'gradient', stops: [...scheme.stops, { at: 1, color: '#ffffff' }] })}
           >
             Add stop

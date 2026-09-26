@@ -33,4 +33,15 @@ describe('VelocityEditor', () => {
     expect(onChange).toHaveBeenCalledTimes(1)
     expect(onChange.mock.calls[0][0].kind).toBe('gradient')
   })
+
+  it('disables Add stop at the 16-stop cap (preflight F8)', () => {
+    const stops = (n: number) => Array.from({ length: n }, (_, i) => ({ at: i / (n - 1), color: '#111111' }))
+    setup({ kind: 'gradient', stops: stops(16) })
+    expect((screen.getByRole('button', { name: 'Add stop' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('enables Add stop below the cap', () => {
+    setup({ kind: 'gradient', stops: [{ at: 0, color: '#111111' }, { at: 1, color: '#222222' }] })
+    expect((screen.getByRole('button', { name: 'Add stop' }) as HTMLButtonElement).disabled).toBe(false)
+  })
 })

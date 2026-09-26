@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   FONT_FAMILY_RE, PROFILE_SCHEMA_VERSION, buildProfile, decodeProfile, encodeProfile,
   isCssColor, isSafeFontFamily, loadGlobals, loadProfile, mergeVoices, saveGlobals, saveProfile,
+  validDisplayMode, validFallSeconds, validText, validTextStyle, validVelocity,
 } from './profile'
-import { DEFAULT_SETTINGS, DEFAULT_TEXT_STYLE } from './types'
+import { DEFAULT_SETTINGS, DEFAULT_TEXT_STYLE, MAX_GRADIENT_STOPS } from './types'
 import { MAX_TEMPO_SCALE, MIN_TEMPO_SCALE } from '../model/tempoMap'
 import type { Voice } from '../model/types'
 
@@ -374,5 +375,104 @@ describe('isCssColor', () => {
       expect(isCssColor(v), v).toBe(true)
     for (const v of ['', ' ', '#12345', '#ggg', 'not a colour!', 'url(javascript:1)', 'red; background: x', 'rgb(1,2'])
       expect(isCssColor(v), v).toBe(false)
+  })
+})
+
+// preflight F8: spec §8.5 caps gradient stops at 2-16, and a stop colour is
+// cleaned (to #ffffff) rather than trusted.
+describe('validVelocity stop cap and colour check', () => {
+  const stops = (n: number) => Array.from({ length: n }, (_, i) => ({ at: i / Math.max(1, n - 1), color: '#123456' }))
+
+  it('accepts 2 to 16 stops and refuses more', () => {
+    expect(MAX_GRADIENT_STOPS).toBe(16)
+    expect(validVelocity({ kind: 'gradient', stops: stops(2) })).not.toBeNull()
+    expect(validVelocity({ kind: 'gradient', stops: stops(16) })).not.toBeNull()
+    expect(validVelocity({ kind: 'gradient', stops: stops(17) })).toBeNull()
+    expect(validVelocity({ kind: 'gradient', stops: stops(1000) })).toBeNull()
+  })
+
+  it('replaces a stop colour that is not a colour (or is over 64 chars) with #ffffff', () => {
+    const v = validVelocity({ kind: 'gradient', stops: [
+      { at: 0, color: 'url(javascript:1)' }, { at: 0.5, color: 'rgb(' + ' '.repeat(70) + '0,0,0)' }, { at: 1, color: '#e8384f' },
+    ] })
+    expect(v).toEqual({ kind: 'gradient', stops: [
+      { at: 0, color: '#ffffff' }, { at: 0.5, color: '#ffffff' }, { at: 1, color: '#e8384f' },
+    ] })
+  })
+
+  it('still refuses a non-string stop colour', () => {
+    expect(validVelocity({ kind: 'gradient', stops: [{ at: 0, color: 1 }, { at: 1, color: '#fff' }] })).toBeNull()
+  })
+})
+
+describe('isCssColor length cap (spec §8.5: colours <= 64 chars)', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('refuses a colour over 64 characters even when the browser would accept it', () => {
+    vi.stubGlobal('CSS', { supports: () => true })
+    expect(isCssColor('a'.repeat(64))).toBe(true)
+    expect(isCssColor('a'.repeat(65))).toBe(false)
+  })
+})
+
+// preflight F7: a look carries text without keyOverride (song-specific).
+describe('validText without keyOverride, and validTextStyle', () => {
+  const lookText = () => {
+    const { keyOverride: _k, ...rest } = structuredClone(DEFAULT_SETTINGS.text)
+    return rest
+  }
+
+  it('accepts a text block with no keyOverride and never returns one', () => {
+    expect(validText(lookText(), { keyOverride: false })).toEqual(lookText())
+    const withKey = validText({ ...lookText(), keyOverride: 'F# major' }, { keyOverride: false })
+    expect(withKey).not.toHaveProperty('keyOverride')
+  })
+
+  it('still requires keyOverride in the default (profile) form', () => {
+    expect(validText(lookText())).toBeNull()
+  })
+
+  it('validates the same fields as the profile form', () => {
+    expect(validText({ ...lookText(), labels: 'solfege' }, { keyOverride: false })).toBeNull()
+  })
+
+  it('exports validTextStyle, which falls an unsafe family back to Poppins', () => {
+    expect(validTextStyle({ ...DEFAULT_TEXT_STYLE, family: 'a"b' })!.family).toBe('Poppins')
+    expect(validTextStyle({})).toBeNull()
+  })
+})
+
+describe('validDisplayMode / validFallSeconds', () => {
+  it('accepts only the known display modes', () => {
+    expect(validDisplayMode('roll')).toBe('roll')
+    expect(validDisplayMode('notation')).toBeNull()
+  })
+
+  it('clamps a numeric fall time and refuses anything else', () => {
+    expect(validFallSeconds(0)).toBe(0.5)
+    expect(validFallSeconds(99)).toBe(8)
+    expect(validFallSeconds(3)).toBe(3)
+    expect(validFallSeconds('3')).toBeNull()
+    expect(validFallSeconds(Number.NaN)).toBeNull()
+  })
+})
+
+// preflight F9: decodeProfile builds every block explicitly; unknown keys are
+// dropped (spec §9.1) and the song block is checked field by field.
+describe('decodeProfile drops unknown keys and checks the song block', () => {
+  it('does not carry unknown top-level or song keys through', () => {
+    const p = decodeProfile(tampered((x) => { x.evil = '<script>'; x.song.extra = 1 })) as unknown as Record<string, any>
+    expect(p).not.toHaveProperty('evil')
+    expect(p.song).toEqual({ id: 'sha-1', name: 'demo.mid', format: 'midi' })
+  })
+
+  it('refuses a song with a non-string name or an unknown format', () => {
+    expect(() => decodeProfile(tampered((p) => { p.song.name = 5 }))).toThrow(/song/i)
+    expect(() => decodeProfile(tampered((p) => { p.song.format = 'abc' }))).toThrow(/song/i)
+  })
+
+  it('keeps exactly the documented top-level keys', () => {
+    expect(Object.keys(decodeProfile(encodeProfile(profile()))).sort())
+      .toEqual(['display', 'global', 'schemaVersion', 'song', 'tempo', 'text', 'theme', 'voices'])
   })
 })

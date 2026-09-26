@@ -3,7 +3,7 @@ import type {
   NoteLabelContent, NoteLabelPlacement, SavedVoice, Settings, SongProfile, TextSettings, TextStyle,
   ThemeName, ThemeSettings, VelocityScheme,
 } from './types'
-import { DEFAULT_TEXT_STYLE } from './types'
+import { DEFAULT_TEXT_STYLE, MAX_GRADIENT_STOPS, MIN_GRADIENT_STOPS } from './types'
 import type { DisplayMode, TempoSetting, Voice } from '../model/types'
 import { MAX_TEMPO_SCALE, MIN_TEMPO_SCALE } from '../model/tempoMap'
 
@@ -24,6 +24,11 @@ const MIN_FALL_SECONDS = 0.5
 const MAX_FALL_SECONDS = 8
 const MAX_FLASH_SCALE = 1.5
 const DISPLAY_MODES: readonly DisplayMode[] = ['keyboard', 'roll']
+const SONG_FORMATS: readonly SongProfile['song']['format'][] = ['midi', 'musicxml']
+/** Spec §8.5: a colour string is at most 64 characters. */
+const MAX_COLOR_CHARS = 64
+/** What a gradient stop colour that is not a colour becomes (preflight F8). */
+const FALLBACK_STOP_COLOR = '#ffffff'
 const THEME_NAMES: readonly ThemeName[] = ['classic', 'outline', 'contrast', 'transparent']
 const LABEL_CONTENTS: readonly NoteLabelContent[] = ['off', 'pitch', 'midi', 'both']
 const LABEL_PLACEMENTS: readonly NoteLabelPlacement[] = ['above', 'below']
@@ -104,12 +109,19 @@ const COLOR_SYNTAX =
  * CSS.supports where it exists, and falls back to a syntax check otherwise.
  */
 export function isCssColor(v: string): boolean {
+  // Spec §8.5 caps colours at 64 characters; nothing a colour picker makes
+  // comes close, and it bounds what an untrusted payload can hand the browser.
+  if (v.length > MAX_COLOR_CHARS) return false
   const css = (globalThis as { CSS?: { supports?: (prop: string, value: string) => boolean } }).CSS
   if (typeof css?.supports === 'function') return css.supports('color', v)
   return COLOR_SYNTAX.test(v.trim())
 }
 
-/** Returns a clean copy of a valid velocity scheme, or null. */
+/**
+ * Returns a clean copy of a valid velocity scheme, or null. A gradient must
+ * have 2-16 stops (spec §8.5); a stop colour that is a string but not a
+ * colour is replaced with #ffffff rather than refusing the whole scheme.
+ */
 export function validVelocity(v: unknown): VelocityScheme | null {
   if (!isObj(v)) return null
   if (v.kind === 'lightness') {
@@ -117,12 +129,13 @@ export function validVelocity(v: unknown): VelocityScheme | null {
     return { kind: 'lightness', lMax: v.lMax, lMin: v.lMin, sat: v.sat }
   }
   if (v.kind === 'gradient') {
-    // The editor never goes below two stops; neither does an import.
-    if (!Array.isArray(v.stops) || v.stops.length < 2) return null
+    // The editor stays within 2-16 stops; so does an import. The upper bound
+    // is checked before the loop, so 1000 stops cost nothing to refuse.
+    if (!Array.isArray(v.stops) || v.stops.length < MIN_GRADIENT_STOPS || v.stops.length > MAX_GRADIENT_STOPS) return null
     const stops: GradientStop[] = []
     for (const st of v.stops as unknown[]) {
       if (!isObj(st) || !isUnit(st.at) || typeof st.color !== 'string') return null
-      stops.push({ at: st.at, color: st.color })
+      stops.push({ at: st.at, color: isCssColor(st.color) ? st.color : FALLBACK_STOP_COLOR })
     }
     return { kind: 'gradient', stops }
   }
@@ -179,7 +192,7 @@ export function isSafeFontFamily(s: string): boolean {
 }
 
 /** Returns a clean copy of a valid text style, clamped to the control ranges, or null. */
-function validTextStyle(v: unknown): TextStyle | null {
+export function validTextStyle(v: unknown): TextStyle | null {
   if (!isObj(v)) return null
   const { family, weight, sizeRatio, letterSpacing, color, opacity, strokeWidth, strokeColor } = v
   if (typeof family !== 'string' || typeof color !== 'string' || typeof strokeColor !== 'string') return null
@@ -208,28 +221,47 @@ function validTextStyle(v: unknown): TextStyle | null {
  * reach the DOM overlay, so an unknown enum member or a non-string family would
  * render as nothing (or throw) rather than as a setting anyone chose. Unknown
  * keys are not carried through.
+ *
+ * `{ keyOverride: false }` is the look variant (spec §8.1/§9.1, preflight F7):
+ * keyOverride is song-specific, so a look never carries one. That form ignores
+ * any keyOverride present and never returns one; the default form requires it.
  */
-export function validText(v: unknown): TextSettings | null {
+export function validText(v: unknown): TextSettings | null
+export function validText(v: unknown, o: { keyOverride: false }): Omit<TextSettings, 'keyOverride'> | null
+export function validText(
+  v: unknown, o?: { keyOverride: false },
+): TextSettings | Omit<TextSettings, 'keyOverride'> | null {
   if (!isObj(v)) return null
   if (!LABEL_CONTENTS.includes(v.labels as NoteLabelContent)) return null
   if (!LABEL_PLACEMENTS.includes(v.labelPlacement as NoteLabelPlacement)) return null
   if (!CHORD_DISPLAYS.includes(v.chord as ChordDisplay)) return null
   if (!CHORD_PLACEMENTS.includes(v.chordPlacement as ChordPlacement)) return null
   if (typeof v.chordAlternates !== 'boolean' || !isNum(v.chordWindowMs)) return null
-  // A string that does not parse as a key is harmless: keyOfScore ignores it.
-  if (v.keyOverride !== null && typeof v.keyOverride !== 'string') return null
   const style = validTextStyle(v.style)
   if (!style) return null
-  return {
+  const base: Omit<TextSettings, 'keyOverride'> = {
     labels: v.labels as NoteLabelContent,
     labelPlacement: v.labelPlacement as NoteLabelPlacement,
     chord: v.chord as ChordDisplay,
     chordPlacement: v.chordPlacement as ChordPlacement,
     chordAlternates: v.chordAlternates,
     chordWindowMs: clamp(v.chordWindowMs, ...TEXT_RANGES.chordWindowMs),
-    keyOverride: v.keyOverride as string | null,
     style,
   }
+  if (o?.keyOverride === false) return base
+  // A string that does not parse as a key is harmless: keyOfScore ignores it.
+  if (v.keyOverride !== null && typeof v.keyOverride !== 'string') return null
+  return { ...base, keyOverride: v.keyOverride as string | null }
+}
+
+/** The display mode, or null for anything that is not one. */
+export function validDisplayMode(v: unknown): DisplayMode | null {
+  return DISPLAY_MODES.includes(v as DisplayMode) ? (v as DisplayMode) : null
+}
+
+/** A numeric fall time clamped to the slider's range, or null for a non-number. */
+export function validFallSeconds(v: unknown): number | null {
+  return isNum(v) ? clamp(v, MIN_FALL_SECONDS, MAX_FALL_SECONDS) : null
 }
 
 /**
@@ -251,6 +283,13 @@ export function sanitiseVoices(list: unknown[]): SavedVoice[] {
     out.push(s)
   }
   return out
+}
+
+/** The profile's song block, rebuilt field by field, or null. */
+function validProfileSong(v: unknown): SongProfile['song'] | null {
+  if (!isObj(v) || typeof v.id !== 'string' || !v.id || typeof v.name !== 'string') return null
+  if (!SONG_FORMATS.includes(v.format as SongProfile['song']['format'])) return null
+  return { id: v.id, name: v.name, format: v.format as SongProfile['song']['format'] }
 }
 
 /**
@@ -280,26 +319,30 @@ export function decodeProfile(json: string): SongProfile {
   if (!theme) throw new Error('Profile has an invalid theme.')
   const text = validText(raw.text)
   if (!text) throw new Error('Profile has invalid on-stage text settings.')
+  const song = validProfileSong(raw.song)
+  if (!song) throw new Error('Profile has an invalid song block.')
 
-  const { mode, fallSeconds, settings } = raw.display as Obj
-  if (!DISPLAY_MODES.includes(mode as DisplayMode)) throw new Error('Profile has an invalid display mode.')
-  if (!isNum(fallSeconds)) throw new Error('Profile has an invalid fall time.')
-  const display: SongProfile['display'] = {
-    mode: mode as DisplayMode,
-    fallSeconds: clamp(fallSeconds, MIN_FALL_SECONDS, MAX_FALL_SECONDS),
-  }
+  const { mode: rawMode, fallSeconds: rawFall, settings } = raw.display as Obj
+  const mode = validDisplayMode(rawMode)
+  if (!mode) throw new Error('Profile has an invalid display mode.')
+  const fallSeconds = validFallSeconds(rawFall)
+  if (fallSeconds === null) throw new Error('Profile has an invalid fall time.')
+  const display: SongProfile['display'] = { mode, fallSeconds }
   const ds = validDisplaySettings(settings)
   if (ds) display.settings = ds
 
+  // Built key by key, never spread from raw (preflight F9, spec §9.1):
+  // unknown keys at any level are dropped.
   return {
-    ...raw,
+    schemaVersion: PROFILE_SCHEMA_VERSION,
+    song,
     voices: sanitiseVoices(raw.voices),
     tempo: sanitiseTempo(raw.tempo),
     display,
     theme,
     text,
     global: { velocity, audio },
-  } as SongProfile
+  }
 }
 
 /**

@@ -95,6 +95,14 @@ export interface SongProfile {
   global: GlobalPrefs
 }
 
+/**
+ * Gradient stop bounds (spec §8.5). The editor never goes below the minimum or
+ * above the maximum, and validVelocity refuses anything outside them, so a
+ * gradient a user builds always survives their own decoder (preflight F8).
+ */
+export const MIN_GRADIENT_STOPS = 2
+export const MAX_GRADIENT_STOPS = 16
+
 /** The default gradient: blue -> green -> yellow -> red, per spec §7. */
 export const DEFAULT_GRADIENT: GradientStop[] = [
   { at: 0, color: '#4a7cff' },
