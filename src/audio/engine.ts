@@ -107,10 +107,21 @@ export class AudioEngine {
     return [...this.buses.values()].some((b) => b.instrument !== null)
   }
 
-  /** Browsers require a user gesture before audio will sound. */
+  /**
+   * Browsers require a user gesture before audio will sound. ctx.resume() is
+   * reached synchronously (before this function's first await), so a click
+   * handler that calls resume() without awaiting it still unlocks audio inside
+   * the gesture. Called outside a gesture, the returned promise can stay
+   * pending until one arrives -- callers must not block other work on it.
+   */
   async resume(): Promise<void> {
     const ctx = this.context()
     if (ctx.state === 'suspended') await ctx.resume()
+  }
+
+  /** True once the context is actually producing sound. */
+  get running(): boolean {
+    return this.context().state === 'running'
   }
 
   setMasterVolume(volume: number): void {

@@ -154,7 +154,12 @@ export function validVelocity(v: unknown): VelocityScheme | null {
 export function validAudio(a: unknown): AudioSettings | null {
   if (!isObj(a)) return null
   if (!isUnit(a.masterVolume) || !isUnit(a.metronomeVolume) || typeof a.metronome !== 'boolean') return null
-  return { masterVolume: a.masterVolume, metronome: a.metronome, metronomeVolume: a.metronomeVolume }
+  const out: AudioSettings = { masterVolume: a.masterVolume, metronome: a.metronome, metronomeVolume: a.metronomeVolume }
+  // Added after the other three: absent (an older save) or malformed is
+  // simply dropped, which reads as the default (on), rather than refusing the
+  // whole audio block and with it the user's volumes.
+  if (typeof a.countIn === 'boolean') out.countIn = a.countIn
+  return out
 }
 
 /** Returns a clean copy of valid display settings, or null (the caller drops it). */

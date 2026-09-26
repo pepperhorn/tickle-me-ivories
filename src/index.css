@@ -110,3 +110,30 @@ html.tmi-transparent .app-shell,
 html.tmi-transparent .stage-wrap {
   background: transparent !important;
 }
+
+/* The count-in number (ui/CountIn.tsx). House note-text treatment -- white
+   Poppins 600 over a dark stroke painted underneath -- so it reads on every
+   theme and over composited footage. Its animation-duration is set inline to
+   one beat, and it is keyed on the beat, so each number pops in afresh. */
+.count-in-number {
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-weight: 600;
+  color: #ffffff;
+  -webkit-text-stroke: 0.06em rgba(0, 0, 0, 0.35);
+  paint-order: stroke fill;
+  text-shadow: 0 0.04em 0.12em rgba(0, 0, 0, 0.45);
+  animation-name: count-in-pop;
+  animation-timing-function: cubic-bezier(0.2, 0.9, 0.3, 1);
+  animation-fill-mode: both;
+}
+
+@keyframes count-in-pop {
+  0% { opacity: 0; transform: scale(1.6); }
+  18% { opacity: 1; transform: scale(1); }
+  70% { opacity: 1; transform: scale(0.96); }
+  100% { opacity: 0; transform: scale(0.9); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .count-in-number { animation-name: none; }
+}

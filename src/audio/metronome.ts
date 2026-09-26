@@ -2,6 +2,7 @@ import { ticksToSec } from '../model/tempoMap'
 import { normaliseTimeSignatures } from '../model/timeSignatures'
 import { clampToNow } from './engine'
 import { LOOKAHEAD_SEC } from './scheduler'
+import type { LeadIn } from '../model/countIn'
 import type { ScoreDocument, TempoSetting } from '../model/types'
 
 export interface Beat { sec: number; accent: boolean }
@@ -36,6 +37,18 @@ export function beatTimes(score: ScoreDocument, setting: TempoSetting): Beat[] {
     }
   }
   return beats
+}
+
+/**
+ * The count-in clicks: one per lead-in beat, before t = 0, accent on 1. They
+ * are prepended to beatTimes() in one cursor, so a start from the top (the
+ * playhead at -lead.sec) clicks them and a resume or seek (playhead >= 0)
+ * skips them without any special case.
+ */
+export function countInBeats(lead: LeadIn): Beat[] {
+  const out: Beat[] = []
+  for (let i = 0; i < lead.beats; i++) out.push({ sec: -lead.sec + i * lead.beatSec, accent: i === 0 })
+  return out
 }
 
 /** Same cursor contract as Scheduler, over beats instead of notes. */

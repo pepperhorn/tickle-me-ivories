@@ -264,3 +264,20 @@ describe('AudioEngine voice bus', () => {
     expect(() => engine.stopAll()).not.toThrow()
   })
 })
+
+describe('AudioEngine.resume / running', () => {
+  it('calls ctx.resume() synchronously, so a click handler that does not await still counts as the gesture', () => {
+    const { ctx, engine } = harness()
+    ctx.state = 'suspended'
+    void engine.resume()
+    expect(ctx.resume).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports whether the context is actually running', () => {
+    const { ctx, engine } = harness()
+    ctx.state = 'suspended'
+    expect(engine.running).toBe(false)
+    ctx.state = 'running'
+    expect(engine.running).toBe(true)
+  })
+})

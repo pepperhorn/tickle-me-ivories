@@ -1,7 +1,12 @@
 import { useCallback, useRef, useState } from 'react'
 import { SCORE_FILE_ACCEPT } from '../io/loadScoreFile'
 
-export function FileDropZone({ onFile }: { onFile: (file: File) => void }) {
+/**
+ * `onPick` runs synchronously inside the "Choose file" click (and on a press
+ * anywhere in the zone): that click is the user gesture that unlocks audio, so
+ * the AudioContext is running before the file has even been chosen.
+ */
+export function FileDropZone({ onFile, onPick }: { onFile: (file: File) => void; onPick?: () => void }) {
   const [over, setOver] = useState(false)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
@@ -19,6 +24,7 @@ export function FileDropZone({ onFile }: { onFile: (file: File) => void }) {
       className={`file-drop flex flex-col items-center gap-3 rounded-xl border border-dashed px-8 py-10 transition-colors ${
         over ? 'border-[var(--accent)] bg-white/5' : 'border-[var(--line)]'
       }`}
+      onPointerDown={onPick}
       onDragOver={(e) => { e.preventDefault(); setOver(true) }}
       onDragLeave={() => setOver(false)}
       onDrop={(e) => { e.preventDefault(); setOver(false); accept(e.dataTransfer.files[0]) }}
@@ -27,7 +33,7 @@ export function FileDropZone({ onFile }: { onFile: (file: File) => void }) {
       <button
         type="button"
         className="btn-choose-file rounded-full bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-black"
-        onClick={() => inputRef.current?.click()}
+        onClick={() => { onPick?.(); inputRef.current?.click() }}
       >
         Choose file
       </button>

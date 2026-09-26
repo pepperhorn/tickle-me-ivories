@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties } from 'react'
 import { AudioEngine } from './audio/engine'
-import { BeatCursor, MetronomeVoice, beatTimes } from './audio/metronome'
+import { BeatCursor, MetronomeVoice, beatTimes, countInBeats } from './audio/metronome'
 import { Scheduler, TICK_MS } from './audio/scheduler'
 import { parseScoreFile } from './io/loadScoreFile'
 import { hashFile } from './io/hashFile'
@@ -10,6 +10,7 @@ import { drawStage } from './render/pianoRoll'
 import { DEFAULT_THEME, readTheme } from './render/theme'
 import { useCanvasStage } from './render/useCanvasStage'
 import { effectiveBpmAt, sameTempo } from './model/tempoMap'
+import { NO_LEAD_IN, leadInFor } from './model/countIn'
 import { keyOfScore } from './music/keyOf'
 import { ChordFeed } from './music/chordFeed'
 import { displayChordSymbol } from './music/chords'
@@ -22,6 +23,8 @@ import {
 } from './settings/profile'
 import { DEFAULT_SETTINGS } from './settings/types'
 import { ChordReadout } from './ui/ChordReadout'
+import { CountIn } from './ui/CountIn'
+import type { StartGate } from './ui/CountIn'
 import { DisplaySettings } from './ui/DisplaySettings'
 import { FileDropZone } from './ui/FileDropZone'
 import { StageText, samePitches } from './ui/StageText'
@@ -105,6 +108,12 @@ export default function App() {
   const lastReadingKeyRef = useRef<KeyContext | null>(null)
   const [chord, setChord] = useState<ChordDisplayValue | null>(null)
   const keyRef = useRef<{ sig: ScoreDocument['keySignature'] | null; override: string | null; key: KeyContext } | null>(null)
+  // Playback start (count-in task). A start waits for audio to be running and
+  // for the current file's instruments; startGate says which, on stage.
+  // startTokenRef supersedes a waiting start (a second press, a new file).
+  const [startGate, setStartGate] = useState<StartGate>(null)
+  const startTokenRef = useRef(0)
+  const voicesReadyRef = useRef<{ promise: Promise<void>; done: boolean }>({ promise: Promise.resolve(), done: true })
 
   if (!engineRef.current) engineRef.current = new AudioEngine()
   const engine = engineRef.current
@@ -187,7 +196,10 @@ export default function App() {
     s.seek(head)
     schedulerRef.current = s
     const score = useTransport.getState().score!
-    const b = new BeatCursor(beatTimes(score, useTransport.getState().tempo))
+    const tempo = useTransport.getState().tempo
+    // The count-in clicks sit before t = 0 in the same cursor: a start from the
+    // top (playhead at -lead) reaches them, a resume or seek skips them.
+    const b = new BeatCursor([...countInBeats(leadInFor(score, tempo)), ...beatTimes(score, tempo)])
     b.seek(head)
     beatsRef.current = b
   }, [notes, engine])
@@ -223,6 +235,8 @@ export default function App() {
           metronomeRef.current = new MetronomeVoice(engine.audioContext, engine.masterNode)
         }
         for (const beat of beatsRef.current.collect(head)) {
+          // Count-in clicks (sec < 0) only while the Count-in setting is on.
+          if (beat.sec < 0 && audio.countIn === false) continue
           metronomeRef.current.click(state.originSec + beat.sec, beat.accent, audio.metronomeVolume)
         }
       } else {
@@ -378,36 +392,105 @@ export default function App() {
     }
     hooks.onLoaded?.()
 
-    try {
-      await engine.resume()
+    const audioFailed = (e: unknown) => {
+      // The score is loaded and visible; only sound is affected.
+      if (loadTokenRef.current === token) {
+        setError(`${file.name} is loaded, but audio could not start: ${(e as Error).message}`)
+      }
+    }
+    // NOT awaited (count-in task): outside a user gesture resume() can stay
+    // pending until one arrives, and the instruments used to wait behind it --
+    // so they only started loading when Play was pressed, and the first
+    // seconds played silent. Sample fetch and decode work on a suspended
+    // context; the gesture that unlocks audio is the file picker's click
+    // (unlockAudio) or, failing that, Play / "Tap to start sound".
+    engine.resume().catch(audioFailed)
+    const ready = (async () => {
       engine.setMasterVolume(useSettings.getState().audio.masterVolume)
-      // While this load is still current, load the voices as they are NOW,
-      // not this function's pre-resume copy: a scene applied in onLoaded (or
-      // any voice edit made while resume waited) must not have its
-      // instruments and gains overwritten by the file's defaults.
+      // Load the voices as they are NOW, not this function's parsed copy: a
+      // scene applied in onLoaded must not have its instruments and gains
+      // overwritten by the file's defaults.
       const voices = loadTokenRef.current === token
         ? useTransport.getState().score?.voices ?? score.voices
         : score.voices
       await Promise.all(voices.map((v) => engine.loadVoice(v)))
       if (loadTokenRef.current === token) engine.retainVoices(voices.map((v) => v.id))
+    })()
+    const entry = { promise: ready.catch(() => {}), done: false }
+    void entry.promise.then(() => { entry.done = true })
+    voicesReadyRef.current = entry
+    try {
+      await ready
     } catch (e) {
-      // The score is loaded and visible; only sound is affected.
-      setError(`${file.name} is loaded, but audio could not start: ${(e as Error).message}`)
+      audioFailed(e)
     }
     return true
   }, [engine, chordFeed])
 
-  const toggle = useCallback(async () => {
-    await engine.resume()
-    const state = useTransport.getState()
-    const now = engine.currentTime
-    if (state.playing) { state.pause(now); engine.stopAll(); metronomeRef.current?.stop() }
-    else {
-      state.play(now)
-      schedulerRef.current?.seek(playheadAt(useTransport.getState(), now))
-      beatsRef.current?.seek(playheadAt(useTransport.getState(), now))
-    }
+  // Any tap or click on the stage, and the file pickers' own clicks, unlock
+  // audio in the gesture itself. Cheap when already running (resume is a no-op).
+  const unlockAudio = useCallback(() => {
+    engine.resume().catch(() => { /* reported by loadFile / the start gate */ })
   }, [engine])
+
+  /** Starts the transport now. From the top that is one bar early (the lead-in). */
+  const beginPlayback = useCallback(() => {
+    const state = useTransport.getState()
+    if (!state.score || state.playing) return
+    const now = engine.currentTime
+    const lead = state.pausedAtSec <= 0 ? leadInFor(state.score, state.tempo).sec : 0
+    state.play(now, lead)
+    const head = playheadAt(useTransport.getState(), now)
+    schedulerRef.current?.seek(head)
+    beatsRef.current?.seek(head)
+  }, [engine])
+
+  /**
+   * A start never plays silent notes: it waits at the top of the count-in until
+   * the AudioContext is running ("Tap to start sound" -- a dropped file is no
+   * user activation, so nothing may have unlocked audio yet) and until this
+   * file's instruments have loaded ("Loading sounds"). resume() is CALLED
+   * synchronously, inside whatever gesture got us here.
+   */
+  const requestStart = useCallback(() => {
+    const token = ++startTokenRef.current
+    const resumed = engine.resume()
+    resumed.catch(() => { /* handled below: the gate stays up */ })
+    void (async () => {
+      if (!engine.running) {
+        setStartGate('sound')
+        try { await resumed } catch { /* still suspended: the gate stays up */ }
+        if (token !== startTokenRef.current) return
+        if (!engine.running) return   // a tap on the gate calls requestStart again
+      }
+      const voices = voicesReadyRef.current
+      if (!voices.done) {
+        setStartGate('loading')
+        await voices.promise
+        if (token !== startTokenRef.current) return
+      }
+      setStartGate(null)
+      beginPlayback()
+    })()
+  }, [engine, beginPlayback])
+
+  const cancelStart = useCallback(() => {
+    startTokenRef.current++
+    setStartGate(null)
+  }, [])
+
+  const toggle = useCallback(() => {
+    const state = useTransport.getState()
+    if (state.playing) {
+      state.pause(engine.currentTime); engine.stopAll(); metronomeRef.current?.stop()
+    } else if (startGate !== null) {
+      cancelStart()   // Play pressed again while waiting: stop waiting
+    } else {
+      requestStart()
+    }
+  }, [engine, startGate, cancelStart, requestStart])
+
+  const liveHead = useCallback(() => playheadAt(useTransport.getState(), engine.currentTime), [engine])
 
   const seek = useCallback((sec: number) => {
     const now = engine.currentTime
@@ -469,12 +552,13 @@ export default function App() {
     // The debounced autosave is keyed on this score; flush it before
     // clearScore() or an edit made in the last 400ms is lost.
     flushAutosave()
+    cancelStart()
     state.clearScore()
     // Silence holds the last chord, so a cleared score would keep showing it.
     chordFeed.reset()
     loadTokenRef.current++ // invalidate any in-flight loadFile's retainVoices
     engine.retainVoices([])
-  }, [engine, chordFeed, flushAutosave])
+  }, [engine, chordFeed, flushAutosave, cancelStart])
 
   // The canvas has alpha, but the page behind it does not. Without this the host
   // page paints its own ground and an OBS browser source composites only black.
@@ -699,6 +783,16 @@ export default function App() {
 
   const effectiveBpm = t.score ? effectiveBpmAt(t.score.tempoMap, playhead, t.tempo) : 120
 
+  // The lead-in for the overlay. Keyed on what it reads, not the score object
+  // (updateVoice replaces that), so CountIn's loop is not restarted by a
+  // colour change.
+  const tempoMap = t.score?.tempoMap
+  const timeSignatures = t.score?.timeSignatures
+  const lead = useMemo(() => {
+    const s = useTransport.getState().score
+    return s && tempoMap && timeSignatures ? leadInFor(s, t.tempo) : NO_LEAD_IN
+  }, [tempoMap, timeSignatures, t.tempo])
+
   // Master volume has an audio-side effect (the engine's gain node) as well as
   // a persisted setting, so it goes through its own callback rather than a
   // direct settings.setAudio call, mirroring changeVoice's split above.
@@ -738,6 +832,10 @@ export default function App() {
       <div
         ref={stageWrapRef}
         className={`stage-wrap theme-${settings.theme.name} relative min-h-0 flex-1`}
+        // Any stage interaction unlocks audio (pointerup, not only pointerdown:
+        // on touch screens only the former counts as user activation).
+        onPointerDown={unlockAudio}
+        onPointerUp={unlockAudio}
         style={settings.theme.stageBgOverride
           ? ({ '--tmi-stage-bg': settings.theme.stageBgOverride } as CSSProperties)
           : undefined}
@@ -750,11 +848,25 @@ export default function App() {
           keyContext={keyContext}
         />
         <ChordReadout layout={stageText.layout} value={chord} text={settings.text} />
+        {t.score && (
+          <CountIn
+            active={t.playing}
+            enabled={settings.audio.countIn !== false}
+            lead={lead}
+            head={liveHead}
+            gate={startGate}
+            onTapToStart={requestStart}
+            keyboardH={stageText.layout?.keyboardH ?? 0}
+          />
+        )}
         {!t.score && (
           <div className="stage-empty absolute inset-0 flex flex-col items-center justify-center gap-3 overflow-y-auto p-4">
             {/* While a scene waits for its song (§8.3), a file dropped here is
                 checked against the scene's hash rather than loaded blind. */}
-            <FileDropZone onFile={scenes.pending ? scenes.provideFile : (f) => void loadFile(f)} />
+            <FileDropZone
+              onFile={scenes.pending ? scenes.provideFile : (f) => void loadFile(f)}
+              onPick={unlockAudio}
+            />
             <button
               type="button"
               aria-expanded={emptyScenesOpen}
@@ -780,6 +892,7 @@ export default function App() {
             mismatch={scenes.pending.mismatch?.name ?? null}
             busy={scenes.busy}
             onFile={scenes.provideFile}
+            onPick={unlockAudio}
             onUseAnyway={scenes.acceptMismatch}
             onCancel={scenes.cancelPending}
           />
@@ -819,7 +932,7 @@ export default function App() {
       {t.score && (
         <TransportBar
           playing={t.playing}
-          playhead={playhead}
+          playhead={Math.max(0, playhead)}
           duration={t.score.durationSec}
           mode={t.mode}
           name={t.score.name}
@@ -882,6 +995,14 @@ export default function App() {
                       className="metronome-toggle accent-[var(--accent)]"
                       checked={settings.audio.metronome}
                       onChange={(e) => settings.setAudio({ metronome: e.target.checked })}
+                    />
+                  </SettingsRow>
+                  <SettingsRow label="Count-in">
+                    <input
+                      type="checkbox" aria-label="Count-in"
+                      className="count-in-toggle accent-[var(--accent)]"
+                      checked={settings.audio.countIn !== false}
+                      onChange={(e) => settings.setAudio({ countIn: e.target.checked })}
                     />
                   </SettingsRow>
                   <SettingsRow label="Metronome volume" htmlFor="metronome-volume">

@@ -14,6 +14,8 @@ export function SceneFilePrompt(props: {
   mismatch: string | null
   busy?: boolean
   onFile: (file: File) => void
+  /** Runs synchronously in the picker click: the gesture that unlocks audio. */
+  onPick?: () => void
   onUseAnyway: () => void
   onCancel: () => void
 }) {
@@ -50,7 +52,7 @@ export function SceneFilePrompt(props: {
           type="button"
           className={`btn-choose-scene-file ${BTN} bg-[var(--accent)] text-black`}
           disabled={props.busy}
-          onClick={() => inputRef.current?.click()}
+          onClick={() => { props.onPick?.(); inputRef.current?.click() }}
         >
           Choose file
         </button>

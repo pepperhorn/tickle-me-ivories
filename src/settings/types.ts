@@ -49,6 +49,10 @@ export interface AudioSettings {
   masterVolume: number    // 0-1
   metronome: boolean
   metronomeVolume: number // 0-1
+  /** The one-bar count-in (numbers on stage, and clicks when the metronome is
+      on). Optional so settings, profiles and scenes saved before it existed
+      stay valid; absent means on. The lead-in bar itself always plays. */
+  countIn?: boolean
 }
 
 export interface ThemeSettings {
@@ -144,5 +148,5 @@ export const DEFAULT_SETTINGS: Settings = {
     keyOverride: null,
     style: DEFAULT_TEXT_STYLE,
   },
-  audio: { masterVolume: 0.8, metronome: false, metronomeVolume: 0.5 },
+  audio: { masterVolume: 0.8, metronome: false, metronomeVolume: 0.5, countIn: true },
 }

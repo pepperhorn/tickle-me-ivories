@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { Midi } from '@tonejs/midi'
 import App from './App'
-import { useTransport } from './transport/useTransport'
+import { playheadAt, useTransport } from './transport/useTransport'
 import { useSettings } from './settings/useSettings'
 import { buildProfile, encodeProfile, loadProfile, saveProfile } from './settings/profile'
 import { DEFAULT_SETTINGS } from './settings/types'
@@ -19,6 +19,7 @@ import type { SceneV1 } from './platform/types'
 // fake records what App asks of it; everything App decides is still real.
 const engine = vi.hoisted(() => ({
   currentTime: 0,
+  running: true,
   resume: vi.fn(async () => {}),
   setMasterVolume: vi.fn(),
   setVoiceVolume: vi.fn(),
@@ -95,6 +96,8 @@ beforeEach(() => {
   useTransport.setState(pristineTransport, true)
   useSettings.getState().reset()
   vi.clearAllMocks()
+  engine.currentTime = 0
+  engine.running = true
 })
 
 describe('App: loading a file', () => {
@@ -585,5 +588,122 @@ describe('App: MusicXML files', () => {
     })
     await waitFor(() => expect(document.querySelector('.stage-error')?.textContent)
       .toMatch(/Could not read page\.xml: it is not a MIDI or MusicXML file/))
+  })
+})
+
+describe('App: lead-in, count-in and audio unlock', () => {
+  const play = () => fireEvent.click(screen.getByRole('button', { name: 'Play' }))
+
+  it('"Choose file" unlocks audio inside the click itself, before any await', () => {
+    render(<App />)
+    const input = document.getElementById('file-input') as HTMLInputElement
+    const pick = vi.spyOn(input, 'click').mockImplementation(() => {})
+    fireEvent.click(screen.getByRole('button', { name: 'Choose file' }))
+    // Synchronously -- no waitFor: a resume() after an await is outside the gesture.
+    expect(engine.resume).toHaveBeenCalledTimes(1)
+    expect(pick).toHaveBeenCalled()
+  })
+
+  it('the scene prompt\'s "Choose file" unlocks audio in its click too', async () => {
+    await mountAt(await shareHash('scene', sceneFor(await idOf(midiBytes()))))
+    fireEvent.click(await screen.findByRole('button', { name: 'Apply' }))
+    await waitFor(() => expect(document.querySelector('.scene-file-prompt')).not.toBeNull())
+    engine.resume.mockClear()
+    fireEvent.click(document.querySelector('.btn-choose-scene-file')!)
+    expect(engine.resume).toHaveBeenCalledTimes(1)
+  })
+
+  it('loads the instruments without waiting for audio to be unlocked', async () => {
+    engine.resume.mockImplementation(() => new Promise<void>(() => {}))
+    try {
+      render(<App />)
+      await loadFile(midiFile(midiBytes()))
+      expect(engine.loadVoice).toHaveBeenCalled()
+    } finally {
+      engine.resume.mockImplementation(async () => {})
+    }
+  })
+
+  it('Play from the top starts one bar early, so the first notes fall in', async () => {
+    render(<App />)
+    await loadFile(midiFile(midiBytes()))   // 120bpm, 4/4 -> a 2s lead-in
+    engine.currentTime = 5
+    play()
+    await waitFor(() => expect(useTransport.getState().playing).toBe(true))
+    expect(playheadAt(useTransport.getState(), 5)).toBeCloseTo(-2, 9)
+    expect(playheadAt(useTransport.getState(), 7)).toBeCloseTo(0, 9)
+  })
+
+  it('resuming mid-song does not count in', async () => {
+    render(<App />)
+    await loadFile(midiFile(midiBytes()))
+    act(() => { fireEvent.change(document.getElementById('scrub')!, { target: { value: '0.5' } }) })
+    engine.currentTime = 5
+    play()
+    await waitFor(() => expect(useTransport.getState().playing).toBe(true))
+    expect(playheadAt(useTransport.getState(), 5)).toBeCloseTo(0.5, 9)
+  })
+
+  it('shows the count on stage during the lead-in, and not with the setting off', async () => {
+    render(<App />)
+    await loadFile(midiFile(midiBytes()))
+    play()
+    await waitFor(() => expect(document.querySelector('.count-in-number')?.textContent).toBe('1'))
+    // Pause (parks at 0), switch the count-in off, play again: no numbers.
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }))
+    act(() => { useSettings.getState().setAudio({ countIn: false }) })
+    play()
+    await waitFor(() => expect(useTransport.getState().playing).toBe(true))
+    expect(document.querySelector('.count-in-number')).toBeNull()
+    // ...but the lead-in bar itself still plays.
+    expect(playheadAt(useTransport.getState(), engine.currentTime)).toBeLessThan(0)
+  })
+
+  it('waits at the top with "Tap to start sound" while audio is suspended, then taps through', async () => {
+    render(<App />)
+    await loadFile(midiFile(midiBytes()))
+    engine.running = false
+    engine.resume.mockImplementation(() => new Promise<void>(() => {}))
+    try {
+      play()
+      const tap = await screen.findByRole('button', { name: /tap to start sound/i })
+      expect(useTransport.getState().playing).toBe(false)
+      // The tap is a real gesture: resume() now succeeds.
+      engine.resume.mockImplementation(async () => { engine.running = true })
+      engine.resume.mockClear()
+      fireEvent.click(tap)
+      expect(engine.resume).toHaveBeenCalledTimes(1)
+      await waitFor(() => expect(useTransport.getState().playing).toBe(true))
+      expect(playheadAt(useTransport.getState(), engine.currentTime)).toBeCloseTo(-2, 9)
+      expect(screen.queryByRole('button', { name: /tap to start sound/i })).toBeNull()
+    } finally {
+      engine.resume.mockImplementation(async () => {})
+    }
+  })
+
+  it('waits for the instruments before counting in', async () => {
+    const pending: (() => void)[] = []
+    const finish = () => pending.forEach((r) => r())
+    engine.loadVoice.mockImplementation(() => new Promise<void>((r) => { pending.push(r) }))
+    try {
+      render(<App />)
+      fireEvent.change(document.getElementById('file-input')!, { target: { files: [midiFile(midiBytes())] } })
+      await waitFor(() => expect(useTransport.getState().score).not.toBeNull())
+      play()
+      await screen.findByText(/loading sounds/i)
+      expect(useTransport.getState().playing).toBe(false)
+      act(() => finish())
+      await waitFor(() => expect(useTransport.getState().playing).toBe(true))
+    } finally {
+      engine.loadVoice.mockImplementation(async () => {})
+    }
+  })
+
+  it('the transport readout never shows a negative time during the lead-in', async () => {
+    render(<App />)
+    await loadFile(midiFile(midiBytes()))
+    play()
+    await waitFor(() => expect(useTransport.getState().playing).toBe(true))
+    expect((document.getElementById('scrub') as HTMLInputElement).value).toBe('0')
   })
 })

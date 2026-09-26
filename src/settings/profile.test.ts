@@ -523,3 +523,45 @@ describe('decodeProfile drops unknown keys and checks the song block', () => {
       .toEqual(['display', 'global', 'schemaVersion', 'song', 'tempo', 'text', 'theme', 'voices'])
   })
 })
+
+describe('count-in setting (audio.countIn)', () => {
+  beforeEach(() => { localStorage.clear() })
+
+  it('defaults on', () => {
+    expect(DEFAULT_SETTINGS.audio.countIn).toBe(true)
+  })
+
+  it('round-trips an off count-in through the globals', () => {
+    saveGlobals({ velocity: DEFAULT_SETTINGS.velocity, audio: { ...DEFAULT_SETTINGS.audio, countIn: false } })
+    expect(loadGlobals()!.audio.countIn).toBe(false)
+  })
+
+  it('still loads globals saved before the setting existed', () => {
+    localStorage.setItem('tmi.globals', JSON.stringify({
+      velocity: DEFAULT_SETTINGS.velocity,
+      audio: { masterVolume: 0.3, metronome: true, metronomeVolume: 0.4 },
+    }))
+    const g = loadGlobals()
+    expect(g).not.toBeNull()
+    expect(g!.audio).toEqual({ masterVolume: 0.3, metronome: true, metronomeVolume: 0.4 })
+  })
+
+  it('drops a count-in value that is not a boolean rather than applying it', () => {
+    localStorage.setItem('tmi.globals', JSON.stringify({
+      velocity: DEFAULT_SETTINGS.velocity,
+      audio: { ...DEFAULT_SETTINGS.audio, countIn: 'yes' },
+    }))
+    const g = loadGlobals()
+    expect(g).not.toBeNull()
+    expect('countIn' in g!.audio).toBe(false)
+  })
+
+  it('decodes an exported profile carrying it', () => {
+    const p = buildProfile({
+      song: { id: 's', name: 's.mid', format: 'midi' }, voices: [], tempo: { mode: 'scale', scale: 1 },
+      mode: 'roll', fallSeconds: 3,
+      settings: { ...DEFAULT_SETTINGS, audio: { ...DEFAULT_SETTINGS.audio, countIn: false } },
+    })
+    expect(decodeProfile(encodeProfile(p)).global.audio.countIn).toBe(false)
+  })
+})

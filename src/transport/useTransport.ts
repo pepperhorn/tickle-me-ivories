@@ -23,7 +23,9 @@ export interface TransportState {
 export interface TransportActions {
   loadScore: (score: ScoreDocument) => void
   clearScore: () => void
-  play: (now: number) => void
+  /** `leadInSec` applies only from the top (paused at 0): the playhead then
+      starts at -leadInSec, so the first notes are already falling. */
+  play: (now: number, leadInSec?: number) => void
   pause: (now: number) => void
   seek: (sec: number, now: number) => void
   setTempo: (setting: TempoSetting, now: number) => void
@@ -74,9 +76,13 @@ export const useTransport = create<TransportState & TransportActions>((set, get)
     score: null, playing: false, pausedAtSec: 0, originSec: 0, maxNoteDur: 0,
   }),
 
-  play: (now) => set((s) => ({ playing: true, originSec: now - s.pausedAtSec })),
+  play: (now, leadInSec = 0) => set((s) => ({
+    playing: true,
+    originSec: now - s.pausedAtSec + (s.pausedAtSec <= 0 ? leadInSec : 0),
+  })),
 
-  pause: (now) => set((s) => ({ playing: false, pausedAtSec: playheadAt(s, now) })),
+  // Clamped: a pause inside the lead-in parks at 0, so the next play counts in again.
+  pause: (now) => set((s) => ({ playing: false, pausedAtSec: Math.max(0, playheadAt(s, now)) })),
 
   seek: (sec, now) => set((s) => {
     const target = clampToScore(s, sec)

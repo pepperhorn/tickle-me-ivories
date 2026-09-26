@@ -231,3 +231,37 @@ describe('parked plan 1 gaps', () => {
     expect(useTransport.getState().pausedAtSec).toBe(0)
   })
 })
+
+describe('lead-in', () => {
+  it('starts one lead-in before t = 0 when playing from the top', () => {
+    const t = useTransport.getState()
+    t.loadScore(score())
+    t.play(10, 2)
+    expect(playheadAt(useTransport.getState(), 10)).toBeCloseTo(-2, 9)
+    expect(playheadAt(useTransport.getState(), 12)).toBeCloseTo(0, 9)
+  })
+
+  it('ignores the lead-in when resuming mid-song', () => {
+    const t = useTransport.getState()
+    t.loadScore(score())
+    t.seek(1, 0)
+    useTransport.getState().play(10, 2)
+    expect(playheadAt(useTransport.getState(), 10)).toBeCloseTo(1, 9)
+  })
+
+  it('pausing during the lead-in parks the playhead at 0, not a negative time', () => {
+    const t = useTransport.getState()
+    t.loadScore(score())
+    t.play(10, 2)
+    useTransport.getState().pause(11)
+    expect(useTransport.getState().pausedAtSec).toBe(0)
+  })
+
+  it('seeking during the lead-in drops the rest of it', () => {
+    const t = useTransport.getState()
+    t.loadScore(score())
+    t.play(10, 2)
+    useTransport.getState().seek(0.5, 10.5)
+    expect(playheadAt(useTransport.getState(), 10.5)).toBeCloseTo(0.5, 9)
+  })
+})

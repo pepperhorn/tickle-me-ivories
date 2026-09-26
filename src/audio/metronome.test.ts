@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { BeatCursor, MetronomeVoice, beatTimes } from './metronome'
+import { BeatCursor, MetronomeVoice, beatTimes, countInBeats } from './metronome'
 import { buildTempoMap } from '../model/tempoMap'
 import type { NoteEvent, ScoreDocument } from '../model/types'
 
@@ -220,5 +220,25 @@ describe('MetronomeVoice.stop', () => {
     const { ctx } = fakeCtx(10)
     const voice = new MetronomeVoice(ctx, {} as AudioNode)
     expect(() => voice.stop()).not.toThrow()
+  })
+})
+
+describe('countInBeats', () => {
+  it('places the count-in beats before t = 0, accent on 1', () => {
+    const beats = countInBeats({ sec: 2, beats: 4, beatSec: 0.5 })
+    expect(beats).toEqual([
+      { sec: -2, accent: true }, { sec: -1.5, accent: false },
+      { sec: -1, accent: false }, { sec: -0.5, accent: false },
+    ])
+  })
+
+  it('a cursor seeked to the lead-in start collects the count-in clicks, one seeked to 0 skips them', () => {
+    const all = [...countInBeats({ sec: 2, beats: 4, beatSec: 0.5 }), ...beatTimes(score(), SCALE_1)]
+    const c = new BeatCursor(all)
+    c.seek(-2)
+    expect(c.collect(-2).map((b) => b.sec)).toEqual([-2])
+    const resumed = new BeatCursor(all)
+    resumed.seek(0)
+    expect(resumed.collect(0).map((b) => b.sec)).toEqual([0])
   })
 })
