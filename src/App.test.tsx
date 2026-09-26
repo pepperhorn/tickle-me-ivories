@@ -135,6 +135,20 @@ describe('App: loading a file', () => {
     const idB = await idOf(b)
     await waitFor(() => expect(loadProfile(idB)?.tempo).toEqual({ mode: 'scale', scale: 1 }))
   })
+
+  it('loads a file when crypto.subtle is unavailable (an insecure origin, e.g. LAN/Tailscale http://)', async () => {
+    const realCrypto = globalThis.crypto
+    vi.stubGlobal('crypto', { getRandomValues: realCrypto.getRandomValues.bind(realCrypto) })
+    expect(globalThis.crypto.subtle).toBeUndefined()
+    try {
+      render(<App />)
+      await loadFile(midiFile(midiBytes()))
+      expect(document.querySelector('.stage-error')).toBeNull()
+      expect(useTransport.getState().score!.notes.length).toBeGreaterThan(0)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
 })
 
 describe('App: autosave flush', () => {
