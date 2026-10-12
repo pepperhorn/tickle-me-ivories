@@ -10,5 +10,5 @@ export default defineConfig({
   resolve: { conditions: ['source', ...defaultClientConditions] },
   ssr: { resolve: { conditions: ['source', ...defaultServerConditions], externalConditions: ['source'] } },
   server: { host: '0.0.0.0' },
-  test: { name: 'studio', environment: 'jsdom', globals: true },
+  test: { name: 'studio', environment: 'jsdom', globals: true, setupFiles: ['./src/test-setup.ts'] },
 })

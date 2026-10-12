@@ -36,8 +36,6 @@ vi.mock('ivories/core', async (importOriginal) => ({
   ...(await importOriginal<typeof import('ivories/core')>()),
   AudioEngine: function AudioEngine() { return engine },
 }))
-// The rAF + canvas loop is the draw path, covered by the render tests.
-vi.mock('./render/useCanvasStage', () => ({ useCanvasStage: () => ({ current: null }) }))
 
 /** A one-track file: C4 at 0s and E4 at 1s, at 120bpm (so tick 960 = 1s). */
 function midiBytes(pitches = [60, 64], bpm = 120): Uint8Array<ArrayBuffer> {
