@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { AudioClock, retimeScore, secToTicks, ticksToSec } from 'ivories/core'
+import { AudioClock, longestNoteSec, retimeScore, secToTicks, ticksToSec } from 'ivories/core'
 import type { AudioClockAnchors, DisplayMode, ScoreDocument, TempoSetting, Voice } from 'ivories/core'
 
 export type { DisplayMode } from 'ivories/core'
@@ -89,12 +89,6 @@ function synced(s: TransportState): AudioClock {
     caller's AudioContext time would corrupt the origin. */
 function baseNow(c: AudioClock, now: number): number {
   return c.playing && c.silentFallback ? c.sourceTime() : now
-}
-
-/** Longest note in seconds. A fixed cutoff is wrong for some score: at the
-    tempo control's 25% minimum, any note over 2s at notated tempo exceeds 8s. */
-export function longestNoteSec(score: ScoreDocument): number {
-  return score.notes.reduce((m, n) => Math.max(m, n.endSec - n.startSec), 0)
 }
 
 const clampToScore = (s: TransportState, sec: number) =>
