@@ -3,10 +3,28 @@
   "version": "0.1.0",
   "description": "Falling keys, keyboard, notation and stage layouts for React, on one shared clock.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pepperhorn/tickle-me-ivories.git",
+    "directory": "packages/ivories"
+  },
+  "keywords": [
+    "react",
+    "piano",
+    "midi",
+    "musicxml",
+    "falling-notes",
+    "keyboard",
+    "notation",
+    "web-audio"
+  ],
   "type": "module",
   "sideEffects": [
     "*.css"
   ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/types/index.d.ts",
   "exports": {
     ".": {
       "source": "./src/index.ts",

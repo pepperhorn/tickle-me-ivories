@@ -15,7 +15,20 @@ import 'ivories/style.css'
 <Ivories view="falling" scoreUrl="/songs/minuet.mid" height={420} />
 ```
 
-Hosts must import `ivories/style.css`: overlay positioning and view sizing live there. All of it sits in a single `@layer ivories`, so any unlayered host CSS (Tailwind utilities included) wins over the defaults.
+Hosts must import `ivories/style.css`: overlay positioning and view sizing live there. All of it sits in a single `@layer ivories`, so any unlayered host CSS wins over the defaults.
+
+Cascade layers rank by the order they are first declared, not by import order of the rules inside them. Tailwind v4 puts its utilities in `@layer utilities`, so a host using Tailwind must make sure `ivories` is declared first, or the library defaults beat your utilities. Either import `ivories/style.css` before your Tailwind CSS:
+
+```tsx
+import 'ivories/style.css'   // first: declares @layer ivories
+import './index.css'         // then: @import "tailwindcss";
+```
+
+or declare the order yourself at the top of your main stylesheet, before `@import "tailwindcss"`:
+
+```css
+@layer ivories, theme, base, components, utilities;
+```
 
 Load Poppins on the page (the library sets `font-family: Poppins, system-ui, sans-serif` but never fetches fonts).
 
@@ -88,9 +101,32 @@ Props shared by every slot go in `viewProps`; `slotViewProps` overrides them for
 
 `<Keyboard input="midi" />` lights keys from Web MIDI (sustain pedal included) in a distinct colour and fires `onNoteOn/Off` with `source: 'live'`; `liveAudio` on the provider sounds them.
 
+### Recording
+
+`useMidiRecorder()` (inside a provider) captures what is played on a MIDI keyboard. `start()` enables MIDI input and begins a take; `stop()` resolves to a `ScoreDocument` (one `Live` voice at 120 BPM, keys still held are closed at the stop time) that you can pass back as the provider's `score` to replay it. `stop()` resolves to `null` when the take holds no notes (zero-length notes are dropped) and on a repeated `stop()`, so check it before replacing a song.
+
+```tsx
+function RecordButton({ onTake }: { onTake(s: ScoreDocument): void }) {
+  const { recording, start, stop } = useMidiRecorder()
+  return (
+    <button onClick={async () => {
+      if (!recording) { start(); return }
+      const take = await stop()
+      if (take) onTake(take)
+    }}>
+      {recording ? 'Stop' : 'Record'}
+    </button>
+  )
+}
+```
+
 ## Errors
 
 Components never throw into the page. `onError(err)` receives `{ code, message, cause }` with `code` one of `score-load`, `score-parse`, `audio-unavailable`, `midi-unavailable`, `camera-unavailable`, `notation-unavailable`, `notation-needs-musicxml`, `render-failed`, and the component shows an inline message in its own box.
+
+The exceptions are `audio-unavailable` and `midi-unavailable`: they are reported through `onError` only, with no inline message, because the views keep working (the score plays silently, or without live keys). Show your own notice if you want one.
+
+A callback you pass (`onNoteOn`, `onNoteOff`, `onError`, a live-note subscriber) that throws is logged once with `console.error` and never stops the other callbacks.
 
 ## Styling
 
