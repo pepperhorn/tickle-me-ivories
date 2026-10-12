@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
 import { StageText, labelText, samePitches, textCss } from './StageText'
-import { computeLayout } from 'ivories/core'
-import { DEFAULT_SETTINGS } from 'ivories/core'
-import { DEFAULT_KEY } from 'ivories/core'
-import type { TextSettings } from 'ivories/core'
+import { computeLayout } from '../../core/render/geometry'
+import { DEFAULT_SETTINGS } from '../../core/settings/types'
+import { DEFAULT_KEY } from '../../core/music/spell'
+import type { TextSettings } from '../../core/settings/types'
 
 const layout = computeLayout(1220, 700)
 const text = (patch: Partial<TextSettings> = {}): TextSettings => ({ ...DEFAULT_SETTINGS.text, ...patch })

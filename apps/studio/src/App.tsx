@@ -21,12 +21,11 @@ import {
   saveGlobals, saveProfile,
 } from 'ivories/core'
 import { DEFAULT_SETTINGS } from 'ivories/core'
-import { ChordReadout } from './ui/ChordReadout'
+import { ChordReadout, StageText, samePitches } from 'ivories'
 import { CountIn } from './ui/CountIn'
 import type { StartGate } from './ui/CountIn'
 import { DisplaySettings } from './ui/DisplaySettings'
 import { FileDropZone } from './ui/FileDropZone'
-import { StageText, samePitches } from './ui/StageText'
 import { TextSettings } from './ui/TextSettings'
 import { ProfileSettings } from './ui/ProfileSettings'
 import { SettingsPanel, SettingsRow, SettingsSection } from './ui/SettingsPanel'
@@ -49,7 +48,7 @@ import type { KeyboardLayout } from 'ivories/core'
 import type { Theme } from 'ivories/core'
 import type { ChordReading } from 'ivories/core'
 import type { KeyContext } from 'ivories/core'
-import type { ChordDisplayValue } from './ui/ChordReadout'
+import type { ChordDisplayValue } from 'ivories'
 import type { DisplayMode, ScoreDocument, TempoSetting, Voice } from 'ivories/core'
 import type {
   AudioSettings, DisplaySettings as DisplaySettingsValue, SavedVoice, Settings,

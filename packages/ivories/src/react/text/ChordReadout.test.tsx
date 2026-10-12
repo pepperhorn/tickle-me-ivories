@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'
 import { ChordReadout, chordDisplayText } from './ChordReadout'
-import { computeLayout } from 'ivories/core'
-import { DEFAULT_SETTINGS } from 'ivories/core'
+import { computeLayout } from '../../core/render/geometry'
+import { DEFAULT_SETTINGS } from '../../core/settings/types'
 
 const layout = computeLayout(1220, 700)
 const text = (patch = {}) => ({ ...DEFAULT_SETTINGS.text, ...patch })

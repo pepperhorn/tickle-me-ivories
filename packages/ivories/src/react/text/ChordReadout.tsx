@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 import { textCss } from './StageText'
-import type { KeyboardLayout } from 'ivories/core'
-import type { ChordDisplay, TextSettings as TextSettingsType } from 'ivories/core'
+import type { KeyboardLayout } from '../../core/render/geometry'
+import type { ChordDisplay, TextSettings as TextSettingsType } from '../../core/settings/types'
 
 export interface ChordDisplayValue {
   symbol: string

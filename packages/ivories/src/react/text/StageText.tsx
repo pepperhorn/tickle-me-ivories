@@ -1,11 +1,11 @@
 import { useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { ensureGoogleFont } from './googleFont'
-import { spellPitch } from 'ivories/core'
-import type { KeyboardLayout } from 'ivories/core'
-import type { KeyContext } from 'ivories/core'
-import type { NoteLabelContent, TextSettings as TextSettingsType, TextStyle } from 'ivories/core'
-import { isSafeFontFamily } from 'ivories/core'
+import { spellPitch } from '../../core/music/spell'
+import type { KeyboardLayout } from '../../core/render/geometry'
+import type { KeyContext } from '../../core/music/spell'
+import type { NoteLabelContent, TextSettings as TextSettingsType, TextStyle } from '../../core/settings/types'
+import { isSafeFontFamily } from '../../core/settings/profile'
 
 /** Self-hosted via @fontsource/poppins; never requested from the CDN (F37). */
 const BUNDLED_FAMILY = 'poppins'

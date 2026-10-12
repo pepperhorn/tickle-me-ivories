@@ -1,4 +1,4 @@
-import { isSafeFontFamily } from 'ivories/core'
+import { isSafeFontFamily } from '../../core/settings/profile'
 
 const DEFAULT_WEIGHTS = [400, 500, 600, 700]
 

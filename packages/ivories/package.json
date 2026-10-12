@@ -6,6 +6,11 @@
   "type": "module",
   "sideEffects": ["*.css"],
   "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/index.js"
+    },
     "./core": {
       "source": "./src/core/index.ts",
       "types": "./dist/types/core/index.d.ts",
