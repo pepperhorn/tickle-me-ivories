@@ -7,6 +7,16 @@ import postcss from 'postcss'
 const file = new URL('../src/style.css', import.meta.url)
 const root = postcss.parse(readFileSync(file, 'utf8'), { from: 'src/style.css' })
 const problems = []
+// The whole sheet sits in ONE top-level `@layer ivories { … }` so a host's
+// unlayered CSS (Tailwind utilities included) always wins over the defaults.
+const top = root.nodes.filter((n) => n.type !== 'comment')
+const layers = top.filter((n) => n.type === 'atrule' && n.name === 'layer' && n.params === 'ivories' && n.nodes)
+if (layers.length !== 1) problems.push(`expected exactly one top-level @layer ivories block, found ${layers.length}`)
+for (const n of top) {
+  if (layers.includes(n)) continue
+  const what = n.type === 'rule' ? `rule "${n.selector}"` : n.type === 'atrule' ? `@${n.name} ${n.params}` : n.type
+  problems.push(`${what} sits outside @layer ivories`)
+}
 root.walkRules((rule) => {
   if (rule.parent?.type === 'atrule' && /keyframes$/.test(rule.parent.name)) return
   for (const selector of rule.selectors) {
@@ -30,4 +40,4 @@ if (problems.length) {
   console.error(`CSS scope check failed:\n  ${problems.join('\n  ')}`)
   process.exit(1)
 }
-console.log('CSS scope: every rule under .ivories, prefixed classes, no page selectors, viewport units or fixed positions')
+console.log('CSS scope: one @layer ivories, every rule under .ivories, prefixed classes, no page selectors, viewport units or fixed positions')

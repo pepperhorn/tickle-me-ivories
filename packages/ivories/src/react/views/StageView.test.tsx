@@ -75,4 +75,30 @@ describe('Keyboard and FallingKeys (spec §4)', () => {
     }
     expect(Number.isFinite(layout.hitY)).toBe(true)
   })
+
+  it('a throwing draw reports render-failed once and shows an inline message (R11)', async () => {
+    // Every drawing call throws, so renderer.draw fails inside the rAF callback,
+    // where no React error boundary can catch it.
+    const throwing = new Proxy({} as CanvasRenderingContext2D, {
+      get(_t, prop) {
+        if (prop === 'canvas') return { width: 1, height: 1 }
+        // Sizing (in the mount effect) works; every drawing call throws.
+        if (prop === 'setTransform') return () => {}
+        return () => { throw new Error('boom') }
+      },
+      set() { return true },
+    })
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
+      (() => throwing) as unknown as typeof HTMLCanvasElement.prototype.getContext,
+    )
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const onError = vi.fn()
+    const { container } = render(<Keyboard score={doc()} engine={fakeEngine()} onError={onError} />)
+    await waitFor(() => expect(container.querySelector('.ivories-keyboard .ivories-message[role="alert"]')).not.toBeNull())
+    // Let several more frames run: the failed view must stay unsubscribed.
+    await new Promise((r) => setTimeout(r, 120))
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(onError.mock.calls[0][0].code).toBe('render-failed')
+    expect(consoleError).not.toHaveBeenCalled()
+  })
 })

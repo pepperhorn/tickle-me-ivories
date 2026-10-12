@@ -17,6 +17,7 @@ import type { KeyboardLayout } from '../../core/render/geometry'
 import type { ChordReading } from '../../core/music/chords'
 import type { KeyContext } from '../../core/music/spell'
 import type { ThemeName } from '../../core/settings/types'
+import { IvoriesError } from '../../core/errors'
 
 export interface StageViewProps {
   /** 'full' (88 keys) or [lowMidi, highMidi]; absent follows settings.display.zoom. */
@@ -45,6 +46,7 @@ export function StageView(p: StageViewProps & { kind: 'keyboard' | 'falling'; lo
   const text = useMemo(() => applyLabels(iv.settings.text, p.labels), [iv.settings.text, p.labels])
   const [overlay, setOverlay] = useState<{ layout: KeyboardLayout | null; pitches: number[] }>({ layout: null, pitches: [] })
   const [chord, setChord] = useState<ChordDisplayValue | null>(null)
+  const [failed, setFailed] = useState(false)
 
   // Everything the frame callback reads, without re-subscribing per change.
   const live = useRef({ iv, p, text })
@@ -76,7 +78,7 @@ export function StageView(p: StageViewProps & { kind: 'keyboard' | 'falling'; lo
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null
     ro?.observe(canvas)
 
-    const off = iv.frames.add((t) => {
+    const step = (t: number) => {
       const { iv: c, p: props, text: tx } = live.current
       // A per-view theme goes into the renderer's settings so its theme cache
       // (keyed on the theme name) re-reads the tokens for this view's class.
@@ -128,6 +130,21 @@ export function StageView(p: StageViewProps & { kind: 'keyboard' | 'falling'; lo
             }
           : null)
       }
+    }
+
+    // A throw here happens inside requestAnimationFrame, where no React error
+    // boundary can see it: stop drawing, report once (R11), show it inline.
+    let dead = false
+    const off = iv.frames.add((t) => {
+      if (dead) return
+      try {
+        step(t)
+      } catch (cause) {
+        dead = true
+        off()
+        live.current.iv.reportError(new IvoriesError('render-failed', 'This view stopped working.', cause))
+        setFailed(true)
+      }
     })
     return () => { off(); ro?.disconnect() }
   }, [iv.frames, renderer, chordFeed, keys])
@@ -151,7 +168,8 @@ export function StageView(p: StageViewProps & { kind: 'keyboard' | 'falling'; lo
       <canvas ref={canvasRef} className="ivories-canvas" />
       <StageText layout={overlay.layout} pitches={overlay.pitches} text={text} keyContext={keyContext} />
       <ChordReadout layout={overlay.layout} value={chord} text={text} />
-      {error && <p className="ivories-message" role="alert">{error.message}</p>}
+      {failed && <p className="ivories-message" role="alert">This view stopped working.</p>}
+      {!failed && error && <p className="ivories-message" role="alert">{error.message}</p>}
       {status.loading && !iv.score && <p className="ivories-message" role="status">Loading score…</p>}
       {p.children}
     </div>
