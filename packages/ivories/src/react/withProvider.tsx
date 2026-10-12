@@ -8,7 +8,8 @@ import type { IvoriesProviderProps } from './IvoriesProvider'
 export const PROVIDER_KEYS = [
   'score', 'scoreUrl', 'file', 'musicXml', 'midi', 'clock', 'engine', 'audio', 'tempo',
   'theme', 'look', 'settings', 'fallSeconds', 'liveAudio', 'midiDeviceId',
-  'onReady', 'onNoteOn', 'onNoteOff', 'onTimeUpdate', 'onError',
+  'bpm', 'liveClock', 'autoStart',
+  'onReady', 'onNoteOn', 'onNoteOff', 'onTimeUpdate', 'onError', 'onBpmChange',
 ] as const
 
 export type SelfContainedProps = Omit<IvoriesProviderProps, 'children' | 'ref'>

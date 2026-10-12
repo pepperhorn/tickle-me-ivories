@@ -11,6 +11,7 @@ import type { Orientation } from '../layout/types'
 import { drawRisingStage } from './rising'
 import { clampVisibleBeats, liveBeatClock, scoreBeatClock } from './beats'
 import type { BeatClock } from './beats'
+import { sameTempo } from '../model/tempoMap'
 import type { TrailNote } from '../midi/trail'
 
 /** What the rising roll needs beyond the falling inputs (R-B, R-T). */
@@ -144,7 +145,7 @@ export class StageRenderer {
   beatClockFor(score: ScoreDocument | null, r: RisingInput): BeatClock {
     const c = this.beatCache
     if (score) {
-      if (c && c.score === score && c.tempo === r.tempo) return c.clock
+      if (c && c.score === score && c.tempo && sameTempo(c.tempo, r.tempo)) return c.clock
       const clock = scoreBeatClock(score, r.tempo)
       this.beatCache = { score, tempo: r.tempo, bpm: 0, bpb: 0, clock }
       return clock

@@ -5,6 +5,8 @@ import { DEFAULT_THEME } from './theme'
 import { stubCtx } from './pianoRoll.test-helpers'
 import { DEFAULT_SETTINGS } from '../settings/types'
 import type { StageInput } from './stageRenderer'
+import { buildTempoMap } from '../model/tempoMap'
+import type { ScoreDocument } from '../model/types'
 
 const input = (patch: Partial<StageInput> = {}): StageInput => ({
   score: null, settings: structuredClone(DEFAULT_SETTINGS), fallSeconds: 3, maxNoteDur: 0,
@@ -104,6 +106,19 @@ describe('StageRenderer rising input', () => {
     const a = r.beatClockFor(null, rising)
     expect(r.beatClockFor(null, { ...rising })).toBe(a)
     expect(r.beatClockFor(null, { ...rising, bpm: 60 })).not.toBe(a)
+  })
+
+  it('caches the score beat clock for the same score and an equal tempo; a new tempo rebuilds it', () => {
+    const score: ScoreDocument = {
+      id: 's', name: 's', ppq: 480, tempoMap: buildTempoMap([{ ticks: 0, bpm: 120 }], 480), voices: [], notes: [],
+      durationSec: 4, sourceFormat: 'midi', timeSignatures: [], keySignature: null,
+    }
+    const r = new StageRenderer(() => DEFAULT_THEME)
+    const a = r.beatClockFor(score, rising)
+    expect(r.beatClockFor(score, { ...rising, tempo: { mode: 'scale', scale: 1 } })).toBe(a)
+    const b = r.beatClockFor(score, { ...rising, tempo: { mode: 'scale', scale: 2 } })
+    expect(b).not.toBe(a)
+    expect(r.beatClockFor(score, { ...rising, tempo: { mode: 'absolute', bpm: 90 } })).not.toBe(b)
   })
 
   it('draws the rising roll (no octave grid lines from the falling path) under the orientation', () => {

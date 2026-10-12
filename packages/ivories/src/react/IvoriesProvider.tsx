@@ -2,6 +2,10 @@ import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState 
 import type { ReactNode, Ref } from 'react'
 import { AudioEngine } from '../core/audio/engine'
 import { AudioClock } from '../core/clock/AudioClock'
+import { ManualClock } from '../core/clock/ManualClock'
+import { DEFAULT_LIVE_BPM, clampBpm } from '../core/render/beats'
+import { trailNoteOff, trailNoteOn, trailReseat } from '../core/midi/trail'
+import type { TrailNote } from '../core/midi/trail'
 import { MediaClock } from '../core/clock/MediaClock'
 import { PlaybackDriver } from '../core/audio/playback'
 import { claimPlayback, releasePlayback } from '../core/audio/claim'
@@ -33,6 +37,8 @@ export interface IvoriesEvents {
   /** Throttled to ~10 Hz of score time. */
   onTimeUpdate?(t: number): void
   onError?(e: IvoriesError): void
+  /** The live BPM changed through setBpm / useLiveBpm / the Transport field. */
+  onBpmChange?(bpm: number): void
 }
 
 export interface IvoriesHandle {
@@ -63,6 +69,12 @@ export interface IvoriesProviderProps extends ScoreSource, IvoriesEvents {
   liveAudio?: boolean
   /** The MIDI input to listen to; null or absent listens to every input. */
   midiDeviceId?: string | null
+  /** Live mode (no score): beats per minute for the rising roll's speed and grid. Default 100 (20-300). */
+  bpm?: number
+  /** With no score and no host clock, run a free-running clock for live input. A <RisingKeys> without a score asks for one itself. */
+  liveClock?: boolean
+  /** The live clock starts at mount instead of on the first live note. */
+  autoStart?: boolean
   children?: ReactNode
   ref?: Ref<IvoriesHandle>
 }
@@ -107,11 +119,33 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
     (e) => e.dispose(), [!props.engine],
   )
   const engine = props.engine ?? ownEngine
+  // Always built (unused while a host clock is given): taking the host clock
+  // away must never leave a render without a clock, which would unmount the views.
   const ownClock = useDisposable(
-    () => (props.clock || !engine ? null : ownAudioClock(engine, markAudioDead)),
-    (c) => c.dispose(), [!props.clock, engine],
+    () => (engine ? ownAudioClock(engine, markAudioDead) : null),
+    (c) => c.dispose(), [engine],
   )
-  const clock = props.clock ?? ownClock
+
+  // ---- live clock (R-L): no host clock, no score source, and someone wants it ----
+  const [liveClockUsers, setLiveClockUsers] = useState(0)
+  const requestLiveClock = useCallback(() => {
+    setLiveClockUsers((n) => n + 1)
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      setLiveClockUsers((n) => n - 1)
+    }
+  }, [])
+  const hasScoreSource = props.score !== undefined
+    ? props.score !== null
+    : props.scoreUrl !== undefined || props.file !== undefined || props.musicXml !== undefined || props.midi !== undefined
+  const wantsLiveClock = !props.clock && !hasScoreSource && (props.liveClock === true || liveClockUsers > 0)
+  const liveClock = useDisposable(() => (wantsLiveClock ? new ManualClock() : null), (c) => c.dispose(), [wantsLiveClock])
+  const clock = props.clock ?? liveClock ?? ownClock
+  const liveClockRef = useRef(liveClock); liveClockRef.current = liveClock
+  const autoStart = props.autoStart === true
+  useEffect(() => { if (liveClock && autoStart) liveClock.play() }, [liveClock, autoStart])
 
   // ---- score: controlled, or loaded from a source prop (always at its own tempo, R1) ----
   const controlled = props.score !== undefined
@@ -150,7 +184,20 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   const notes = score?.notes
   const maxNoteDur = useMemo(() => (score ? longestNoteSec(score) : 0), [notes]) // eslint-disable-line react-hooks/exhaustive-deps
   // Spec §3.1: only the provider's own clock or an AudioClock schedules audio by default.
-  const audio = props.audio ?? (!props.clock || props.clock instanceof AudioClock)
+  // The live clock never schedules (there is no score) and never claims the page (R-L).
+  const audio = props.audio ?? (props.clock ? props.clock instanceof AudioClock : liveClock === null)
+
+  // ---- live BPM (R-P): the prop seeds and overrides; setBpm changes it in between ----
+  const [bpm, setBpmState] = useState(() => clampBpm(props.bpm ?? DEFAULT_LIVE_BPM))
+  const bpmProp = props.bpm
+  useEffect(() => { if (bpmProp !== undefined) setBpmState(clampBpm(bpmProp)) }, [bpmProp])
+  const setBpm = useCallback((next: number) => {
+    if (!Number.isFinite(next)) return
+    const v = clampBpm(next)
+    setBpmState(v)
+    const cb = latest.current.onBpmChange
+    if (cb) safeCall(cb, v)
+  }, [])
 
   // Read by the driver and the frame loop without re-subscribing.
   const scoreRef = useRef(score); scoreRef.current = score
@@ -208,7 +255,10 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   }, [clock, audio])
 
   // ---- the shared frame loop: time updates and score note on/off ----
-  const frames = useDisposable(() => (clock ? new FrameLoop(() => clock.now()) : null), (f) => f.dispose(), [clock])
+  // Created once and reading the clock through a ref: switching between the live
+  // clock and a score clock must never null the context and unmount the views (R-L).
+  const clockRef = useRef(clock); clockRef.current = clock
+  const frames = useDisposable(() => new FrameLoop(() => clockRef.current?.now() ?? 0), (f) => f.dispose(), [])
   useEffect(() => {
     if (!frames) return
     let lastT = Number.NaN
@@ -237,12 +287,24 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
 
   // ---- live MIDI (spec §4.1): started while a view with input="midi" is mounted ----
   const [liveHeld] = useState(() => new ValueStore<ReadonlyMap<number, LiveNote>>(new Map()))
+  // Live notes on THIS clock (R-T): a new clock makes them meaningless, a seek re-seats them.
+  const [trail] = useState(() => new ValueStore<readonly TrailNote[]>([]))
+  useEffect(() => {
+    trail.set([])
+    if (!clock) return
+    return clock.subscribe((e) => { if (e.type === 'seek') trail.set(trailReseat(trail.get(), e.time)) })
+  }, [clock, trail])
   const midiRef = useRef<MidiInput | null>(null)
   const liveUsers = useRef(0)
   const engineRef = useRef(engine); engineRef.current = engine
 
   const [liveListeners] = useState(() => new Set<(e: MidiNoteEvent) => void>())
   const onLive = useCallback((e: MidiNoteEvent) => {
+    // The live clock starts on the first key (R-L); the trail is stamped in clock time (R-T).
+    const lc = liveClockRef.current
+    if (e.on && lc && !lc.playing) lc.play()
+    const at = clockRef.current?.now() ?? 0
+    trail.set(e.on ? trailNoteOn(trail.get(), e.midi, e.velocity, at) : trailNoteOff(trail.get(), e.midi, at))
     const next = new Map(liveHeld.get())
     if (e.on) next.set(e.midi, { midi: e.midi, velocity: e.velocity, time: e.time })
     else next.delete(e.midi)
@@ -251,7 +313,13 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
     const ev = latest.current
     const eng = engineRef.current
     try {
-      if (e.on) { if (ev.liveAudio) eng?.noteOn(e.midi, e.velocity) }
+      if (e.on && ev.liveAudio) {
+        // MIDI is not a user gesture, but after any gesture on the page resume()
+        // succeeds: the first key unlocks a suspended context (the live clock
+        // never runs startPlayback, so nothing else would).
+        if (eng && !eng.running) void eng.resume().catch(() => {})
+        eng?.noteOn(e.midi, e.velocity)
+      }
       // Always released: liveAudio may have been switched off while the key was down.
       else eng?.noteOff(e.midi)
     } catch { /* no Web Audio: the key still lights and reaches every listener */ }
@@ -260,7 +328,7 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
     const host = e.on ? ev.onNoteOn : ev.onNoteOff
     if (host) safeCall(host, out)
     for (const fn of [...liveListeners]) safeCall(fn, e)
-  }, [liveHeld, active, liveListeners])
+  }, [liveHeld, active, liveListeners, trail])
 
   const enableLive = useCallback(() => {
     liveUsers.current++
@@ -294,9 +362,10 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   useEffect(() => { if (props.liveAudio && midiRef.current) void engine?.prepareLive().catch(() => {}) }, [props.liveAudio, engine])
   const liveHub = useMemo(() => ({
     held: liveHeld,
+    trail,
     enable: enableLive,
     subscribe: (fn: (e: MidiNoteEvent) => void) => { liveListeners.add(fn); return () => { liveListeners.delete(fn) } },
-  }), [liveHeld, enableLive, liveListeners])
+  }), [liveHeld, trail, enableLive, liveListeners])
 
   useEffect(() => { if (score) latest.current.onReady?.({ score, duration: score.durationSec }) }, [score])
 
@@ -313,8 +382,8 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
 
   const setAudio = useCallback((p: Partial<AudioSettings>) => setAudioPatch((cur) => ({ ...cur, ...p })), [])
   const value = useMemo<IvoriesContextValue | null>(() => (clock && engine && frames
-    ? { score, tempo, clock, engine, settings, fallSeconds, maxNoteDur, audio, frames, active, status, setAudio, reportError: report, live: liveHub }
-    : null), [score, tempo, clock, engine, settings, fallSeconds, maxNoteDur, audio, frames, active, status, setAudio, report, liveHub])
+    ? { score, tempo, clock, engine, settings, fallSeconds, maxNoteDur, audio, frames, active, status, setAudio, reportError: report, live: liveHub, bpm, setBpm, requestLiveClock }
+    : null), [score, tempo, clock, engine, settings, fallSeconds, maxNoteDur, audio, frames, active, status, setAudio, report, liveHub, bpm, setBpm, requestLiveClock])
 
   // Children render once the clock, engine and frame loop exist (after the
   // first effect; never on the server), so a view always finds a context.
