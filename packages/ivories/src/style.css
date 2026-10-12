@@ -146,4 +146,26 @@
   /* Notation (spec §4.3): pepperscore fills the box and scrolls inside it. */
   .ivories.ivories-notation { display: block; width: 100%; height: 100%; overflow: auto; background: var(--ivories-panel); }
   .ivories .ivories-notation-score { height: 100%; }
+  /* Stage (spec §5.2): slots in an aspect-locked box; split divider; picture-in-picture inset. */
+  .ivories.ivories-stage {
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; height: 100%; min-height: 12rem; overflow: hidden;
+    container-type: size;
+  }
+  .ivories .ivories-stage-box { position: relative; width: 100%; height: 100%; container-type: size; }
+  .ivories .ivories-stage-box[data-aspect='16:9'] { width: min(100cqw, calc(100cqh * 16 / 9)); height: min(100cqh, calc(100cqw * 9 / 16)); }
+  .ivories .ivories-stage-box[data-aspect='9:16'] { width: min(100cqw, calc(100cqh * 9 / 16)); height: min(100cqh, calc(100cqw * 16 / 9)); }
+  .ivories .ivories-slot { position: absolute; overflow: hidden; }
+  .ivories .ivories-slot-inset {
+    z-index: 2; border: 1px solid var(--ivories-line); border-radius: 0.75rem;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); cursor: grab; touch-action: none;
+  }
+  .ivories .ivories-split-divider {
+    position: absolute; left: 0; right: 0; z-index: 3; height: 12px;
+    transform: translateY(-50%); cursor: row-resize; touch-action: none; outline: none;
+  }
+  .ivories .ivories-split-divider::after {
+    content: ''; position: absolute; left: 0; right: 0; top: 5px; height: 2px; background: var(--ivories-line);
+  }
+  .ivories .ivories-split-divider:focus-visible::after { background: var(--ivories-accent); }
 }
