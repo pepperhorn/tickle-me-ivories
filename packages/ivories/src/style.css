@@ -21,6 +21,9 @@
     --ivories-grid-line-c4: rgba(255, 255, 255, 0.14);
     --ivories-grid-line-width: 1px;
     --ivories-grid-line-style: solid;
+    /* Rising roll grid: every beat, and stronger on every bar. */
+    --ivories-beat-line: rgba(255, 255, 255, 0.06);
+    --ivories-bar-line: rgba(255, 255, 255, 0.18);
     --ivories-bar-radius: 4px;
     --ivories-flash-core-rgb: 255, 255, 255;
     --ivories-flash-warm-rgb: 255, 242, 214;

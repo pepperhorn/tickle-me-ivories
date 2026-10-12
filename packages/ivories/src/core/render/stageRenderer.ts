@@ -3,11 +3,28 @@ import { drawStage } from './pianoRoll'
 import type { KeyboardLayout } from './geometry'
 import type { RenderState } from './pianoRoll'
 import type { Theme } from './theme'
-import type { NoteEvent, ScoreDocument, Voice } from '../model/types'
+import type { NoteEvent, ScoreDocument, TempoSetting, Voice } from '../model/types'
 import type { Settings, ThemeName, ZoomMode } from '../settings/types'
 import type { LiveNote } from '../midi/types'
 import { applyOrientation, canonicalSize } from './orientation'
 import type { Orientation } from '../layout/types'
+import { drawRisingStage } from './rising'
+import { clampVisibleBeats, liveBeatClock, scoreBeatClock } from './beats'
+import type { BeatClock } from './beats'
+import type { TrailNote } from '../midi/trail'
+
+/** What the rising roll needs beyond the falling inputs (R-B, R-T). */
+export interface RisingInput {
+  /** Live BPM (used only without a score). */
+  bpm: number
+  /** Live bar length in beats (used only without a score). */
+  beatsPerBar: number
+  /** The provider's TempoSetting, so a retimed score's beats line up. */
+  tempo: TempoSetting
+  visibleBeats: number
+  trail: readonly TrailNote[]
+  grid: boolean
+}
 
 export interface StageInput {
   score: ScoreDocument | null
@@ -21,6 +38,8 @@ export interface StageInput {
   live?: ReadonlyMap<number, LiveNote>
   /** 'horizontal' draws the keyboard up the left edge (R-H). Default vertical. */
   orientation?: Orientation
+  /** Draw the rising roll instead of the falling one. */
+  rising?: RisingInput | null
 }
 
 export interface StageFrame { layout: KeyboardLayout; held: Map<number, NoteEvent> }
@@ -43,6 +62,7 @@ export class StageRenderer {
     score: null, zoom: 'full', range: [FIRST_PITCH, LAST_PITCH],
   }
   private themeCache: { key: string; layout: KeyboardLayout | null; theme: Theme | null } = { key: '', layout: null, theme: null }
+  private beatCache: { score: ScoreDocument | null; tempo: TempoSetting | null; bpm: number; bpb: number; clock: BeatClock } | null = null
   private readonly readThemeFrom: () => Theme
 
   constructor(readThemeFrom: () => Theme) { this.readThemeFrom = readThemeFrom }
@@ -75,7 +95,16 @@ export class StageRenderer {
     ctx.save()
     try {
       applyOrientation(ctx, input.orientation, layout)
-      const held = drawStage(ctx, rs, t, progress)
+      const r = input.rising
+      const held = r
+        ? drawRisingStage(ctx, {
+            ...rs,
+            beats: this.beatClockFor(input.score, r),
+            visibleBeats: clampVisibleBeats(r.visibleBeats),
+            trail: r.trail,
+            showBeatGrid: r.grid,
+          }, t, progress)
+        : drawStage(ctx, rs, t, progress)
       return { layout, held }
     } finally {
       ctx.restore()
@@ -109,6 +138,21 @@ export class StageRenderer {
     const range: [number, number] = zoom === 'fit' && score ? fitRange(score.notes) : [FIRST_PITCH, LAST_PITCH]
     this.rangeCache = { score, zoom, range }
     return range
+  }
+
+  /** The beat clock: the score's tempo map and metre, or the live BPM (R-B). Cached by identity/value. */
+  beatClockFor(score: ScoreDocument | null, r: RisingInput): BeatClock {
+    const c = this.beatCache
+    if (score) {
+      if (c && c.score === score && c.tempo === r.tempo) return c.clock
+      const clock = scoreBeatClock(score, r.tempo)
+      this.beatCache = { score, tempo: r.tempo, bpm: 0, bpb: 0, clock }
+      return clock
+    }
+    if (c && c.score === null && c.bpm === r.bpm && c.bpb === r.beatsPerBar) return c.clock
+    const clock = liveBeatClock(r.bpm, r.beatsPerBar)
+    this.beatCache = { score: null, tempo: null, bpm: r.bpm, bpb: r.beatsPerBar, clock }
+    return clock
   }
 
   // getComputedStyle forces a style recalculation and must never run per frame:

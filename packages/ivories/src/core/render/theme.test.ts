@@ -93,4 +93,12 @@ describe('readTheme', () => {
     const t = readTheme(el, reader({ '--ivories-key-outline': 'rgba(255, 255, 255, 0.85)' }))
     expect(t.keyOutline).toBe('rgba(255, 255, 255, 0.85)')
   })
+
+  it('reads the rising-roll beat and bar line tokens, with defaults', () => {
+    const t = readTheme(el, reader({ '--ivories-beat-line': 'rgb(1, 2, 3)', '--ivories-bar-line': 'rgb(4, 5, 6)' }))
+    expect(t.beatLine).toBe('rgb(1, 2, 3)')
+    expect(t.barLine).toBe('rgb(4, 5, 6)')
+    expect(DEFAULT_THEME.beatLine).toBe('rgba(255,255,255,0.06)')
+    expect(DEFAULT_THEME.barLine).toBe('rgba(255,255,255,0.18)')
+  })
 })

@@ -96,3 +96,23 @@ describe('StageRenderer orientation (R-H, Review Focus 2)', () => {
     expect(Number.isFinite(f.layout.hitY)).toBe(true)
   })
 })
+describe('StageRenderer rising input', () => {
+  const rising = { bpm: 120, beatsPerBar: 4, tempo: { mode: 'scale', scale: 1 } as const, visibleBeats: 8, trail: [], grid: true }
+
+  it('caches the live beat clock by bpm and beats per bar', () => {
+    const r = new StageRenderer(() => DEFAULT_THEME)
+    const a = r.beatClockFor(null, rising)
+    expect(r.beatClockFor(null, { ...rising })).toBe(a)
+    expect(r.beatClockFor(null, { ...rising, bpm: 60 })).not.toBe(a)
+  })
+
+  it('draws the rising roll (no octave grid lines from the falling path) under the orientation', () => {
+    const r = new StageRenderer(() => DEFAULT_THEME)
+    const { ctx, calls } = stubCtx()
+    const f = r.draw(ctx, 800, 400, 1, input({ rising, orientation: 'horizontal' }))
+    expect(f.layout.stageW).toBe(400)
+    expect(calls).toContain('transform(6)')
+    // The falling path's octave grid uses setLineDash; the rising path never does.
+    expect(calls).not.toContain('setLineDash(1)')
+  })
+})

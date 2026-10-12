@@ -15,6 +15,9 @@ export interface Theme {
   gridLineC4: string
   gridLineWidth: number
   gridLineDash: number[]
+  /** Rising roll: a line on every beat, a stronger one on every bar. */
+  beatLine: string
+  barLine: string
   barRadius: number
   /** Bare "r, g, b" -- the flash's alpha is per-frame, so it cannot be baked in. */
   flashCoreRgb: string
@@ -40,6 +43,8 @@ export const DEFAULT_THEME: Theme = {
   gridLineC4: 'rgba(255,255,255,0.14)',
   gridLineWidth: 1,
   gridLineDash: [],
+  beatLine: 'rgba(255,255,255,0.06)',
+  barLine: 'rgba(255,255,255,0.18)',
   barRadius: 4,
   flashCoreRgb: '255, 255, 255',
   flashWarmRgb: '255, 242, 214',
@@ -111,6 +116,8 @@ export function readTheme(
     gridLineC4: str('--ivories-grid-line-c4', DEFAULT_THEME.gridLineC4),
     gridLineWidth,
     gridLineDash: lineDash(raw('--ivories-grid-line-style'), gridLineWidth),
+    beatLine: str('--ivories-beat-line', DEFAULT_THEME.beatLine),
+    barLine: str('--ivories-bar-line', DEFAULT_THEME.barLine),
     barRadius: num('--ivories-bar-radius', DEFAULT_THEME.barRadius),
     flashCoreRgb: str('--ivories-flash-core-rgb', DEFAULT_THEME.flashCoreRgb),
     flashWarmRgb: str('--ivories-flash-warm-rgb', DEFAULT_THEME.flashWarmRgb),

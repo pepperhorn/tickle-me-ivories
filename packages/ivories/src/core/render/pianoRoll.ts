@@ -9,6 +9,7 @@ import type { NoteEvent, Voice } from '../model/types'
 import type { VelocityScheme } from '../settings/types'
 import type { LiveNote } from '../midi/types'
 import type { Orientation } from '../layout/types'
+import type { TrailNote } from '../midi/trail'
 
 export interface RenderState {
   notes: NoteEvent[]           // sorted by startSec
@@ -97,52 +98,88 @@ export function drawRoll(
   }
 }
 
-function drawImpact(
-  ctx: CanvasRenderingContext2D, state: RenderState, t: number, vis: NoteEvent[],
-): void {
-  const { layout, voices, theme } = state
+/** Default live list for drawImpact, shared so the falling roll allocates nothing per frame. */
+const NO_TRAIL: readonly TrailNote[] = []
 
+/** One key's hit flash at intensity i (0 = nothing). */
+function flashKey(ctx: CanvasRenderingContext2D, state: RenderState, pitch: number, i: number): void {
+  if (i <= 0.003) return
+  const { layout, theme } = state
+  const k = layout.byPitch.get(pitch)
+  if (!k) return
+
+  const cx = k.x + k.w / 2
+  const cy = layout.hitY
+  const R = Math.max(2, 2.2 * layout.whiteW * i)
+
+  const rg = ctx.createRadialGradient(cx, cy, 0, cx, cy, R)
+  rg.addColorStop(0, `rgba(${theme.flashCoreRgb}, ${(0.9 * i).toFixed(3)})`)
+  rg.addColorStop(0.35, `rgba(${theme.flashWarmRgb}, ${(0.34 * i).toFixed(3)})`)
+  rg.addColorStop(1, `rgba(${theme.flashCoreRgb}, 0)`)
+  ctx.fillStyle = rg
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill()
+
+  const bg = ctx.createLinearGradient(0, cy - 26, 0, cy + 20)
+  bg.addColorStop(0, `rgba(${theme.flashCoreRgb}, 0)`)
+  bg.addColorStop(0.5, `rgba(${theme.flashCoreRgb}, ${(0.85 * i).toFixed(3)})`)
+  bg.addColorStop(1, `rgba(${theme.flashCoreRgb}, 0)`)
+  ctx.fillStyle = bg
+  ctx.fillRect(cx - k.w * 0.45, cy - 26, k.w * 0.9, 46)
+
+  const len = 1.6 * layout.whiteW * i
+  ctx.strokeStyle = `rgba(${theme.flashCoreRgb}, ${(0.7 * i).toFixed(3)})`
+  ctx.lineWidth = 1
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  for (let s = 0; s < 5; s++) {
+    const ang = ((-50 + 100 * (s / 4)) * Math.PI) / 180
+    ctx.moveTo(cx, cy)
+    ctx.lineTo(cx + Math.sin(ang) * len, cy - Math.cos(ang) * len)
+  }
+  ctx.stroke()
+}
+
+/** Hit flashes for score notes and (rising roll, R-F) live trail notes. */
+export function drawImpact(
+  ctx: CanvasRenderingContext2D, state: RenderState, t: number, vis: NoteEvent[],
+  live: readonly TrailNote[] = NO_TRAIL,
+): void {
+  const { voices } = state
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
   for (const n of vis) {
     const v = voices.get(n.voiceId)
     if (!v || !v.visible || v.percussion) continue   // percussion never lights keys (§6.1)
-    const i = flashIntensity(t - n.startSec, n.velocity) * state.flashScale
-    if (i <= 0.003) continue
-    const k = layout.byPitch.get(n.pitch)
-    if (!k) continue
-
-    const cx = k.x + k.w / 2
-    const cy = layout.hitY
-    const R = Math.max(2, 2.2 * layout.whiteW * i)
-
-    const rg = ctx.createRadialGradient(cx, cy, 0, cx, cy, R)
-    rg.addColorStop(0, `rgba(${theme.flashCoreRgb}, ${(0.9 * i).toFixed(3)})`)
-    rg.addColorStop(0.35, `rgba(${theme.flashWarmRgb}, ${(0.34 * i).toFixed(3)})`)
-    rg.addColorStop(1, `rgba(${theme.flashCoreRgb}, 0)`)
-    ctx.fillStyle = rg
-    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill()
-
-    const bg = ctx.createLinearGradient(0, cy - 26, 0, cy + 20)
-    bg.addColorStop(0, `rgba(${theme.flashCoreRgb}, 0)`)
-    bg.addColorStop(0.5, `rgba(${theme.flashCoreRgb}, ${(0.85 * i).toFixed(3)})`)
-    bg.addColorStop(1, `rgba(${theme.flashCoreRgb}, 0)`)
-    ctx.fillStyle = bg
-    ctx.fillRect(cx - k.w * 0.45, cy - 26, k.w * 0.9, 46)
-
-    const len = 1.6 * layout.whiteW * i
-    ctx.strokeStyle = `rgba(${theme.flashCoreRgb}, ${(0.7 * i).toFixed(3)})`
-    ctx.lineWidth = 1
-    ctx.lineCap = 'round'
-    ctx.beginPath()
-    for (let s = 0; s < 5; s++) {
-      const ang = ((-50 + 100 * (s / 4)) * Math.PI) / 180
-      ctx.moveTo(cx, cy)
-      ctx.lineTo(cx + Math.sin(ang) * len, cy - Math.cos(ang) * len)
-    }
-    ctx.stroke()
+    flashKey(ctx, state, n.pitch, flashIntensity(t - n.startSec, n.velocity) * state.flashScale)
   }
+  for (const n of live) flashKey(ctx, state, n.midi, flashIntensity(t - n.startSec, n.velocity) * state.flashScale)
   ctx.restore()
+}
+
+/** The stage fill, or a clear for a transparent stage (spec §13.1). */
+export function drawBackground(ctx: CanvasRenderingContext2D, state: RenderState): void {
+  const { layout, theme } = state
+  const stageH = layout.hitY + layout.keyboardH
+  // Spec §13.1: a transparent stage CLEARS instead of filling, so an OBS
+  // browser source composites live video through the page. Alpha, not chroma
+  // key -- the impact layer draws with 'lighter', and an additive white bloom
+  // over green keys as desaturated fringing at the brightest moment of a note.
+  if (isTransparent(theme.stageBg)) {
+    ctx.clearRect(0, 0, layout.stageW, stageH)
+  } else {
+    ctx.fillStyle = theme.stageBg
+    ctx.fillRect(0, 0, layout.stageW, stageH)
+  }
+}
+
+/** The 3px progress strip along the bottom of the canonical frame. */
+export function drawProgress(ctx: CanvasRenderingContext2D, state: RenderState, progress: number): void {
+  const { layout, theme } = state
+  const stageH = layout.hitY + layout.keyboardH
+  ctx.fillStyle = theme.progressTrack
+  ctx.fillRect(0, stageH - 3, layout.stageW, 3)
+  ctx.fillStyle = theme.progressFill
+  ctx.fillRect(0, stageH - 3, layout.stageW * Math.min(1, Math.max(0, progress)), 3)
 }
 
 /**
@@ -154,19 +191,8 @@ export function drawStage(
   ctx: CanvasRenderingContext2D, state: RenderState, t: number, progress: number,
 ): Map<number, NoteEvent> {
   const { layout, theme } = state
-  const stageW = layout.stageW
-  const stageH = layout.hitY + layout.keyboardH
 
-  // Spec §13.1: a transparent stage CLEARS instead of filling, so an OBS
-  // browser source composites live video through the page. Alpha, not chroma
-  // key -- the impact layer draws with 'lighter', and an additive white bloom
-  // over green keys as desaturated fringing at the brightest moment of a note.
-  if (isTransparent(theme.stageBg)) {
-    ctx.clearRect(0, 0, stageW, stageH)
-  } else {
-    ctx.fillStyle = theme.stageBg
-    ctx.fillRect(0, 0, stageW, stageH)
-  }
+  drawBackground(ctx, state)
 
   if (state.showGrid) {
     // The dash array is set inside save()/restore() so it cannot leak into the
@@ -206,9 +232,6 @@ export function drawStage(
 
   if (state.showFlash) drawImpact(ctx, state, t, vis)
 
-  ctx.fillStyle = theme.progressTrack
-  ctx.fillRect(0, stageH - 3, stageW, 3)
-  ctx.fillStyle = theme.progressFill
-  ctx.fillRect(0, stageH - 3, stageW * Math.min(1, Math.max(0, progress)), 3)
+  drawProgress(ctx, state, progress)
   return held
 }
