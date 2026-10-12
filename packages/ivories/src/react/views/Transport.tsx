@@ -1,17 +1,42 @@
-import { useClock, useClockTime, useIvories } from '../hooks'
+import { useEffect, useState } from 'react'
+import { useClock, useClockTime, useIvories, useLiveBpm } from '../hooks'
 import { withProvider } from '../withProvider'
 import { Guarded } from '../IvoriesBoundary'
 import { formatTime } from '../format'
 import { cx } from '../cx'
 import { cancelPendingStart, resumeAudio, startPlayback } from '../startPlayback'
+import { MAX_LIVE_BPM, MIN_LIVE_BPM, parseBpmDraft } from '../../core/render/beats'
 
-export interface TransportControls { play?: boolean; seek?: boolean; tempo?: boolean; metronome?: boolean }
+export interface TransportControls { play?: boolean; seek?: boolean; tempo?: boolean; metronome?: boolean; bpm?: boolean }
+
+/** Live BPM (no score). A half-typed or out-of-range value shows but is not committed (Review Focus 3). */
+function BpmField() {
+  const { bpm, setBpm } = useLiveBpm()
+  const [draft, setDraft] = useState(String(bpm))
+  useEffect(() => { setDraft(String(bpm)) }, [bpm])
+  return (
+    <label className="ivories-bpm">
+      <span className="ivories-bpm-label">BPM</span>
+      <input
+        type="number" aria-label="BPM" className="ivories-bpm-input"
+        min={MIN_LIVE_BPM} max={MAX_LIVE_BPM} step={1} value={draft}
+        onChange={(e) => {
+          const v = e.target.value
+          setDraft(v)
+          const n = parseBpmDraft(v)
+          if (n !== null) setBpm(n)
+        }}
+        onBlur={() => setDraft(String(bpm))}
+      />
+    </label>
+  )
+}
 
 function TransportView({ controls, className }: { controls?: TransportControls; className?: string }) {
   const iv = useIvories()
   const { clock, playing, rate } = useClock()
   const t = useClockTime(10)
-  const c = { play: true, seek: true, tempo: true, metronome: true, ...controls }
+  const c = { play: true, seek: true, tempo: true, metronome: true, bpm: true, ...controls }
   const duration = iv.score?.durationSec ?? 0
   const toggle = () => {
     if (playing) { cancelPendingStart(clock); clock.pause(); return }
@@ -36,6 +61,7 @@ function TransportView({ controls, className }: { controls?: TransportControls; 
         />
       )}
       <span className="ivories-time">{formatTime(t)} / {formatTime(duration)}</span>
+      {c.bpm && !iv.score && <BpmField />}
       {c.tempo && (
         <label className="ivories-tempo">
           <span className="ivories-tempo-label">Tempo</span>
@@ -66,7 +92,7 @@ function TransportView({ controls, className }: { controls?: TransportControls; 
   )
 }
 
-/** Play/pause, seek bar, tempo (clock rate) and metronome toggle. */
+/** Play/pause, seek bar, tempo (clock rate), metronome toggle, and the live BPM with no score. */
 export const Transport = withProvider(
   (p: { controls?: TransportControls; className?: string }) => <Guarded><TransportView {...p} /></Guarded>,
   'Transport',

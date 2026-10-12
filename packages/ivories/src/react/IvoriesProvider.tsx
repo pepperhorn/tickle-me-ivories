@@ -142,10 +142,12 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
     : props.scoreUrl !== undefined || props.file !== undefined || props.musicXml !== undefined || props.midi !== undefined
   const wantsLiveClock = !props.clock && !hasScoreSource && (props.liveClock === true || liveClockUsers > 0)
   const liveClock = useDisposable(() => (wantsLiveClock ? new ManualClock() : null), (c) => c.dispose(), [wantsLiveClock])
-  const clock = props.clock ?? liveClock ?? ownClock
-  const liveClockRef = useRef(liveClock); liveClockRef.current = liveClock
+  // An outgoing live clock (still held for one render) is never paired with a newly arrived score.
+  const liveClockActive = wantsLiveClock ? liveClock : null
+  const clock = props.clock ?? liveClockActive ?? ownClock
+  const liveClockRef = useRef(liveClockActive); liveClockRef.current = liveClockActive
   const autoStart = props.autoStart === true
-  useEffect(() => { if (liveClock && autoStart) liveClock.play() }, [liveClock, autoStart])
+  useEffect(() => { if (liveClockActive && autoStart) liveClockActive.play() }, [liveClockActive, autoStart])
 
   // ---- score: controlled, or loaded from a source prop (always at its own tempo, R1) ----
   const controlled = props.score !== undefined
@@ -185,7 +187,7 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   const maxNoteDur = useMemo(() => (score ? longestNoteSec(score) : 0), [notes]) // eslint-disable-line react-hooks/exhaustive-deps
   // Spec §3.1: only the provider's own clock or an AudioClock schedules audio by default.
   // The live clock never schedules (there is no score) and never claims the page (R-L).
-  const audio = props.audio ?? (props.clock ? props.clock instanceof AudioClock : liveClock === null)
+  const audio = props.audio ?? (props.clock ? props.clock instanceof AudioClock : liveClockActive === null)
 
   // ---- live BPM (R-P): the prop seeds and overrides; setBpm changes it in between ----
   const [bpm, setBpmState] = useState(() => clampBpm(props.bpm ?? DEFAULT_LIVE_BPM))

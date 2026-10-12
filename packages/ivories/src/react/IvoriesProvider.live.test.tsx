@@ -112,6 +112,25 @@ describe('live clock (rising-roll spec §2 Live clock, R-L)', () => {
     expect(mounts).toBe(1)
   })
 
+  it('a score arriving never pairs with the outgoing live clock (Task 4 review)', async () => {
+    const port = stubMidi()
+    const onNoteOn = vi.fn()
+    const tree = (score: ReturnType<typeof scoreDoc> | null) => (
+      <IvoriesProvider liveClock score={score} engine={fakeEngine()} onNoteOn={onNoteOn}><Keyboard input="midi" /><Grab /></IvoriesProvider>
+    )
+    const { rerender } = render(tree(null))
+    await waitFor(() => expect(iv?.clock).toBeInstanceOf(ManualClock))
+    await waitFor(() => expect(port.onmidimessage).not.toBeNull())
+    act(() => on(port, 72))
+    act(() => iv!.clock.seek(0.5)) // inside the score's first note
+    const outgoing = iv!.clock
+    const seen: unknown[] = []
+    function Probe() { const c = useIvories(); seen.push(c.clock === outgoing && c.score !== null); return null }
+    rerender(<IvoriesProvider liveClock score={scoreDoc()} engine={fakeEngine()} onNoteOn={onNoteOn}><Keyboard input="midi" /><Grab /><Probe /></IvoriesProvider>)
+    await waitFor(() => expect(iv?.clock).toBeInstanceOf(AudioClock))
+    expect(seen).not.toContain(true)
+  })
+
   it('taking away a host clock falls back to the own clock without remounting children (preflight T4-1)', async () => {
     const engine = fakeEngine()
     const host = new ManualClock()

@@ -19,6 +19,7 @@ import type { KeyContext } from '../../core/music/spell'
 import type { ThemeName } from '../../core/settings/types'
 import { IvoriesError } from '../../core/errors'
 import type { Orientation } from '../../core/layout/types'
+import { DEFAULT_BEATS_PER_BAR, DEFAULT_VISIBLE_BEATS } from '../../core/render/beats'
 
 export interface StageViewProps {
   /** 'full' (88 keys) or [lowMidi, highMidi]; absent follows settings.display.zoom. */
@@ -35,7 +36,17 @@ export interface StageViewProps {
 /** Shared by the labels-off overlay state so it never allocates. */
 const NO_PITCHES: number[] = []
 
-export function StageView(p: StageViewProps & { kind: 'keyboard' | 'falling'; lookahead?: number; input?: 'none' | 'midi'; orientation?: Orientation }) {
+export interface StageViewKindProps {
+  kind: 'keyboard' | 'falling' | 'rising'
+  lookahead?: number
+  input?: 'none' | 'midi'
+  orientation?: Orientation
+  visibleBeats?: number
+  beatsPerBar?: number
+  beatGrid?: boolean
+}
+
+export function StageView(p: StageViewProps & StageViewKindProps) {
   const iv = useIvories()
   const rootRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -59,6 +70,10 @@ export function StageView(p: StageViewProps & { kind: 'keyboard' | 'falling'; lo
   // Live input is ref-counted by the provider: MIDI runs while any view asks.
   const wantsMidi = p.input === 'midi'
   useEffect(() => (wantsMidi ? iv.live.enable() : undefined), [wantsMidi, iv.live])
+
+  // A rising view with no score runs on the provider's live clock (R-L).
+  const risingView = p.kind === 'rising'
+  useEffect(() => (risingView ? iv.requestLiveClock() : undefined), [risingView, iv.requestLiveClock])
 
   // A seek or a new score makes the held chord stale (App's old seek did this).
   useEffect(() => iv.clock.subscribe((e) => { if (e.type === 'seek') chordFeed.reset() }), [iv.clock, chordFeed])
@@ -96,10 +111,20 @@ export function StageView(p: StageViewProps & { kind: 'keyboard' | 'falling'; lo
         settings,
         fallSeconds: props.kind === 'falling' ? (props.lookahead ?? c.fallSeconds) : c.fallSeconds,
         maxNoteDur: c.maxNoteDur,
-        showRoll: props.kind === 'falling',
+        showRoll: props.kind !== 'keyboard',
         range: rangeFromProp(props.range),
         live: liveMap,
         orientation: props.orientation,
+        rising: props.kind === 'rising'
+          ? {
+              bpm: c.bpm,
+              beatsPerBar: props.beatsPerBar ?? DEFAULT_BEATS_PER_BAR,
+              tempo: c.tempo,
+              visibleBeats: props.visibleBeats ?? DEFAULT_VISIBLE_BEATS,
+              trail: c.live.trail.get(),
+              grid: props.beatGrid ?? true,
+            }
+          : null,
       })
       // The last drawn time, for hosts and e2e sync checks (never read back here).
       const root = rootRef.current
@@ -178,6 +203,7 @@ export function StageView(p: StageViewProps & { kind: 'keyboard' | 'falling'; lo
       className={cx('ivories', 'ivories-view', `ivories-${p.kind}`, `ivories-theme-${themeName}`, p.className)}
       data-ivories-view={p.kind}
       data-orientation={p.orientation ?? 'vertical'}
+      data-bpm={p.kind === 'rising' ? iv.bpm : undefined}
       style={style}
     >
       <canvas ref={canvasRef} className="ivories-canvas" />

@@ -42,3 +42,9 @@ export function useActiveNotes(): ActiveNotes {
   const { active } = useIvories()
   return useSyncExternalStore(active.subscribe, active.get, active.get)
 }
+
+/** The provider's live BPM and its setter (rising roll without a score, R-P). */
+export function useLiveBpm(): { bpm: number; setBpm(bpm: number): void } {
+  const { bpm, setBpm } = useIvories()
+  return { bpm, setBpm }
+}

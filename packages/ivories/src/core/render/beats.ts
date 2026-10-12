@@ -16,6 +16,13 @@ export function clampBpm(bpm: number): number {
   return Math.round(Math.min(MAX_LIVE_BPM, Math.max(MIN_LIVE_BPM, bpm)))
 }
 
+/** A typed BPM draft -> a committable BPM, or null while it is empty, half-typed or out of range. */
+export function parseBpmDraft(v: string): number | null {
+  if (v.trim() === '') return null
+  const n = Number(v)
+  return Number.isFinite(n) && n >= MIN_LIVE_BPM && n <= MAX_LIVE_BPM ? n : null
+}
+
 export function clampVisibleBeats(v: number): number {
   if (!Number.isFinite(v)) return DEFAULT_VISIBLE_BEATS
   return Math.min(64, Math.max(1, v))

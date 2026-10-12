@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { Midi } from '@tonejs/midi'
 import { Transport } from './Transport'
@@ -61,5 +61,39 @@ describe('Transport (spec §4)', () => {
     await screen.findByRole('button', { name: 'Play' })
     act(() => clock.play())
     await waitFor(() => expect(screen.getByRole('button', { name: 'Tap to enable sound' })).toBeTruthy())
+  })
+})
+
+describe('Transport BPM field (rising-roll spec §2 BPM wiring)', () => {
+  it('shows with no score and sets the provider BPM', async () => {
+    const onBpmChange = vi.fn()
+    render(<IvoriesProvider engine={fakeEngine()} liveClock onBpmChange={onBpmChange}><Transport /></IvoriesProvider>)
+    const field = await screen.findByLabelText('BPM') as HTMLInputElement
+    expect(field.value).toBe('100')
+    fireEvent.change(field, { target: { value: '120' } })
+    expect(onBpmChange).toHaveBeenLastCalledWith(120)
+    await waitFor(() => expect(field.value).toBe('120'))
+  })
+
+  it('typing an invalid BPM never commits it; blur restores the current value (Review Focus 3)', async () => {
+    const onBpmChange = vi.fn()
+    render(<IvoriesProvider engine={fakeEngine()} liveClock onBpmChange={onBpmChange}><Transport /></IvoriesProvider>)
+    const field = await screen.findByLabelText('BPM') as HTMLInputElement
+    for (const v of ['', '5', '1', '1e9', '301']) fireEvent.change(field, { target: { value: v } })
+    expect(onBpmChange).not.toHaveBeenCalled()
+    fireEvent.blur(field)
+    expect(field.value).toBe('100')
+  })
+
+  it('is hidden with a score', async () => {
+    setup()
+    await screen.findByRole('button', { name: 'Play' })
+    expect(screen.queryByLabelText('BPM')).toBeNull()
+  })
+
+  it('controls.bpm=false hides it in live mode too', async () => {
+    render(<IvoriesProvider engine={fakeEngine()} liveClock><Transport controls={{ bpm: false }} /></IvoriesProvider>)
+    await screen.findByRole('button', { name: 'Play' })
+    expect(screen.queryByLabelText('BPM')).toBeNull()
   })
 })

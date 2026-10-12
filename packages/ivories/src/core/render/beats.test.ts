@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { clampBpm, clampVisibleBeats, liveBeatClock, scoreBeatClock } from './beats'
+import { parseBpmDraft, clampBpm, clampVisibleBeats, liveBeatClock, scoreBeatClock } from './beats'
 import { buildTempoMap } from '../model/tempoMap'
 import type { ScoreDocument, TempoSetting, TimeSigEvent } from '../model/types'
 
@@ -82,5 +82,13 @@ describe('scoreBeatClock (R-B)', () => {
     const lines = c.lines(-2, 0)
     expect(lines.map((l) => l.beat)).toEqual([-2, -1, 0])
     expect(bars(lines)).toEqual([0])
+  })
+})
+
+describe('parseBpmDraft', () => {
+  it('commits only a finite value in range', () => {
+    expect(parseBpmDraft('120')).toBe(120)
+    expect(parseBpmDraft('20')).toBe(20)
+    for (const v of ['', ' ', '5', '19', '301', '1e9', 'abc']) expect(parseBpmDraft(v)).toBeNull()
   })
 })
