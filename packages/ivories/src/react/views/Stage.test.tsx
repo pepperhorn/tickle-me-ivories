@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { createRef } from 'react'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -25,6 +25,8 @@ function inProvider(ui: React.ReactNode) {
 const slots = (c: HTMLElement) => [...c.querySelectorAll<HTMLElement>('.ivories-slot')].map((s) => `${s.dataset.ivoriesSlot}:${s.dataset.source}`)
 
 describe('Stage (spec §5.2)', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
   it('single: one slot inside the aspect box', async () => {
     const { container } = inProvider(<Stage layout={{ kind: 'single', main: falling }} aspect="16:9" />)
     await waitFor(() => expect(slots(container)).toEqual(['main:falling']))
@@ -212,6 +214,5 @@ describe('Stage (spec §5.2)', () => {
     await waitFor(() => expect(topOnly).toHaveBeenCalled())
     // The top slot's override replaces the shared callback; the bottom slot's clears it.
     expect(shared).not.toHaveBeenCalled()
-    vi.restoreAllMocks()
   })
 })

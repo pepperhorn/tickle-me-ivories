@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useCameraStream } from 'ivories'
-import { layoutReducer, listVideoInputs, slotsOf, sourceAt } from 'ivories/core'
+import { listVideoInputs, slotsOf, sourceAt } from 'ivories/core'
 import type { Aspect, CameraFit, Corner, LayoutAction, LayoutKind, SlotName, SlotSource } from 'ivories/core'
 import { useStudioStage } from './stageStore'
-import { modeForView, primarySlot } from './modeSync'
-import { useTransport } from '../transport/useTransport'
 
 type Webcam = Extract<SlotSource, { mode: 'webcam' }>
 type CameraInfo = { deviceId: string; label: string }
@@ -77,18 +75,10 @@ function WebcamControls({ slot, label, source, dispatch }: {
 /** Layout kind, swap, PIP corner, aspect and per-slot sources (spec §6). */
 export function LayoutToolbar() {
   const { layout, aspect, dispatch, setAspect } = useStudioStage()
-  const setMode = useTransport((s) => s.setMode)
 
-  const setSource = (slot: SlotName, value: string) => {
-    const source = sourceFor(value, sourceAt(layout, slot)!)
-    const action: LayoutAction = { type: 'setSource', slot, source }
-    dispatch(action)
-    // The primary keys slot and the roll/keyboard toggle stay one setting (R7).
-    if (source.kind === 'ivories' && primarySlot(layoutReducer(layout, action)) === slot) {
-      const mode = modeForView(source.view)
-      if (mode) setMode(mode)
-    }
-  }
+  // The store re-syncs the display mode from the primary keys slot (R7).
+  const setSource = (slot: SlotName, value: string) =>
+    dispatch({ type: 'setSource', slot, source: sourceFor(value, sourceAt(layout, slot)!) })
 
   return (
     <div className="layout-toolbar flex flex-wrap items-center gap-2 border-t border-[var(--line)] bg-[var(--panel)] px-4 py-2 text-xs text-[var(--ink-dim)]">
@@ -102,7 +92,7 @@ export function LayoutToolbar() {
         </select>
       </label>
       {layout.kind !== 'single' && (
-        <button type="button" aria-label="Swap slots" className="btn-layout-swap rounded-md border border-[var(--line)] px-3 py-1"
+        <button type="button" aria-label="Swap slots" className="btn-layout-swap rounded-md border border-[var(--line)] bg-[var(--panel)] px-3 py-1 text-xs text-[var(--ink)]"
           onClick={() => dispatch({ type: 'swap' })}>
           Swap
         </button>

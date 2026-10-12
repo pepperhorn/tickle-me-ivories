@@ -75,12 +75,32 @@ describe('LayoutToolbar (spec §6)', () => {
     fireEvent.change(screen.getByLabelText('Layout'), { target: { value: 'split' } })
     fireEvent.change(screen.getByLabelText('Bottom source'), { target: { value: 'falling' } })
     expect(useTransport.getState().mode).toBe('keyboard')
-    // Making a slot the primary keys slot (none showed keys before) syncs it.
+    // When the top stops showing keys, the bottom becomes the primary slot and drives the mode.
     fireEvent.change(screen.getByLabelText('Top source'), { target: { value: 'notation' } })
-    expect(useTransport.getState().mode).toBe('keyboard')
-    fireEvent.change(screen.getByLabelText('Bottom source'), { target: { value: 'notation' } })
-    fireEvent.change(screen.getByLabelText('Bottom source'), { target: { value: 'falling' } })
     expect(useTransport.getState().mode).toBe('roll')
+  })
+
+  it('a swap re-syncs the mode from the new primary slot', () => {
+    useStudioStage.setState({ layout: { kind: 'split', top: { kind: 'ivories', view: 'falling' }, bottom: { kind: 'ivories', view: 'keyboard' }, ratio: 0.5 } })
+    render(<LayoutToolbar />)
+    fireEvent.click(screen.getByRole('button', { name: 'Swap slots' }))
+    expect(useTransport.getState().mode).toBe('keyboard')
+    fireEvent.click(screen.getByRole('button', { name: 'Swap slots' }))
+    expect(useTransport.getState().mode).toBe('roll')
+  })
+
+  it('a layout kind change re-syncs the mode', () => {
+    useStudioStage.setState({ layout: { kind: 'split', top: { kind: 'camera', mode: 'mask', fill: 'transparent' }, bottom: { kind: 'ivories', view: 'keyboard' }, ratio: 0.5 } })
+    render(<LayoutToolbar />)
+    // A mask on top: switching kind keeps the keyboard as the inset, now the primary keys slot.
+    fireEvent.change(screen.getByLabelText('Layout'), { target: { value: 'pip' } })
+    expect(useStudioStage.getState().layout).toMatchObject({ kind: 'pip', inset: { kind: 'ivories', view: 'keyboard' } })
+    expect(useTransport.getState().mode).toBe('keyboard')
+  })
+
+  it('a Stage-driven layout change (setLayout) re-syncs the mode', () => {
+    useStudioStage.getState().setLayout({ kind: 'pip', main: { kind: 'ivories', view: 'keyboard' }, inset: { kind: 'ivories', view: 'falling' }, corner: 'br', size: 0.3, margin: 0.02 })
+    expect(useTransport.getState().mode).toBe('keyboard')
   })
 
   it('re-lists cameras on devicechange so labels refresh', async () => {

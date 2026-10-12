@@ -56,6 +56,17 @@ describe('useSceneActions: scenes carry the stage layout (spec §8.1)', () => {
     expect(useStudioStage.getState().layout).toEqual({ ...split, bottom: { kind: 'camera', mode: 'webcam', mirror: true, fit: 'cover' } })
   })
 
+  it('a scene with the current mode but a different primary view ends consistent', async () => {
+    useTransport.getState().setMode('keyboard')
+    useStudioStage.setState({ layout: singleLayout('keyboard') })
+    const { result } = setup()
+    // The scene's profile says keyboard (same as now) but its primary slot shows falling keys.
+    const fallingSplit: Layout = { ...split, top: { kind: 'ivories', view: 'falling' } }
+    await act(async () => { await result.current.scenes.openScene(sceneWith(fallingSplit, 'free'), false) })
+    expect(useStudioStage.getState().layout).toEqual(fallingSplit)
+    expect(useTransport.getState().mode).toBe('roll')
+  })
+
   it('a refused scene leaves the stage alone', async () => {
     const { result } = setup(vi.fn(() => ({ partial: false, message: 'nope' })))
     await act(async () => { await result.current.scenes.openScene(sceneWith(split, '16:9'), false) })
