@@ -134,4 +134,13 @@
   .ivories .ivories-tempo-input { width: 6rem; accent-color: var(--ivories-accent); }
   .ivories.ivories-preset { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 12rem; }
   .ivories .ivories-preset-main { position: relative; flex: 1 1 auto; min-height: 0; }
+  /* Camera slots (spec §5.3). Each root carries .ivories itself, so these
+     compound selectors style a CameraSlot rendered on its own. */
+  .ivories.ivories-camera { display: block; width: 100%; height: 100%; }
+  .ivories.ivories-camera-video { background: #000000; }
+  .ivories.ivories-camera-placeholder {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.75rem;
+    background: var(--ivories-panel); color: var(--ivories-ink-dim); font-size: 0.875rem; text-align: center; padding: 1rem;
+  }
+  .ivories .ivories-camera-message { margin: 0; }
 }
