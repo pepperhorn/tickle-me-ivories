@@ -11,8 +11,9 @@
 // Only `origin` is threaded in (not the whole TickleHost): resolve() never
 // decodes, and the URL shape needs nothing else.
 
-import type { LookV1, SceneV1, ShareProvider, ShareResult, ResolvedShare } from '../types'
+import type { LookV1, SceneV2, ShareProvider, ShareResult, ResolvedShare } from '../types'
 import { PlatformError } from '../errors'
+import { sceneForShare } from '../scene'
 
 type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -120,7 +121,7 @@ export class HashShareProvider implements ShareProvider {
     this.origin = origin
   }
 
-  async share(input: { kind: 'scene'; payload: SceneV1 } | { kind: 'look'; payload: LookV1 }): Promise<ShareResult> {
+  async share(input: { kind: 'scene'; payload: SceneV2 } | { kind: 'look'; payload: LookV1 }): Promise<ShareResult> {
     // F20 / controller ruling: refuse an uploaded-MIDI scene BEFORE encoding
     // -- it can be up to ~171 KiB of base64 on its own, far past the 8 KiB
     // share cap, so there is no point compressing it first.
@@ -128,7 +129,9 @@ export class HashShareProvider implements ShareProvider {
       throw midiSceneRefusal()
     }
 
-    const json = JSON.stringify(input.payload)
+    // Camera deviceIds are per-browser: never encode them into a link, even
+    // if the caller forgot to strip them (spec §5.4).
+    const json = JSON.stringify(input.kind === 'scene' ? sceneForShare(input.payload) : input.payload)
     const compressed = await deflate(enc.encode(json))
     const blob = bytesToBase64Url(compressed)
     if (blob.length > MAX_SHARE_ENCODED_BYTES) {

@@ -4,7 +4,7 @@
 // locally stored save -- enters through readEnvelope before any field is read.
 //
 // Failure contract (preflight F17, codec side): the decoders THROW, matching
-// spec §2 `TickleHost.decodeScene(u): SceneV1 // throws`. A caller that wants
+// spec §2 `TickleHost.decodeScene(u): SceneV2 // throws`. A caller that wants
 // null-on-corrupt (LocalStorageProvider.load, mirroring loadProfile) catches.
 // What is thrown is always a PlatformError, so isPlatformError(e) holds:
 //   - 'too_large': the serialized payload is over the kind's cap;
@@ -18,7 +18,7 @@ import { PlatformError } from './errors'
 type Obj = Record<string, unknown>
 export const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
 
-/** The only payload envelope version this build reads. */
+/** The default (look) payload envelope version; scenes pass their own maxVersion. */
 export const PAYLOAD_VERSION = 1
 
 export class PayloadVersionError extends PlatformError {
@@ -64,7 +64,7 @@ const invalid = invalidPayload
  * JSON round-tripped copy means no getter, prototype or shared reference from
  * the caller's object can reach the field validators.
  */
-export function readEnvelope(u: unknown, kind: 'scene' | 'look', maxBytes: number): Obj {
+export function readEnvelope(u: unknown, kind: 'scene' | 'look', maxBytes: number, maxVersion = PAYLOAD_VERSION): Obj {
   let json: string | undefined
   if (typeof u === 'string') {
     json = u
@@ -78,10 +78,10 @@ export function readEnvelope(u: unknown, kind: 'scene' | 'look', maxBytes: numbe
   let o: unknown
   try { o = JSON.parse(json) } catch { throw invalid(kind, 'it is not JSON') }
   if (!isObj(o)) throw invalid(kind, 'it is not an object')
-  if (o.v !== PAYLOAD_VERSION) {
-    if (typeof o.v === 'number' && Number.isInteger(o.v) && o.v > PAYLOAD_VERSION) {
-      throw new PayloadVersionError(kind, o.v)
-    }
+  const v = o.v
+  const known = typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= maxVersion
+  if (!known) {
+    if (typeof v === 'number' && Number.isInteger(v) && v > maxVersion) throw new PayloadVersionError(kind, v)
     throw invalid(kind, 'unknown format version')
   }
   if (o.kind !== kind) throw invalid(kind, `expected a ${kind}`)

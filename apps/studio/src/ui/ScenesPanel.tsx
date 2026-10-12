@@ -8,7 +8,7 @@
 // newer version" message that LocalStorageProvider.load rethrows.
 
 import { useCallback, useEffect, useState } from 'react'
-import type { LookV1, SaveKind, SaveSummary, SceneV1, StorageProvider } from 'ivories/core'
+import type { LookV1, SaveKind, SaveSummary, SceneV2, StorageProvider } from 'ivories/core'
 import { saveErrorMessage } from './saveErrors'
 
 const BTN = 'rounded border border-[var(--line)] px-2 py-1 text-[11px] text-[var(--ink-dim)]'
@@ -20,9 +20,9 @@ export function ScenesPanel(props: {
   /** A scene needs a loaded song; a look does not. */
   canSaveScene: boolean
   defaultName: string
-  buildScene: () => SceneV1
+  buildScene: () => SceneV2
   buildLook: () => LookV1
-  onOpenScene: (scene: SceneV1) => void
+  onOpenScene: (scene: SceneV2) => void
   onApplyLook: (look: LookV1) => void
 }) {
   const { storage } = props

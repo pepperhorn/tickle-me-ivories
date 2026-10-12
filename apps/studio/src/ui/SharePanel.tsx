@@ -5,7 +5,7 @@
 // F19c), so the field is the fallback the user can select and copy by hand.
 
 import { useRef, useState } from 'react'
-import type { LookV1, SaveKind, SceneV1, ShareProvider } from 'ivories/core'
+import type { LookV1, SaveKind, SceneV2, ShareProvider } from 'ivories/core'
 import { saveErrorMessage } from './saveErrors'
 
 const BTN = 'rounded border border-[var(--line)] px-2 py-1 text-[11px] text-[var(--ink-dim)]'
@@ -24,7 +24,7 @@ async function copyText(text: string): Promise<boolean> {
 export function SharePanel(props: {
   share: ShareProvider
   canShareScene: boolean
-  buildScene: () => SceneV1
+  buildScene: () => SceneV2
   buildLook: () => LookV1
 }) {
   const [url, setUrl] = useState<string | null>(null)

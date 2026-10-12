@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react'
 import { applyLook, buildProfile, lookFromSettings, sceneApplyPlan, sceneFromState } from 'ivories/core'
-import type { LookV1, SceneV1, SongRefWithTitle } from 'ivories/core'
+import type { LookV1, SceneV2, SongRefWithTitle } from 'ivories/core'
 import { getPlatform, subscribePlatform } from '../platform/registry'
 import { useScenes } from '../ui/useScenes'
 import { useTransport } from '../transport/useTransport'
@@ -24,7 +24,7 @@ export function useSceneActions(o: {
 
   /** The loaded song as a scene (spec §8.1). Phase 2's only song source is a
       dropped file, so the ref is always `local`. Throws with nothing loaded. */
-  const buildScene = useCallback((): SceneV1 => {
+  const buildScene = useCallback((): SceneV2 => {
     const tr = useTransport.getState()
     if (!tr.score) throw new Error('Load a song first.')
     const song: SongRefWithTitle = {
@@ -49,7 +49,7 @@ export function useSceneActions(o: {
   // profile import (same refusal and partial-apply handling). A shared
   // scene's plan never carries audio (sceneApplyPlan, spec §8.1). The 400ms
   // autosave then records the result under tmi.profile.<id> as usual.
-  const applySceneToScore = useCallback((scene: SceneV1, shared: boolean) => {
+  const applySceneToScore = useCallback((scene: SceneV2, shared: boolean) => {
     if (!useTransport.getState().score) throw new Error('Load the scene’s song first.')
     const plan = sceneApplyPlan(scene, { shared })
     const r = applyProfileParts({

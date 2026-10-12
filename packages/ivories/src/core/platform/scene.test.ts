@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
-  MAX_NAME_CHARS, MAX_SCENE_BYTES, MAX_SCENE_VOICES, decodeScene, sceneApplyPlan, sceneFromState, songKey,
+  MAX_NAME_CHARS, MAX_SCENE_BYTES, MAX_SCENE_VOICES, SCENE_VERSION, decodeScene, sceneApplyPlan, sceneFromState, songKey,
 } from './scene'
-import type { SceneV1, SongRefWithTitle } from './scene'
+import type { SceneV2, SongRefWithTitle } from './scene'
 import { PayloadVersionError } from './codec'
 import { isPlatformError } from './errors'
 import { buildProfile } from '../settings/profile'
@@ -27,15 +27,15 @@ const profile = (id = SHA) => buildProfile({
     text: { ...DEFAULT_SETTINGS.text, keyOverride: 'Eb major' },
   },
 })
-const scene = (): SceneV1 => sceneFromState({ song: song(), profile: profile() })
+const scene = (): SceneV2 => sceneFromState({ song: song(), profile: profile() })
 const raw = (): Record<string, any> => JSON.parse(JSON.stringify(scene()))
 const caught = (f: () => unknown): unknown => { try { f() } catch (e) { return e } return undefined }
 const isCode = (e: unknown, code: string) => isPlatformError(e) && e.code === code
 
 describe('sceneFromState', () => {
-  it('builds a v1 scene that satisfies the songKey invariant', () => {
+  it('builds a v2 scene that satisfies the songKey invariant', () => {
     const s = scene()
-    expect(s).toMatchObject({ v: 1, kind: 'scene', song: song() })
+    expect(s).toMatchObject({ v: 2, kind: 'scene', song: song() })
     expect(s.profile.song.id).toBe(songKey(s.song))
   })
 
@@ -75,7 +75,7 @@ describe('decodeScene', () => {
   })
 
   it('refuses an unknown v with a distinct "newer version" error', () => {
-    const e = caught(() => decodeScene({ ...raw(), v: 2 }))
+    const e = caught(() => decodeScene({ ...raw(), v: SCENE_VERSION + 1 }))
     expect(e).toBeInstanceOf(PayloadVersionError)
     expect((e as Error).message).toMatch(/newer version/i)
   })

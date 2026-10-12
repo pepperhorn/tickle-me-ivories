@@ -6,10 +6,10 @@ import { sceneFromState } from 'ivories/core'
 import { lookFromSettings } from 'ivories/core'
 import { buildProfile, storageSet } from 'ivories/core'
 import { DEFAULT_SETTINGS } from 'ivories/core'
-import type { LookV1, SceneV1 } from 'ivories/core'
+import type { LookV1, SceneV2 } from 'ivories/core'
 
 const SHA = 'c'.repeat(64)
-const scene = (): SceneV1 => sceneFromState({
+const scene = (): SceneV2 => sceneFromState({
   song: { kind: 'local', sha256: SHA, name: 'demo.mid', format: 'midi', title: 'Demo' },
   profile: buildProfile({
     song: { id: SHA, name: 'demo.mid', format: 'midi' }, voices: [],

@@ -15,7 +15,7 @@ import { HashShareProvider } from 'ivories/core'
 import { getDefaults } from './platform/registry'
 import { sceneFromState } from 'ivories/core'
 import { lookFromSettings } from 'ivories/core'
-import type { SceneV1 } from 'ivories/core'
+import type { SceneV2 } from 'ivories/core'
 
 // The engine owns an AudioContext and smplr, neither of which jsdom has. The
 // fake records what App asks of it; everything App decides is still real.
@@ -275,7 +275,7 @@ async function shareHash(kind: 'scene' | 'look', payload: unknown): Promise<stri
   return new URL(r.url).hash
 }
 
-function sceneFor(id: string, name = 'song.mid', over: { masterVolume?: number } = {}): SceneV1 {
+function sceneFor(id: string, name = 'song.mid', over: { masterVolume?: number } = {}): SceneV2 {
   const profile = buildProfile({
     song: { id, name, format: 'midi' },
     voices: [voice(RIGHT_VOICE, { label: 'Lead', hue: 99, volume: 0.4, instrument: 'electric_piano_1' })],
@@ -405,7 +405,7 @@ describe('App: shared links (#share=)', () => {
       profile: { ...s.profile, song: { ...s.profile.song, id: 'd'.repeat(64) } } }
     // A midi scene cannot go through HashShareProvider (it refuses), so it is
     // saved and loaded through the panel instead.
-    await getDefaults().storage.save({ kind: 'scene', name: 'Embedded', payload: midiScene as SceneV1 })
+    await getDefaults().storage.save({ kind: 'scene', name: 'Embedded', payload: midiScene as SceneV2 })
     render(<App />)
     await loadFile(midiFile(midiBytes([67, 72]), 'b.mid'))
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))

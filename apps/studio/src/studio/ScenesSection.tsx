@@ -1,6 +1,6 @@
 import { ScenesPanel } from '../ui/ScenesPanel'
 import { SharePanel } from '../ui/SharePanel'
-import type { LookV1, SceneV1 } from 'ivories/core'
+import type { LookV1, SceneV2 } from 'ivories/core'
 import type { Platform } from '../platform/registry'
 import type { useScenes } from '../ui/useScenes'
 
@@ -12,7 +12,9 @@ export function ScenesSection(props: {
   scenes: ReturnType<typeof useScenes>
   canSave: boolean
   defaultName: string
-  buildScene(): SceneV1
+  buildScene(): SceneV2
+  /** The scene as it may leave this browser (sceneForShare: no camera deviceIds). */
+  buildShareScene(): SceneV2
   buildLook(): LookV1
 }) {
   const { platform, scenes } = props
@@ -31,7 +33,7 @@ export function ScenesSection(props: {
       <SharePanel
         share={platform.share}
         canShareScene={props.canSave}
-        buildScene={props.buildScene}
+        buildScene={props.buildShareScene}
         buildLook={props.buildLook}
       />
     </>

@@ -13,11 +13,11 @@ import { sceneFromState } from 'ivories/core'
 import { lookFromSettings } from 'ivories/core'
 import { buildProfile } from 'ivories/core'
 import { DEFAULT_SETTINGS } from 'ivories/core'
-import type { SceneV1, LookV1 } from 'ivories/core'
+import type { SceneV2, LookV1 } from 'ivories/core'
 
 const SHA = 'a'.repeat(64)
 
-const scene = (): SceneV1 => sceneFromState({
+const scene = (): SceneV2 => sceneFromState({
   song: { kind: 'local', sha256: SHA, name: 'song.mid', format: 'midi', title: 'Song' },
   profile: buildProfile({
     song: { id: SHA, name: 'song.mid', format: 'midi' }, voices: [],
@@ -44,6 +44,18 @@ async function shareHash(kind: 'scene' | 'look', payload: unknown): Promise<stri
   const p = new HashShareProvider(location.origin)
   const res = await p.share({ kind, payload } as Parameters<HashShareProvider['share']>[0])
   return new URL(res.url).hash
+}
+
+/** A hand-built link (bypassing share()'s deviceId stripping), as a crafted
+    or foreign link would arrive. */
+async function rawHash(payload: unknown): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(payload))
+  const stream = new ReadableStream<Uint8Array>({ start(c) { c.enqueue(bytes); c.close() } })
+    .pipeThrough(new CompressionStream('deflate-raw') as unknown as ReadableWritablePair<Uint8Array, Uint8Array>)
+  const out = new Uint8Array(await new Response(stream).arrayBuffer())
+  let bin = ''
+  for (const b of out) bin += String.fromCharCode(b)
+  return '#share=' + btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
 async function mountWithHash(hash: string, host: ScenesHost) {
@@ -83,6 +95,20 @@ describe('useScenes', () => {
     await waitFor(() => expect(result.current.pending?.mismatch).not.toBeNull())
     act(() => { result.current.acceptMismatch() })
     await waitFor(() => expect(host.applyScene).toHaveBeenCalledTimes(1))
+  })
+
+  it('a shared scene is decoded without camera deviceIds (keepDeviceId: false)', async () => {
+    const crafted = {
+      ...scene(),
+      layout: { kind: 'split', ratio: 0.5, top: { kind: 'ivories', view: 'falling' }, bottom: { kind: 'camera', mode: 'webcam', deviceId: 'foreign-cam', mirror: true, fit: 'cover' } },
+    }
+    const host = makeHost({ scoreId: () => SHA })
+    const { result } = await mountWithHash(await rawHash(crafted), host)
+    act(() => { result.current.applyPreview() })
+    await waitFor(() => expect(host.applyScene).toHaveBeenCalledTimes(1))
+    const [applied, shared] = (host.applyScene as ReturnType<typeof vi.fn>).mock.calls[0] as [SceneV2, boolean]
+    expect(shared).toBe(true)
+    expect(applied.layout).toEqual({ kind: 'split', ratio: 0.5, top: { kind: 'ivories', view: 'falling' }, bottom: { kind: 'camera', mode: 'webcam', mirror: true, fit: 'cover' } })
   })
 
   // A share applied and opened directly (no file prompt, e.g. the loaded

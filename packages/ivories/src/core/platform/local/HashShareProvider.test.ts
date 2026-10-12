@@ -3,7 +3,7 @@ import { HashShareProvider, MAX_SHARE_ENCODED_BYTES } from './HashShareProvider'
 import { isPlatformError } from '../errors'
 import { buildProfile } from '../../settings/profile'
 import { DEFAULT_SETTINGS } from '../../settings/types'
-import type { SceneV1, SongRefWithTitle } from '../scene'
+import type { SceneV2, SongRefWithTitle } from '../scene'
 import { sceneFromState } from '../scene'
 import { lookFromSettings } from '../look'
 import type { LookV1 } from '../look'
@@ -14,7 +14,7 @@ const voice = (id: string, label: string): Voice => ({
   id, label, hue: 200, instrument: 'acoustic_grand_piano', visible: true, audible: true, volume: 1,
 })
 const song = (): SongRefWithTitle => ({ kind: 'local', sha256: SHA, name: 'demo.mid', format: 'midi', title: 'Demo' })
-const scene = (voices: Voice[] = [voice('l', 'Bass')]): SceneV1 => sceneFromState({
+const scene = (voices: Voice[] = [voice('l', 'Bass')]): SceneV2 => sceneFromState({
   song: song(),
   profile: buildProfile({
     song: { id: SHA, name: 'demo.mid', format: 'midi' }, voices,
@@ -22,7 +22,7 @@ const scene = (voices: Voice[] = [voice('l', 'Bass')]): SceneV1 => sceneFromStat
   }),
 })
 const look = (): LookV1 => lookFromSettings(DEFAULT_SETTINGS, 'keyboard', 3)
-const midiSong = (): SceneV1 => sceneFromState({
+const midiSong = (): SceneV2 => sceneFromState({
   song: { kind: 'midi', sha256: SHA, name: 'up.mid', dataB64: 'AAAA', title: 'Uploaded' },
   profile: buildProfile({
     song: { id: SHA, name: 'up.mid', format: 'midi' }, voices: [voice('l', 'Bass')],
@@ -37,7 +37,7 @@ const randomHex = (bytes: number) => {
   crypto.getRandomValues(a)
   return Array.from(a, (b) => b.toString(16).padStart(2, '0')).join('')
 }
-const hugeScene = (): SceneV1 => scene(
+const hugeScene = (): SceneV2 => scene(
   Array.from({ length: 300 }, (_, i) => voice(`v${i}`, randomHex(60))),
 )
 
@@ -67,6 +67,15 @@ describe('HashShareProvider', () => {
       expect(resolved!.isOwner).toBe(false)
       expect(resolved!.canEdit).toBe(false)
       expect(resolved!.canFork).toBe(false)
+    })
+
+    it('never encodes camera deviceIds into a scene link, even if the caller forgot to strip them', async () => {
+      const p = new HashShareProvider('https://example.com')
+      const s = { ...scene(), layout: { kind: 'split' as const, ratio: 0.5, top: { kind: 'ivories' as const, view: 'falling' as const }, bottom: { kind: 'camera' as const, mode: 'webcam' as const, deviceId: 'cam-secret', mirror: true, fit: 'cover' as const } } }
+      const result = await p.share({ kind: 'scene', payload: s })
+      const resolved = await p.resolve(result.code)
+      expect(JSON.stringify(resolved!.payload)).not.toContain('cam-secret')
+      expect((resolved!.payload as SceneV2).layout).toEqual({ ...s.layout, bottom: { kind: 'camera', mode: 'webcam', mirror: true, fit: 'cover' } })
     })
 
     it('round-trips a look', async () => {

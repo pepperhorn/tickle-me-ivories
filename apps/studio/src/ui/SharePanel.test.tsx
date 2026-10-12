@@ -5,12 +5,12 @@ import { HashShareProvider } from 'ivories/core'
 import { PlatformError } from 'ivories/core'
 import { lookFromSettings } from 'ivories/core'
 import { DEFAULT_SETTINGS } from 'ivories/core'
-import type { SceneV1, ShareProvider } from 'ivories/core'
+import type { SceneV2, ShareProvider } from 'ivories/core'
 
 const look = () => lookFromSettings(DEFAULT_SETTINGS, 'keyboard', 3)
 const props = (share: ShareProvider) => ({
   share, canShareScene: true,
-  buildScene: (): SceneV1 => { throw new Error('unused') },
+  buildScene: (): SceneV2 => { throw new Error('unused') },
   buildLook: look,
 })
 

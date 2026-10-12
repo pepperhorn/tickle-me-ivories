@@ -9,7 +9,7 @@
 // "Every load goes through decode" (spec §2): `load` decodes with
 // decodeScene/decodeLook and returns null for a missing or undecodable entry,
 // mirroring loadProfile (F17). The one exception is PayloadVersionError: the
-// StorageProvider interface types `load` as `Promise<SceneV1 | null>` with no
+// StorageProvider interface types `load` as `Promise<SceneV2 | null>` with no
 // documented throw contract (unlike decodeScene/decodeLook, which are typed
 // as throwing), so nothing in the type stops it rejecting -- and spec §8.5
 // wants a "made with a newer version" message to reach the user rather than
@@ -26,7 +26,7 @@
 // what gets persisted, not the caller's raw object.
 
 import type { SaveInput, SaveKind, SaveSummary, StorageProvider } from '../types'
-import type { SceneV1 } from '../scene'
+import type { SceneV2 } from '../scene'
 import type { LookV1 } from '../look'
 import { decodeScene } from '../scene'
 import { decodeLook } from '../look'
@@ -114,9 +114,9 @@ export class LocalStorageProvider implements StorageProvider {
     return kept
   }
 
-  load(kind: 'scene', id: string): Promise<SceneV1 | null>
+  load(kind: 'scene', id: string): Promise<SceneV2 | null>
   load(kind: 'look', id: string): Promise<LookV1 | null>
-  async load(kind: SaveKind, id: string): Promise<SceneV1 | LookV1 | null> {
+  async load(kind: SaveKind, id: string): Promise<SceneV2 | LookV1 | null> {
     const raw = storageGet(payloadKey(kind, id))
     if (raw === null) {
       // F17: self-heal an index row whose payload key is missing.
@@ -148,7 +148,7 @@ export class LocalStorageProvider implements StorageProvider {
     const id = input.id ?? randomId()
     const summary: SaveSummary = {
       id, kind: input.kind, name, updatedAt: new Date().toISOString(), visibility: 'private',
-      ...(input.kind === 'scene' ? { songTitle: (decoded as SceneV1).song.title } : {}),
+      ...(input.kind === 'scene' ? { songTitle: (decoded as SceneV2).song.title } : {}),
     }
 
     storageSet(payloadKey(input.kind, id), JSON.stringify(decoded))

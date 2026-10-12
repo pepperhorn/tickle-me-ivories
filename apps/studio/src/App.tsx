@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AudioClock, AudioEngine } from 'ivories/core'
 import { effectiveBpmAt } from 'ivories/core'
 import { NO_LEAD_IN, leadInFor } from 'ivories/core'
+import { sceneForShare } from 'ivories/core'
 import { bindTransportClock, useTransport } from './transport/useTransport'
 import { useSettings } from './settings/useSettings'
 import { FallingKeys, IvoriesProvider, Keyboard } from 'ivories'
@@ -105,6 +106,7 @@ export default function App() {
       canSave={t.score !== null}
       defaultName={t.score?.name.replace(/\.[^.]+$/, '') || 'Untitled'}
       buildScene={buildScene}
+      buildShareScene={() => sceneForShare(buildScene())}
       buildLook={buildLook}
     />
   )

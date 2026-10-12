@@ -18,6 +18,7 @@
 // 2.3's scene.ts re-exports these types and adds songKey/sceneFromState/
 // lookFromSettings/applyLook.
 
+import type { Aspect, Layout } from '../layout/types'
 import type { DisplayMode, ScoreDocument } from '../model/types'
 import type {
   DisplaySettings, SongProfile, TextSettings, ThemeSettings, VelocityScheme,
@@ -60,6 +61,15 @@ export interface SceneV1 {
   song: SongRefWithTitle
   profile: SongProfile                // PROFILE_SCHEMA_VERSION 1; invariant: profile.song.id === songKey(song)
 }
+/** Spec §5.4: SceneV1 + the stage layout. What every provider stores and shares now. */
+export interface SceneV2 {
+  v: 2
+  kind: 'scene'
+  song: SongRefWithTitle
+  profile: SongProfile
+  layout: Layout
+  aspect: Aspect
+}
 export interface LookV1 {
   v: 1
   kind: 'look'
@@ -75,13 +85,13 @@ export interface SaveSummary {
   visibility: Visibility; songTitle?: string
 }
 export type SaveInput =
-  | { kind: 'scene'; id?: string; name: string; payload: SceneV1 }
+  | { kind: 'scene'; id?: string; name: string; payload: SceneV2 }
   | { kind: 'look'; id?: string; name: string; payload: LookV1 }
 export interface StorageProvider {
   readonly id: string
   readonly remote: boolean
   list(kind: SaveKind): Promise<SaveSummary[]>
-  load(kind: 'scene', id: string): Promise<SceneV1 | null>
+  load(kind: 'scene', id: string): Promise<SceneV2 | null>
   load(kind: 'look', id: string): Promise<LookV1 | null>
   save(input: SaveInput): Promise<SaveSummary>   // id minted client-side (crypto.randomUUID) when absent
   remove(kind: SaveKind, id: string): Promise<void>
@@ -97,11 +107,11 @@ export interface ResolvedShare {
 export interface ShareProvider {
   readonly id: string
   readonly supports: { anonymous: boolean; owned: boolean; revoke: boolean; fork: boolean }
-  share(input: { kind: 'scene'; payload: SceneV1 } | { kind: 'look'; payload: LookV1 }): Promise<ShareResult>
+  share(input: { kind: 'scene'; payload: SceneV2 } | { kind: 'look'; payload: LookV1 }): Promise<ShareResult>
   shareSaved?(kind: SaveKind, saveId: string, visibility: Exclude<Visibility, 'private'>): Promise<ShareResult>
   match(loc: { pathname: string; hash: string }): string | null   // '/s/<code>' or '#share=<blob>'
   resolve(code: string): Promise<ResolvedShare | null>
-  update?(code: string, payload: SceneV1 | LookV1): Promise<void>  // link_edit
+  update?(code: string, payload: SceneV2 | LookV1): Promise<void>  // link_edit
   fork?(code: string, name: string): Promise<SaveSummary>
   revoke?(code: string, revokeKey?: string): Promise<void>
 }
@@ -125,7 +135,7 @@ export interface ContentProvider {
 export interface TickleHost {
   appVersion: string
   origin: string                                    // for share URLs: `${origin}/s/<code>`
-  decodeScene(u: unknown): SceneV1                  // throws; the app's own validators (§9.1)
+  decodeScene(u: unknown): SceneV2                  // throws; the app's own validators (§9.1)
   decodeLook(u: unknown): LookV1
 }
 export interface TicklePlugin {

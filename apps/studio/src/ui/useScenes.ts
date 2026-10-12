@@ -18,7 +18,7 @@
 // and changes only on user action or the one-off mount resolve.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { LookV1, ResolvedShare, SceneV1, ShareProvider } from 'ivories/core'
+import type { LookV1, ResolvedShare, SceneV2, ShareProvider } from 'ivories/core'
 import { getDefaults, getPlatform } from '../platform/registry'
 import { decodeScene, songKey } from 'ivories/core'
 import { decodeLook } from 'ivories/core'
@@ -33,7 +33,7 @@ export interface ScenesHost {
   /** The loaded score's id (its content hash), or null with nothing loaded. */
   scoreId: () => string | null
   /** Applies a scene to the loaded score. Throws with a user-facing message. */
-  applyScene: (scene: SceneV1, shared: boolean) => void
+  applyScene: (scene: SceneV2, shared: boolean) => void
   applyLook: (look: LookV1) => void
   /**
    * Replaces whatever is loaded with this file (the current song is unloaded
@@ -48,11 +48,11 @@ export interface ScenesHost {
 }
 
 type Preview =
-  | { kind: 'scene'; payload: SceneV1; owner: string | null; saved: boolean }
+  | { kind: 'scene'; payload: SceneV2; owner: string | null; saved: boolean }
   | { kind: 'look'; payload: LookV1; owner: string | null; saved: boolean }
 
 export interface PendingScene {
-  scene: SceneV1
+  scene: SceneV2
   shared: boolean
   /** The file (dropped, or rebuilt from a midi ref) whose hash did not match. */
   mismatch: File | null
@@ -74,7 +74,7 @@ function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
 function decodeResolved(r: ResolvedShare): Preview {
   const owner = r.owner?.handle ?? null
   return r.kind === 'scene'
-    ? { kind: 'scene', payload: decodeScene(r.payload), owner, saved: false }
+    ? { kind: 'scene', payload: decodeScene(r.payload, { shared: true }), owner, saved: false }
     : { kind: 'look', payload: decodeLook(r.payload), owner, saved: false }
 }
 
@@ -144,7 +144,7 @@ export function useScenes(host: ScenesHost) {
     return () => { alive = false }
   }, [])
 
-  const applyNow = useCallback((scene: SceneV1, shared: boolean) => {
+  const applyNow = useCallback((scene: SceneV2, shared: boolean) => {
     try {
       hostRef.current.applyScene(scene, shared)
       setMessage(null)
@@ -157,7 +157,7 @@ export function useScenes(host: ScenesHost) {
   /** Loads `file` as the song and applies the scene the moment it is loaded
       (inside replaceSong's onLoaded, before the audio half runs). Not guarded:
       callers run it inside runBusy. */
-  const finishWithFile = useCallback(async (scene: SceneV1, shared: boolean, file: File) => {
+  const finishWithFile = useCallback(async (scene: SceneV2, shared: boolean, file: File) => {
     await hostRef.current.replaceSong(file, () => {
       setPending(null)
       sharedPreviewBackupRef.current = null
@@ -166,7 +166,7 @@ export function useScenes(host: ScenesHost) {
   }, [applyNow])
 
   /** Checks a candidate song file against the scene's hash, busy throughout. */
-  const checkFile = useCallback((scene: SceneV1, shared: boolean, file: File) => runBusy(async () => {
+  const checkFile = useCallback((scene: SceneV2, shared: boolean, file: File) => runBusy(async () => {
     const song = scene.song
     if (song.kind !== 'local' && song.kind !== 'midi') return
     let hash: string
@@ -184,7 +184,7 @@ export function useScenes(host: ScenesHost) {
   }), [runBusy, finishWithFile])
 
   /** Opens a scene (from a save or an applied share). */
-  const openScene = useCallback(async (scene: SceneV1, shared: boolean) => {
+  const openScene = useCallback(async (scene: SceneV2, shared: boolean) => {
     setMessage(null)
     if (hostRef.current.scoreId() === songKey(scene.song)) {
       setPending(null)

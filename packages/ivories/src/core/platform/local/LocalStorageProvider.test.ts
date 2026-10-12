@@ -4,8 +4,8 @@ import { isPayloadVersionError } from '../codec'
 import { isPlatformError } from '../errors'
 import { buildProfile } from '../../settings/profile'
 import { DEFAULT_SETTINGS } from '../../settings/types'
-import type { SceneV1, SongRefWithTitle } from '../scene'
-import { sceneFromState } from '../scene'
+import type { SceneV2, SongRefWithTitle } from '../scene'
+import { SCENE_VERSION, defaultLayoutFor, sceneFromState } from '../scene'
 import { lookFromSettings } from '../look'
 import type { LookV1 } from '../look'
 import type { Voice } from '../../model/types'
@@ -24,7 +24,7 @@ const profile = (voices: Voice[] = [voice('l')]) => buildProfile({
   fallSeconds: 4,
   settings: DEFAULT_SETTINGS,
 })
-const scene = (voices: Voice[] = [voice('l')]): SceneV1 => sceneFromState({ song: song(), profile: profile(voices) })
+const scene = (voices: Voice[] = [voice('l')]): SceneV2 => sceneFromState({ song: song(), profile: profile(voices) })
 const look = (): LookV1 => lookFromSettings(DEFAULT_SETTINGS, 'keyboard', 3)
 
 describe('LocalStorageProvider', () => {
@@ -109,10 +109,27 @@ describe('LocalStorageProvider', () => {
     })
 
     it('surfaces (does not null out) a PayloadVersionError: made with a newer app version', async () => {
-      const newer = { v: 2, kind: 'scene', song: song(), profile: profile() }
+      const newer = { v: SCENE_VERSION + 1, kind: 'scene', song: song(), profile: profile() }
       localStorage.setItem('tmi.saves.scene.newer', JSON.stringify(newer))
       const p = new LocalStorageProvider()
       await expect(p.load('scene', 'newer')).rejects.toSatisfy(isPayloadVersionError)
+    })
+
+    it('upgrades a stored V1 scene to V2 on load (R7)', async () => {
+      const v1 = { v: 1, kind: 'scene', song: song(), profile: profile() }
+      localStorage.setItem('tmi.saves.scene.old', JSON.stringify(v1))
+      const loaded = await new LocalStorageProvider().load('scene', 'old')
+      expect(loaded).toMatchObject({ v: 2, layout: defaultLayoutFor('roll'), aspect: 'free' })
+    })
+
+    it('keeps camera deviceIds in a local save (only shares drop them)', async () => {
+      const s = sceneFromState({
+        song: song(), profile: profile(),
+        layout: { kind: 'pip', main: { kind: 'ivories', view: 'falling' }, inset: { kind: 'camera', mode: 'webcam', deviceId: 'cam-9', mirror: false, fit: 'contain' }, corner: 'br', size: 0.3, margin: 0.02 },
+      })
+      const p = new LocalStorageProvider()
+      const saved = await p.save({ kind: 'scene', name: 'cam', payload: s })
+      expect((await p.load('scene', saved.id))?.layout).toEqual(s.layout)
     })
   })
 
