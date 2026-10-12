@@ -7,6 +7,7 @@ import { TextSettings } from '../ui/TextSettings'
 import { ThemeSettings } from '../ui/ThemeSettings'
 import { VelocityEditor } from '../ui/VelocityEditor'
 import { VoicePanel } from '../ui/VoicePanel'
+import { LiveMidiSettings } from './LiveMidiSettings'
 import { useTransport } from '../transport/useTransport'
 import { useSettings } from '../settings/useSettings'
 import type { usePlaybackActions } from './usePlaybackActions'
@@ -100,6 +101,9 @@ export function StudioSettings(props: {
               onChange={(e) => settings.setAudio({ metronomeVolume: Number(e.target.value) })}
             />
           </SettingsRow>
+        </SettingsSection>
+        <SettingsSection id="live-midi" title="Live MIDI">
+          <LiveMidiSettings />
         </SettingsSection>
         <SettingsSection id="scenes" title="Scenes &amp; looks">
           {props.scenesSection}

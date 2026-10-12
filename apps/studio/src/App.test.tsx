@@ -4,6 +4,7 @@ import { Midi } from '@tonejs/midi'
 import App from './App'
 import { playheadAt, useTransport } from './transport/useTransport'
 import { LOOKAHEAD_SEC } from 'ivories/core'
+import { useLiveMidi } from './studio/liveMidi'
 import { useSettings } from './settings/useSettings'
 import { buildProfile, encodeProfile, loadProfile, saveProfile } from 'ivories/core'
 import { DEFAULT_SETTINGS } from 'ivories/core'
@@ -29,6 +30,9 @@ const engine = vi.hoisted(() => ({
   retainVoices: vi.fn(),
   play: vi.fn(),
   stopAll: vi.fn(),
+  noteOn: vi.fn(),
+  noteOff: vi.fn(),
+  prepareLive: vi.fn(async () => {}),
   // Records the metronome's clicks instead of building oscillators.
   metronome: () => ({ click: (time: number, accent: boolean) => { clicks.push({ time, accent }) }, stop: () => {} }),
 }))
@@ -97,6 +101,7 @@ beforeEach(() => {
   localStorage.clear()
   useTransport.setState(pristineTransport, true)
   useSettings.getState().reset()
+  useLiveMidi.setState({ enabled: false, deviceId: null, audio: true, error: null })
   vi.clearAllMocks()
   engine.currentTime = 0
   engine.running = true
@@ -793,5 +798,48 @@ describe('App: lead-in, count-in and audio unlock', () => {
     play()
     await waitFor(() => expect(useTransport.getState().playing).toBe(true))
     expect((document.getElementById('scrub') as HTMLInputElement).value).toBe('0')
+  })
+})
+
+
+describe('App: live MIDI', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  function stubMidi() {
+    const port = { id: 'k', name: 'Keys', state: 'connected', onmidimessage: null as null | ((e: { data: Uint8Array }) => void) }
+    const request = vi.fn(async () => ({ inputs: { forEach: (cb: (p: typeof port) => void) => cb(port) }, onstatechange: null }))
+    vi.stubGlobal('navigator', { ...navigator, requestMIDIAccess: request })
+    return { port, request }
+  }
+
+  it('does not ask for MIDI until the live-MIDI store is enabled', () => {
+    const { request } = stubMidi()
+    render(<App />)
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('enabling the store renders the views with input="midi" and passes liveAudio/midiDeviceId through', async () => {
+    const { port, request } = stubMidi()
+    useLiveMidi.setState({ enabled: true, deviceId: 'k', audio: true })
+    render(<App />)
+    await waitFor(() => expect(request).toHaveBeenCalled())
+    await waitFor(() => expect(port.onmidimessage).toBeTypeOf('function'))   // midiDeviceId 'k' selected
+    port.onmidimessage!({ data: new Uint8Array([0x90, 60, 100]) })
+    expect(engine.noteOn).toHaveBeenCalledWith(60, expect.any(Number))     // liveAudio on
+    engine.noteOn.mockClear()
+    act(() => useLiveMidi.setState({ audio: false }))
+    port.onmidimessage!({ data: new Uint8Array([0x90, 62, 100]) })
+    expect(engine.noteOn).not.toHaveBeenCalled()
+  })
+
+  it('surfaces midi-unavailable in the Live MIDI settings section', async () => {
+    vi.stubGlobal('navigator', { ...navigator, requestMIDIAccess: async () => { throw new Error('denied') } })
+    useLiveMidi.setState({ enabled: true })
+    useTransport.setState({ score: null })
+    render(<App />)
+    await loadFile(midiFile(midiBytes()))
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    fireEvent.click(screen.getByRole('button', { name: /Live MIDI/ }))
+    await waitFor(() => expect(screen.getAllByRole('status').some((e) => /unavailable|No MIDI/.test(e.textContent ?? ''))).toBe(true))
   })
 })

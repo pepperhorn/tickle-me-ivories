@@ -20,6 +20,7 @@ import { useProfileActions } from './studio/useProfileActions'
 import { useSceneActions } from './studio/useSceneActions'
 import { ScenesSection } from './studio/ScenesSection'
 import { StudioSettings } from './studio/StudioSettings'
+import { useLiveMidi } from './studio/liveMidi'
 
 export default function App() {
   const t = useTransport()
@@ -43,6 +44,8 @@ export default function App() {
 
   useTransparentPage(settings.theme)
   const autosave = useAutosave(engine)
+  const liveMidi = useLiveMidi()
+  const setLiveMidi = liveMidi.set
   const loader = useSongLoader({ engine, onScoreReplaced: () => {} })   // the stage view resets its chord on a new score
   const gate = useStartGate({ engine, voicesReady: loader.voicesReady })
   const actions = usePlaybackActions({ engine, onSeek: () => {} })      // ... and on the clock's seek event
@@ -52,6 +55,12 @@ export default function App() {
     () => ({ theme: settings.theme, display: settings.display, velocity: settings.velocity, text: settings.text, audio: settings.audio }),
     [settings.theme, settings.display, settings.velocity, settings.text, settings.audio],
   )
+
+  const midiInput = liveMidi.enabled ? 'midi' : 'none'
+  const onProviderError = useCallback((e: { code: string; message: string }) => {
+    if (e.code !== 'midi-unavailable') return
+    setLiveMidi({ error: 'MIDI unavailable in this browser' })
+  }, [setLiveMidi])
 
   const { flush: flushAutosave } = autosave
   const { cancelStart } = gate
@@ -120,10 +129,13 @@ export default function App() {
           settings={providerSettings}
           fallSeconds={t.fallSeconds}
           onTimeUpdate={setPlayhead}
+          liveAudio={liveMidi.audio}
+          midiDeviceId={liveMidi.deviceId}
+          onError={onProviderError}
         >
           {t.mode === 'roll'
-            ? <FallingKeys className="studio-stage-view" onLayout={setKbLayout} />
-            : <Keyboard className="studio-stage-view" onLayout={setKbLayout} />}
+            ? <FallingKeys className="studio-stage-view" input={midiInput} onLayout={setKbLayout} />
+            : <Keyboard className="studio-stage-view" input={midiInput} onLayout={setKbLayout} />}
         </IvoriesProvider>
         {t.score && (
           <CountIn
