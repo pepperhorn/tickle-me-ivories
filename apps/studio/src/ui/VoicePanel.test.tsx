@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { VoicePanel } from './VoicePanel'
-import type { Voice } from '../model/types'
+import type { Voice } from 'ivories/core'
 
 const voices: Voice[] = [
   { id: 'l', label: 'Left hand', hue: 207, instrument: 'acoustic_grand_piano', visible: true, audible: true, volume: 1 },

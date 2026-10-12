@@ -5,7 +5,7 @@
 // covers MusicXML (.xml/.musicxml/.mxl) as well as MIDI.
 import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'
-import { SCORE_FILE_ACCEPT } from '../io/loadScoreFile'
+import { SCORE_FILE_ACCEPT } from 'ivories/core'
 import { FileDropZone } from './FileDropZone'
 import { SceneFilePrompt } from './SceneFilePrompt'
 

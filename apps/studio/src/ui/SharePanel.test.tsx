@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { SharePanel } from './SharePanel'
-import { HashShareProvider } from '../platform/local/HashShareProvider'
-import { PlatformError } from '../platform/errors'
-import { lookFromSettings } from '../platform/look'
-import { DEFAULT_SETTINGS } from '../settings/types'
-import type { SceneV1, ShareProvider } from '../platform/types'
+import { HashShareProvider } from 'ivories/core'
+import { PlatformError } from 'ivories/core'
+import { lookFromSettings } from 'ivories/core'
+import { DEFAULT_SETTINGS } from 'ivories/core'
+import type { SceneV1, ShareProvider } from 'ivories/core'
 
 const look = () => lookFromSettings(DEFAULT_SETTINGS, 'keyboard', 3)
 const props = (share: ShareProvider) => ({

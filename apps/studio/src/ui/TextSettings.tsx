@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { SettingsRow } from './SettingsPanel'
-import { KEY_OPTIONS } from '../music/keyOf'
-import { isSafeFontFamily } from '../settings/profile'
+import { KEY_OPTIONS } from 'ivories/core'
+import { isSafeFontFamily } from 'ivories/core'
 import type {
   ChordDisplay, ChordPlacement, NoteLabelContent, NoteLabelPlacement,
   TextSettings as TextSettingsType, TextStyle,
-} from '../settings/types'
+} from 'ivories/core'
 
 /** Suggestions only, offered through a datalist: any Google family name is valid. */
 const GOOGLE_FONT_SUGGESTIONS = [

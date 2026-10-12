@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 import { readFileSync, existsSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { join } from 'node:path'
 import { Midi } from '@tonejs/midi'
 import { hashFile, sha256Hex } from './hashFile'
 
@@ -61,7 +61,7 @@ describe('sha256Hex: pure-JS fallback (crypto.subtle undefined, e.g. insecure or
 
 // A real user file (spec: gitignored under local-fixtures/, not committed).
 // Skips cleanly in CI/other checkouts where the file is absent.
-const FIXTURE = resolve(process.cwd(), 'local-fixtures/11_Oclock_Tick_Tock_U2.mid')
+const FIXTURE = join(__dirname, '../../../../../local-fixtures/11_Oclock_Tick_Tock_U2.mid')
 
 describe.skipIf(!existsSync(FIXTURE))('sha256Hex: real MIDI fixture on disk', () => {
   afterEach(() => { vi.unstubAllGlobals() })

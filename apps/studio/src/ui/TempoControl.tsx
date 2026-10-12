@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { MAX_TEMPO_SCALE, MIN_TEMPO_SCALE, sameTempo } from '../model/tempoMap'
+import { MAX_TEMPO_SCALE, MIN_TEMPO_SCALE, sameTempo } from 'ivories/core'
 import { SettingsRow } from './SettingsPanel'
-import type { TempoSetting } from '../model/types'
+import type { TempoSetting } from 'ivories/core'
 
 export function TempoControl(props: {
   tempo: TempoSetting

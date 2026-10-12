@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { TextSettings } from './TextSettings'
-import { DEFAULT_SETTINGS } from '../settings/types'
-import type { TextSettings as TextSettingsType } from '../settings/types'
+import { DEFAULT_SETTINGS } from 'ivories/core'
+import type { TextSettings as TextSettingsType } from 'ivories/core'
 
 function setup(text: TextSettingsType = DEFAULT_SETTINGS.text) {
   const onChange = vi.fn()

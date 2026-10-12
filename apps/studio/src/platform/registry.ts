@@ -18,9 +18,9 @@
 
 import type {
   ActivatePlugin, AuthProvider, ContentProvider, ShareProvider, StorageProvider, TickleHost, TicklePlugin,
-} from './types'
-import { LocalStorageProvider } from './local/LocalStorageProvider'
-import { HashShareProvider } from './local/HashShareProvider'
+} from 'ivories/core'
+import { LocalStorageProvider } from 'ivories/core'
+import { HashShareProvider } from 'ivories/core'
 
 export interface Platform {
   auth: AuthProvider | null

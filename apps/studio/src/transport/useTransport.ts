@@ -1,9 +1,9 @@
 import { create } from 'zustand'
-import { retimeScore } from '../io/parseMidi'
-import { secToTicks, ticksToSec } from '../model/tempoMap'
-import type { DisplayMode, ScoreDocument, TempoSetting, Voice } from '../model/types'
+import { retimeScore } from 'ivories/core'
+import { secToTicks, ticksToSec } from 'ivories/core'
+import type { DisplayMode, ScoreDocument, TempoSetting, Voice } from 'ivories/core'
 
-export type { DisplayMode } from '../model/types'
+export type { DisplayMode } from 'ivories/core'
 
 export interface TransportState {
   score: ScoreDocument | null

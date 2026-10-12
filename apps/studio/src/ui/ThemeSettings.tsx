@@ -1,5 +1,5 @@
 import { SettingsRow } from './SettingsPanel'
-import type { ThemeName, ThemeSettings as ThemeSettingsType } from '../settings/types'
+import type { ThemeName, ThemeSettings as ThemeSettingsType } from 'ivories/core'
 
 const THEMES: [ThemeName, string][] = [
   ['classic', 'Classic'],

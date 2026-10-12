@@ -1,9 +1,9 @@
 import { create } from 'zustand'
-import { DEFAULT_SETTINGS } from './types'
+import { DEFAULT_SETTINGS } from 'ivories/core'
 import type {
   AudioSettings, DisplaySettings, Settings, TextSettings, TextStyle,
   ThemeSettings, VelocityScheme,
-} from './types'
+} from 'ivories/core'
 
 export interface SettingsActions {
   setTheme: (patch: Partial<ThemeSettings>) => void

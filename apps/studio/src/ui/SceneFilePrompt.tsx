@@ -4,7 +4,7 @@
 // option to "use anyway (voices may not match)".
 
 import { useRef, useState } from 'react'
-import { SCORE_FILE_ACCEPT } from '../io/loadScoreFile'
+import { SCORE_FILE_ACCEPT } from 'ivories/core'
 
 const BTN = 'rounded-full px-3 py-1 text-xs font-semibold'
 

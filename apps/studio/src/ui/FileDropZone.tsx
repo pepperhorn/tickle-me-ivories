@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { SCORE_FILE_ACCEPT } from '../io/loadScoreFile'
+import { SCORE_FILE_ACCEPT } from 'ivories/core'
 
 /**
  * `onPick` runs synchronously inside the "Choose file" click: that click is

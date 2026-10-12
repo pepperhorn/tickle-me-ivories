@@ -3,18 +3,18 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { Midi } from '@tonejs/midi'
 import App from './App'
 import { playheadAt, useTransport } from './transport/useTransport'
-import { LOOKAHEAD_SEC } from './audio/scheduler'
+import { LOOKAHEAD_SEC } from 'ivories/core'
 import { useSettings } from './settings/useSettings'
-import { buildProfile, encodeProfile, loadProfile, saveProfile } from './settings/profile'
-import { DEFAULT_SETTINGS } from './settings/types'
-import { hashFile } from './io/hashFile'
-import { LEFT_VOICE, RIGHT_VOICE } from './io/handSplit'
-import type { Voice } from './model/types'
-import { HashShareProvider } from './platform/local/HashShareProvider'
+import { buildProfile, encodeProfile, loadProfile, saveProfile } from 'ivories/core'
+import { DEFAULT_SETTINGS } from 'ivories/core'
+import { hashFile } from 'ivories/core'
+import { LEFT_VOICE, RIGHT_VOICE } from 'ivories/core'
+import type { Voice } from 'ivories/core'
+import { HashShareProvider } from 'ivories/core'
 import { getDefaults } from './platform/registry'
-import { sceneFromState } from './platform/scene'
-import { lookFromSettings } from './platform/look'
-import type { SceneV1 } from './platform/types'
+import { sceneFromState } from 'ivories/core'
+import { lookFromSettings } from 'ivories/core'
+import type { SceneV1 } from 'ivories/core'
 
 // The engine owns an AudioContext and smplr, neither of which jsdom has. The
 // fake records what App asks of it; everything App decides is still real.
@@ -29,14 +29,11 @@ const engine = vi.hoisted(() => ({
   play: vi.fn(),
   stopAll: vi.fn(),
 }))
-vi.mock('./audio/engine', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./audio/engine')>()),
-  AudioEngine: function AudioEngine() { return engine },
-}))
 // Records the metronome's clicks instead of building oscillators.
 const clicks = vi.hoisted(() => [] as { time: number; accent: boolean }[])
-vi.mock('./audio/metronome', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./audio/metronome')>()),
+vi.mock('ivories/core', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('ivories/core')>()),
+  AudioEngine: function AudioEngine() { return engine },
   MetronomeVoice: function MetronomeVoice() {
     return { click: (time: number, accent: boolean) => { clicks.push({ time, accent }) }, stop: () => {} }
   },

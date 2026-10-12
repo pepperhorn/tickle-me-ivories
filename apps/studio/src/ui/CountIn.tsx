@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { countInBeatAt } from '../model/countIn'
-import type { LeadIn } from '../model/countIn'
+import { countInBeatAt } from 'ivories/core'
+import type { LeadIn } from 'ivories/core'
 
 /** Why playback is waiting at the top of the count-in, if it is. */
 export type StartGate = 'sound' | 'loading' | null

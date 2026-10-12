@@ -1,5 +1,5 @@
 import { SettingsRow } from './SettingsPanel'
-import type { DisplaySettings as DisplaySettingsType, ZoomMode } from '../settings/types'
+import type { DisplaySettings as DisplaySettingsType, ZoomMode } from 'ivories/core'
 
 export function DisplaySettings(props: {
   display: DisplaySettingsType

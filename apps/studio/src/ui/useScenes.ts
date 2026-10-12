@@ -18,13 +18,13 @@
 // and changes only on user action or the one-off mount resolve.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { LookV1, ResolvedShare, SceneV1, ShareProvider } from '../platform/types'
+import type { LookV1, ResolvedShare, SceneV1, ShareProvider } from 'ivories/core'
 import { getDefaults, getPlatform } from '../platform/registry'
-import { decodeScene, songKey } from '../platform/scene'
-import { decodeLook } from '../platform/look'
-import { isPayloadVersionError } from '../platform/codec'
-import { hashFile } from '../io/hashFile'
-import type { AudioSettings } from '../settings/types'
+import { decodeScene, songKey } from 'ivories/core'
+import { decodeLook } from 'ivories/core'
+import { isPayloadVersionError } from 'ivories/core'
+import { hashFile } from 'ivories/core'
+import type { AudioSettings } from 'ivories/core'
 import { saveErrorMessage } from './saveErrors'
 import type { SharePreviewView } from './SharedPreviewBanner'
 

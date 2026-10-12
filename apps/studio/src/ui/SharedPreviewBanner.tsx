@@ -6,7 +6,7 @@
 // applying live in useScenes. Text from the payload (the song title, the
 // owner handle) is rendered as React text, never as HTML (spec §9.1).
 
-import type { SaveKind } from '../platform/types'
+import type { SaveKind } from 'ivories/core'
 
 export interface SharePreviewView {
   kind: SaveKind

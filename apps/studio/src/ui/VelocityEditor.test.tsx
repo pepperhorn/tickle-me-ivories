@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { VelocityEditor } from './VelocityEditor'
-import type { VelocityScheme } from '../settings/types'
+import type { VelocityScheme } from 'ivories/core'
 
 function setup(scheme: VelocityScheme) {
   const onChange = vi.fn()

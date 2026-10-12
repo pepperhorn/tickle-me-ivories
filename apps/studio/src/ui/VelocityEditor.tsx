@@ -1,6 +1,6 @@
-import { DEFAULT_GRADIENT, DEFAULT_LIGHTNESS, MAX_GRADIENT_STOPS, MIN_GRADIENT_STOPS } from '../settings/types'
+import { DEFAULT_GRADIENT, DEFAULT_LIGHTNESS, MAX_GRADIENT_STOPS, MIN_GRADIENT_STOPS } from 'ivories/core'
 import { SettingsRow } from './SettingsPanel'
-import type { VelocityScheme } from '../settings/types'
+import type { VelocityScheme } from 'ivories/core'
 
 export function VelocityEditor(props: {
   scheme: VelocityScheme

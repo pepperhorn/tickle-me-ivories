@@ -1,0 +1,35 @@
+{
+  "name": "ivories",
+  "version": "0.1.0",
+  "description": "Falling keys, keyboard, notation and stage layouts for React, on one shared clock.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": ["*.css"],
+  "exports": {
+    "./core": {
+      "source": "./src/core/index.ts",
+      "types": "./dist/types/core/index.d.ts",
+      "import": "./dist/core.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "scripts": {
+    "check": "tsc -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "react": ">=19",
+    "react-dom": ">=19"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.4.0",
+    "@tonejs/midi": "^2.0.28",
+    "fflate": "^0.8.3",
+    "smplr": "^1.0.0",
+    "tonal": "^6.4.3"
+  },
+  "devDependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  }
+}

@@ -8,12 +8,12 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { useScenes } from './useScenes'
 import type { ScenesHost } from './useScenes'
 import { getPlatform } from '../platform/registry'
-import { HashShareProvider } from '../platform/local/HashShareProvider'
-import { sceneFromState } from '../platform/scene'
-import { lookFromSettings } from '../platform/look'
-import { buildProfile } from '../settings/profile'
-import { DEFAULT_SETTINGS } from '../settings/types'
-import type { SceneV1, LookV1 } from '../platform/types'
+import { HashShareProvider } from 'ivories/core'
+import { sceneFromState } from 'ivories/core'
+import { lookFromSettings } from 'ivories/core'
+import { buildProfile } from 'ivories/core'
+import { DEFAULT_SETTINGS } from 'ivories/core'
+import type { SceneV1, LookV1 } from 'ivories/core'
 
 const SHA = 'a'.repeat(64)
 

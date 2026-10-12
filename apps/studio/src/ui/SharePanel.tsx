@@ -5,7 +5,7 @@
 // F19c), so the field is the fallback the user can select and copy by hand.
 
 import { useRef, useState } from 'react'
-import type { LookV1, SaveKind, SceneV1, ShareProvider } from '../platform/types'
+import type { LookV1, SaveKind, SceneV1, ShareProvider } from 'ivories/core'
 import { saveErrorMessage } from './saveErrors'
 
 const BTN = 'rounded border border-[var(--line)] px-2 py-1 text-[11px] text-[var(--ink-dim)]'

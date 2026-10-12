@@ -288,7 +288,7 @@ describe('parseScoreFile (content sniffing)', () => {
 
 // A real MusicXML export, if one is present locally (local-fixtures/ is
 // gitignored). Skipped when absent; never fetched from the network.
-const FIXTURES = join(__dirname, '../../local-fixtures')
+const FIXTURES = join(__dirname, '../../../../../local-fixtures')
 const realFiles = existsSync(FIXTURES)
   ? readdirSync(FIXTURES).filter((f) => /\.(musicxml|xml|mxl)$/i.test(f))
   : []

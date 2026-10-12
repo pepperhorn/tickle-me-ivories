@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { TickleHost, TicklePlugin } from './types'
+import type { TickleHost, TicklePlugin } from 'ivories/core'
 
 // The registry holds module-level state (`current`), so every test starts
 // from a clean module instance (preflight F15 needs "no install happened in

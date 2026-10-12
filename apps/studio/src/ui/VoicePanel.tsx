@@ -1,5 +1,5 @@
 import { getSoundfontNames } from 'smplr'
-import type { Voice } from '../model/types'
+import type { Voice } from 'ivories/core'
 
 /** smplr's own General MIDI names -- the only ids Soundfont() will load. */
 export const INSTRUMENT_OPTIONS: string[] = getSoundfontNames()

@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { ScenesPanel } from './ScenesPanel'
-import { LocalStorageProvider } from '../platform/local/LocalStorageProvider'
-import { sceneFromState } from '../platform/scene'
-import { lookFromSettings } from '../platform/look'
-import { buildProfile, storageSet } from '../settings/profile'
-import { DEFAULT_SETTINGS } from '../settings/types'
-import type { LookV1, SceneV1 } from '../platform/types'
+import { LocalStorageProvider } from 'ivories/core'
+import { sceneFromState } from 'ivories/core'
+import { lookFromSettings } from 'ivories/core'
+import { buildProfile, storageSet } from 'ivories/core'
+import { DEFAULT_SETTINGS } from 'ivories/core'
+import type { LookV1, SceneV1 } from 'ivories/core'
 
 const SHA = 'c'.repeat(64)
 const scene = (): SceneV1 => sceneFromState({

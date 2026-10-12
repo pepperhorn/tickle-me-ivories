@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useSettings } from './useSettings'
-import { DEFAULT_SETTINGS } from './types'
+import { DEFAULT_SETTINGS } from 'ivories/core'
 
 const get = () => useSettings.getState()
 

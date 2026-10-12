@@ -3,8 +3,8 @@
 // "made with a newer version" PayloadVersionError) are already written for
 // the user, so they are shown as they are.
 
-import { isPlatformError } from '../platform/errors'
-import { isPayloadVersionError } from '../platform/codec'
+import { isPlatformError } from 'ivories/core'
+import { isPayloadVersionError } from 'ivories/core'
 
 export function saveErrorMessage(e: unknown, fallback: string): string {
   if (isPayloadVersionError(e) || isPlatformError(e)) return e.message

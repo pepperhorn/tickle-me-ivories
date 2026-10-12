@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useTransport, playheadAt } from './useTransport'
-import { buildTempoMap } from '../model/tempoMap'
-import { retimeScore } from '../io/parseMidi'
-import type { ScoreDocument } from '../model/types'
+import { buildTempoMap } from 'ivories/core'
+import { retimeScore } from 'ivories/core'
+import type { ScoreDocument } from 'ivories/core'
 
 const PPQ = 480
 const score = (): ScoreDocument => ({

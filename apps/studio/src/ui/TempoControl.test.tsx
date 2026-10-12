@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { TempoControl } from './TempoControl'
-import type { TempoSetting } from '../model/types'
+import type { TempoSetting } from 'ivories/core'
 
 function setup(tempo: TempoSetting) {
   const onChange = vi.fn()
