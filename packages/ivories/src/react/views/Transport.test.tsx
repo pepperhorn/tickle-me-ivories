@@ -30,8 +30,10 @@ describe('Transport (spec §4)', () => {
   it('play toggles the provider clock and resumes audio', async () => {
     const { clock, engine } = setup()
     fireEvent.click(await screen.findByRole('button', { name: 'Play' }))
-    expect(clock.playing).toBe(true)
     expect(engine.resume).toHaveBeenCalled()
+    // The clock starts once resume() settles (the downbeat is not lost to a starting context).
+    await waitFor(() => expect(clock.playing).toBe(true))
+    await screen.findByRole('button', { name: 'Pause' })
     fireEvent.click(screen.getByRole('button', { name: 'Pause' }))
     expect(clock.playing).toBe(false)
   })

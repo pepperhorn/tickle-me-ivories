@@ -230,6 +230,22 @@ describe('IvoriesProvider robustness', () => {
     }
   })
 
+  it('Play from a suspended context waits for resume(), so the downbeat is handed to the engine', async () => {
+    const clock = new ManualClock()
+    const engine = fakeEngine() as ReturnType<typeof fakeEngine> & { running: boolean; resume: ReturnType<typeof vi.fn> }
+    engine.running = false
+    engine.resume.mockImplementation(() => new Promise<void>((r) => setTimeout(() => { engine.running = true; r() }, 100)))
+    const ref = createRef<IvoriesHandle>()
+    render(<IvoriesProvider ref={ref} score={scoreDoc()} clock={clock} engine={engine} audio><span /></IvoriesProvider>)
+    await waitFor(() => expect(ref.current).not.toBeNull())
+    act(() => ref.current!.play())
+    await new Promise((r) => setTimeout(r, 50))
+    expect(clock.playing).toBe(false)
+    await waitFor(() => expect(engine.play).toHaveBeenCalled())
+    expect(clock.playing).toBe(true)
+    expect((engine.play.mock.calls[0][0] as { note: { pitch: number } }).note.pitch).toBe(60)
+  })
+
   it('an instrument-load failure calls onError but leaves status.error unset (the score plays silently)', async () => {
     const onError = vi.fn()
     let status: { error: unknown } | null = null
