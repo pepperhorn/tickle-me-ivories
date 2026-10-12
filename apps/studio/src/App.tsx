@@ -24,6 +24,7 @@ import { useSceneActions } from './studio/useSceneActions'
 import { ScenesSection } from './studio/ScenesSection'
 import { StudioSettings } from './studio/StudioSettings'
 import { useLiveMidi } from './studio/liveMidi'
+import { RecordControl } from './studio/RecordControl'
 import { useStudioStage } from './studio/stageStore'
 import { primarySlot, withPrimaryMode } from './studio/modeSync'
 import { LayoutToolbar } from './studio/LayoutToolbar'
@@ -186,6 +187,7 @@ export default function App() {
             viewProps={viewProps}
             slotViewProps={slotViewProps}
           />
+          {liveMidi.enabled && <RecordControl onRecorded={(s) => { loadAnother(); loader.loadDocument(s) }} />}
         </IvoriesProvider>
         {countInHost && countIn ? createPortal(countIn, countInHost) : countIn}
         {!t.score && (

@@ -4,6 +4,7 @@ import type { Clock } from '../core/clock/types'
 import type { FrameLoop } from '../core/render/frameLoop'
 import type { IvoriesError } from '../core/errors'
 import type { LiveNote } from '../core/midi/types'
+import type { MidiNoteEvent } from '../core/midi/MidiInput'
 import type { NoteEvent, ScoreDocument, TempoSetting } from '../core/model/types'
 import type { AudioSettings, Settings } from '../core/settings/types'
 import type { ValueStore } from './ValueStore'
@@ -33,6 +34,8 @@ export interface IvoriesContextValue {
     held: ValueStore<ReadonlyMap<number, LiveNote>>
     /** Starts MIDI input (ref-counted); returns the release. */
     enable(): () => void
+    /** Every live note event, on and off; returns the unsubscribe. */
+    subscribe(fn: (e: MidiNoteEvent) => void): () => void
   }
 }
 

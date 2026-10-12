@@ -222,6 +222,7 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   const liveUsers = useRef(0)
   const engineRef = useRef(engine); engineRef.current = engine
 
+  const [liveListeners] = useState(() => new Set<(e: MidiNoteEvent) => void>())
   const onLive = useCallback((e: MidiNoteEvent) => {
     const next = new Map(liveHeld.get())
     if (e.on) next.set(e.midi, { midi: e.midi, velocity: e.velocity, time: e.time })
@@ -235,7 +236,8 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
     const out = { midi: e.midi, velocity: e.velocity, time: e.time, source: 'live' as const }
     if (e.on) ev.onNoteOn?.(out)
     else ev.onNoteOff?.(out)
-  }, [liveHeld, active])
+    for (const fn of [...liveListeners]) fn(e)
+  }, [liveHeld, active, liveListeners])
 
   const enableLive = useCallback(() => {
     liveUsers.current++
@@ -267,7 +269,11 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   const midiDeviceId = props.midiDeviceId ?? null
   useEffect(() => { midiRef.current?.setDevice(midiDeviceId) }, [midiDeviceId])
   useEffect(() => { if (props.liveAudio && midiRef.current) void engine?.prepareLive().catch(() => {}) }, [props.liveAudio, engine])
-  const liveHub = useMemo(() => ({ held: liveHeld, enable: enableLive }), [liveHeld, enableLive])
+  const liveHub = useMemo(() => ({
+    held: liveHeld,
+    enable: enableLive,
+    subscribe: (fn: (e: MidiNoteEvent) => void) => { liveListeners.add(fn); return () => { liveListeners.delete(fn) } },
+  }), [liveHeld, enableLive, liveListeners])
 
   useEffect(() => { if (score) latest.current.onReady?.({ score, duration: score.durationSec }) }, [score])
 

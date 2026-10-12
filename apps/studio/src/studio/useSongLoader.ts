@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { hashFile, loadProfile, mergeVoices, parseScoreFile } from 'ivories/core'
-import type { AudioEngine, TempoSetting } from 'ivories/core'
+import type { AudioEngine, ScoreDocument, TempoSetting, Voice } from 'ivories/core'
 import { useTransport } from '../transport/useTransport'
 import { currentSettings, useSettings } from '../settings/useSettings'
 
@@ -19,6 +19,44 @@ export function useSongLoader(o: { engine: AudioEngine; onScoreReplaced(): void 
   // resolves (voice ids like 'hand-left'/'hand-right' repeat across files).
   const loadTokenRef = useRef(0)
   const voicesReadyRef = useRef<VoicesReady>({ promise: Promise.resolve(), done: true })
+
+  // The audio half shared by loadFile and loadDocument. NOT awaited by the
+  // caller before the score shows (count-in task): outside a user gesture
+  // resume() can stay pending until one arrives, and the instruments used to
+  // wait behind it -- so they only started loading when Play was pressed, and
+  // the first seconds played silent. Sample fetch and decode work on a
+  // suspended context; the gesture that unlocks audio is the file picker's
+  // click (unlockAudio) or, failing that, Play / "Tap to start sound".
+  // Failures go to setError; the promise resolves once voices are loaded. The retain is skipped once a newer load has taken the token.
+  const startAudio = async (token: number, fileVoices: Voice[], label: string): Promise<void> => {
+    engine.resume().catch((e: unknown) => {
+      // The score is loaded and visible; only sound is affected.
+      if (loadTokenRef.current === token) {
+        setError(`${label} is loaded, but audio could not start: ${(e as Error).message}`)
+      }
+    })
+    const ready = (async () => {
+      engine.setMasterVolume(useSettings.getState().audio.masterVolume)
+      // Load the voices as they are NOW, not this function's parsed copy: a
+      // scene applied in onLoaded must not have its instruments and gains
+      // overwritten by the file's defaults.
+      const voices = loadTokenRef.current === token
+        ? useTransport.getState().score?.voices ?? fileVoices
+        : fileVoices
+      await Promise.all(voices.map((v) => engine.loadVoice(v)))
+      if (loadTokenRef.current === token) engine.retainVoices(voices.map((v) => v.id))
+    })()
+    const entry = { promise: ready.catch(() => {}), done: false }
+    void entry.promise.then(() => { entry.done = true })
+    voicesReadyRef.current = entry
+    try {
+      await ready
+    } catch (e) {
+      if (loadTokenRef.current === token) {
+        setError(`${label} is loaded, but audio could not start: ${(e as Error).message}`)
+      }
+    }
+  }
 
   // Resolves false if the file was refused. Two optional hooks serve the
   // scene file prompt (§8.3):
@@ -79,39 +117,18 @@ export function useSongLoader(o: { engine: AudioEngine; onScoreReplaced(): void 
     }
     hooks.onLoaded?.()
 
-    const audioFailed = (e: unknown) => {
-      // The score is loaded and visible; only sound is affected.
-      if (loadTokenRef.current === token) {
-        setError(`${file.name} is loaded, but audio could not start: ${(e as Error).message}`)
-      }
-    }
-    // NOT awaited (count-in task): outside a user gesture resume() can stay
-    // pending until one arrives, and the instruments used to wait behind it --
-    // so they only started loading when Play was pressed, and the first
-    // seconds played silent. Sample fetch and decode work on a suspended
-    // context; the gesture that unlocks audio is the file picker's click
-    // (unlockAudio) or, failing that, Play / "Tap to start sound".
-    engine.resume().catch(audioFailed)
-    const ready = (async () => {
-      engine.setMasterVolume(useSettings.getState().audio.masterVolume)
-      // Load the voices as they are NOW, not this function's parsed copy: a
-      // scene applied in onLoaded must not have its instruments and gains
-      // overwritten by the file's defaults.
-      const voices = loadTokenRef.current === token
-        ? useTransport.getState().score?.voices ?? score.voices
-        : score.voices
-      await Promise.all(voices.map((v) => engine.loadVoice(v)))
-      if (loadTokenRef.current === token) engine.retainVoices(voices.map((v) => v.id))
-    })()
-    const entry = { promise: ready.catch(() => {}), done: false }
-    void entry.promise.then(() => { entry.done = true })
-    voicesReadyRef.current = entry
-    try {
-      await ready
-    } catch (e) {
-      audioFailed(e)
-    }
+    await startAudio(token, score.voices, file.name)
     return true
+  }, [engine])
+
+  /** Loads an in-memory score (a recording): same model and audio halves as loadFile, no profile. */
+  const loadDocument = useCallback((score: ScoreDocument) => {
+    const token = ++loadTokenRef.current
+    setError(null)
+    useTransport.setState({ tempo: DEFAULT_TEMPO })
+    useTransport.getState().loadScore(score)
+    onScoreReplaced.current()
+    void startAudio(token, score.voices, 'The recording')
   }, [engine])
 
   // Any tap or click on the stage, and the file pickers' own clicks, unlock
@@ -132,7 +149,7 @@ export function useSongLoader(o: { engine: AudioEngine; onScoreReplaced(): void 
   const voicesReady = useCallback(() => voicesReadyRef.current, [])
 
   return useMemo(
-    () => ({ error, setError, loadFile, unlockAudio, clearSong, voicesReady }),
-    [error, loadFile, unlockAudio, clearSong, voicesReady],
+    () => ({ error, setError, loadFile, loadDocument, unlockAudio, clearSong, voicesReady }),
+    [error, loadFile, loadDocument, unlockAudio, clearSong, voicesReady],
   )
 }
