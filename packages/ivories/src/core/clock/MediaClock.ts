@@ -138,7 +138,9 @@ export class MediaClock implements Clock {
   /** Detaches from the element (which stays the host's), clears the timer and freezes now(). */
   dispose(): void {
     if (this.frozen !== null) return
-    const t = this.now()
+    // Read without side effects: now() past the pre-roll's crossing would start
+    // the element on a clock that is going away.
+    const t = (this.pre ? this.virtual(this.pre) : this.el.currentTime) - this.offset
     this.disarm()
     this.pre = null
     for (const [type, h] of this.handlers) this.el.removeEventListener(type, h)

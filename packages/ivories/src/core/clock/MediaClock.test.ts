@@ -124,4 +124,21 @@ describe('MediaClock specifics', () => {
     expect(fn).not.toHaveBeenCalled()
     expect(vi.getTimerCount()).toBe(0)
   })
+  it('dispose during the pre-roll, after the virtual time crossed 0, never starts the element', () => {
+    vi.useFakeTimers()
+    let ms = 0
+    const el = new FakeMedia()
+    const play = vi.spyOn(el, 'play')
+    const c = new MediaClock(el as unknown as HTMLMediaElement, { offset: 0, nowMs: () => ms })
+    c.seek(-1)
+    c.play()
+    // The wall clock moves past the crossing before the timer fires.
+    ms += 1500
+    c.dispose()
+    expect(play).not.toHaveBeenCalled()
+    expect(el.paused).toBe(true)
+    expect(c.now()).toBeCloseTo(0.5, 9)
+    vi.advanceTimersByTime(2000)
+    expect(play).not.toHaveBeenCalled()
+  })
 })
