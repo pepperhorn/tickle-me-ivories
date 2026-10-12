@@ -76,6 +76,21 @@ describe('Keyboard and FallingKeys (spec §4)', () => {
     expect(Number.isFinite(layout.hitY)).toBe(true)
   })
 
+  it('exposes the last drawn time as data-t on the view root (e2e sync check)', async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
+      (() => stubCtx().ctx) as unknown as typeof HTMLCanvasElement.prototype.getContext,
+    )
+    const clock = new AudioClock({ currentTime: 0 })
+    const { container } = render(
+      <IvoriesProvider score={doc()} engine={fakeEngine()} clock={clock}>
+        <FallingKeys />
+      </IvoriesProvider>,
+    )
+    await waitFor(() => expect(container.querySelector<HTMLElement>('.ivories-falling')?.dataset.t).toBe('0'))
+    clock.seek(0.75)
+    await waitFor(() => expect(container.querySelector<HTMLElement>('.ivories-falling')?.dataset.t).toBe('0.75'))
+  })
+
   it('a throwing draw reports render-failed once and shows an inline message (R11)', async () => {
     // Every drawing call throws, so renderer.draw fails inside the rAF callback,
     // where no React error boundary can catch it.

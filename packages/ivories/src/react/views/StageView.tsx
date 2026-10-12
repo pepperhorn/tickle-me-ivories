@@ -99,6 +99,9 @@ export function StageView(p: StageViewProps & { kind: 'keyboard' | 'falling'; lo
         range: rangeFromProp(props.range),
         live: liveMap,
       })
+      // The last drawn time, for hosts and e2e sync checks (never read back here).
+      const root = rootRef.current
+      if (root) root.dataset.t = String(t)
       const held = frame.held
       // Labels name live keys as well as the score's sounding ones.
       const lit = liveMap.size ? new Map<number, unknown>([...held, ...liveMap]) : held
