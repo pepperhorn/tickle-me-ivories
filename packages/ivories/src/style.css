@@ -134,6 +134,10 @@
   .ivories .ivories-tempo-input { width: 6rem; accent-color: var(--ivories-accent); }
   .ivories.ivories-preset { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 12rem; }
   .ivories .ivories-preset-main { position: relative; flex: 1 1 auto; min-height: 0; }
+  .ivories .ivories-preset-notation { position: relative; flex: 3 1 0; min-height: 0; }
+  .ivories .ivories-preset-main[data-with-notation] { flex: 2 1 0; }
+  .ivories.ivories-preset-keyboard-notation .ivories-preset-main,
+  .ivories.ivories-preset-endless-keyboard .ivories-preset-main { flex: 0 0 30%; }
   /* Camera slots (spec §5.3). Each root carries .ivories itself, so these
      compound selectors style a CameraSlot rendered on its own. */
   .ivories.ivories-camera { display: block; width: 100%; height: 100%; }
