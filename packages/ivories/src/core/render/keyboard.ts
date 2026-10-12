@@ -25,7 +25,10 @@ export function drawKeyboard(
     if (k.black) continue
     const h = held.get(k.pitch)
     const v = h ? voices.get(h.voiceId) : undefined
-    ctx.fillStyle = h && v ? noteColor(v.hue, h.velocity, state.velocity) : theme.keyWhite
+    const lv = state.live?.get(k.pitch)
+    ctx.fillStyle = lv
+      ? noteColor(theme.liveHue, lv.velocity, state.velocity)
+      : h && v ? noteColor(v.hue, h.velocity, state.velocity) : theme.keyWhite
     const w = Math.max(1, k.w - theme.keyGap)
     roundRect(ctx, k.x, hitY, w, keyboardH, theme.keyRadius)
     if (outlined) {
@@ -57,14 +60,17 @@ export function drawKeyboard(
     if (!k.black) continue
     const h = held.get(k.pitch)
     const v = h ? voices.get(h.voiceId) : undefined
-    ctx.fillStyle = h && v ? noteColor(v.hue, h.velocity, state.velocity) : theme.keyBlack
+    const lv = state.live?.get(k.pitch)
+    ctx.fillStyle = lv
+      ? noteColor(theme.liveHue, lv.velocity, state.velocity)
+      : h && v ? noteColor(v.hue, h.velocity, state.velocity) : theme.keyBlack
     roundRect(ctx, k.x, hitY, k.w, blackH, theme.keyRadius)
     if (outlined) {
       ctx.strokeStyle = theme.keyOutline
       ctx.lineWidth = theme.keyBorderWidth
       strokeRoundRect(ctx, k.x, hitY, k.w, blackH, theme.keyRadius)
     }
-    if (h) {
+    if (h || lv) {
       ctx.fillStyle = theme.blackKeyTop
       ctx.fillRect(k.x, hitY, k.w, 2)
     }

@@ -46,6 +46,12 @@ describe('isTransparent', () => {
 })
 
 describe('readTheme', () => {
+  it('reads the live-input hue', () => {
+    const t = readTheme(el, reader({ '--ivories-live-hue': '200' }))
+    expect(t.liveHue).toBe(200)
+    expect(DEFAULT_THEME.liveHue).toBe(35)
+  })
+
   it('returns every default when no token resolves', () => {
     expect(readTheme(el, reader({}))).toEqual(DEFAULT_THEME)
   })

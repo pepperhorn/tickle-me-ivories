@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { drawKeyboard } from './keyboard'
 import { computeLayout } from './geometry'
 import { DEFAULT_THEME } from './theme'
-import { DEFAULT_SCHEME } from './colors'
+import { DEFAULT_SCHEME, noteColor } from './colors'
 import { stubCtx, state } from './pianoRoll.test-helpers'
 
 describe('the middle C label', () => {
@@ -48,5 +48,24 @@ describe('the middle C label', () => {
       new Map(),
     )
     expect(texts).not.toContain('C4')
+  })
+})
+
+describe('live input on the keys (spec §4.1)', () => {
+  it('lights live keys in the live hue over the score colour', () => {
+    const score = { pitch: 60, startSec: 0, endSec: 1, velocity: 80, voiceId: 'v' } as never
+    const s = { ...state([]), live: new Map([[60, { midi: 60, velocity: 100, time: 0 }]]) }
+    const { ctx, fillStyles } = stubCtx()
+    drawKeyboard(ctx, s, new Map([[60, score]]))
+    expect(fillStyles).toContain(noteColor(s.theme.liveHue, 100, s.velocity))
+    expect(fillStyles).not.toContain(noteColor(207, 80, s.velocity))
+  })
+
+  it('lights a live black key and marks its top', () => {
+    const s = { ...state([]), live: new Map([[61, { midi: 61, velocity: 64, time: 0 }]]) }
+    const { ctx, fillStyles } = stubCtx()
+    drawKeyboard(ctx, s, new Map())
+    expect(fillStyles).toContain(noteColor(s.theme.liveHue, 64, s.velocity))
+    expect(fillStyles).toContain(s.theme.blackKeyTop)
   })
 })

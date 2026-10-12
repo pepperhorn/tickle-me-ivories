@@ -21,6 +21,8 @@ export interface Theme {
   flashWarmRgb: string
   progressTrack: string
   progressFill: string
+  /** Hue of keys lit by live input (spec §4.1), 0-360. */
+  liveHue: number
 }
 
 export const DEFAULT_THEME: Theme = {
@@ -43,6 +45,7 @@ export const DEFAULT_THEME: Theme = {
   flashWarmRgb: '255, 242, 214',
   progressTrack: 'rgba(255,255,255,0.06)',
   progressFill: '#e8384f',
+  liveHue: 35,
 }
 
 export type StyleReader = (el: Element) => Pick<CSSStyleDeclaration, 'getPropertyValue'>
@@ -113,5 +116,6 @@ export function readTheme(
     flashWarmRgb: str('--ivories-flash-warm-rgb', DEFAULT_THEME.flashWarmRgb),
     progressTrack: str('--ivories-progress-track', DEFAULT_THEME.progressTrack),
     progressFill: str('--ivories-progress-fill', DEFAULT_THEME.progressFill),
+    liveHue: num('--ivories-live-hue', DEFAULT_THEME.liveHue),
   }
 }

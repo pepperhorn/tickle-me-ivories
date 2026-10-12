@@ -12,6 +12,9 @@ import { SCALE_1, loadScoreSource } from '../core/io/loadScoreSource'
 import { longestNoteSec } from '../core/model/score'
 import { resolveSettings } from '../core/settings/resolve'
 import { IvoriesError, isIvoriesError } from '../core/errors'
+import { MidiInput } from '../core/midi/MidiInput'
+import type { MidiNoteEvent } from '../core/midi/MidiInput'
+import type { LiveNote } from '../core/midi/types'
 import { IvoriesContext } from './context'
 import { ValueStore } from './ValueStore'
 import { useDisposable } from './useDisposable'
@@ -56,6 +59,10 @@ export interface IvoriesProviderProps extends ScoreSource, IvoriesEvents {
   look?: LookV1
   settings?: Partial<Settings>
   fallSeconds?: number
+  /** Sound live notes through the engine. Default false (the studio turns it on). */
+  liveAudio?: boolean
+  /** The MIDI input to listen to; null or absent listens to every input. */
+  midiDeviceId?: string | null
   children?: ReactNode
   ref?: Ref<IvoriesHandle>
 }
@@ -206,6 +213,55 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
     })
   }, [frames, active])
 
+  // ---- live MIDI (spec §4.1): started while a view with input="midi" is mounted ----
+  const [liveHeld] = useState(() => new ValueStore<ReadonlyMap<number, LiveNote>>(new Map()))
+  const midiRef = useRef<MidiInput | null>(null)
+  const liveUsers = useRef(0)
+  const engineRef = useRef(engine); engineRef.current = engine
+
+  const onLive = useCallback((e: MidiNoteEvent) => {
+    const next = new Map(liveHeld.get())
+    if (e.on) next.set(e.midi, { midi: e.midi, velocity: e.velocity, time: e.time })
+    else next.delete(e.midi)
+    liveHeld.set(next)
+    active.set({ ...active.get(), live: next })
+    const ev = latest.current
+    if (e.on) { if (ev.liveAudio) engineRef.current?.noteOn(e.midi, e.velocity) }
+    // Always released: liveAudio may have been switched off while the key was down.
+    else engineRef.current?.noteOff(e.midi)
+    const out = { midi: e.midi, velocity: e.velocity, time: e.time, source: 'live' as const }
+    if (e.on) ev.onNoteOn?.(out)
+    else ev.onNoteOff?.(out)
+  }, [liveHeld, active])
+
+  const enableLive = useCallback(() => {
+    liveUsers.current++
+    if (liveUsers.current === 1) {
+      const m = new MidiInput({ deviceId: latest.current.midiDeviceId ?? null })
+      midiRef.current = m
+      m.subscribe(onLive)
+      // A MIDI failure only reports; playback and the views carry on.
+      m.start().catch((err) => report(isIvoriesError(err) ? err : new IvoriesError('midi-unavailable', 'MIDI input is unavailable.', err)))
+      if (latest.current.liveAudio) void engineRef.current?.prepareLive().catch(() => {})
+    }
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      liveUsers.current--
+      if (liveUsers.current > 0) return
+      midiRef.current?.stop()
+      midiRef.current = null
+      liveHeld.set(new Map())
+      active.set({ ...active.get(), live: new Map() })
+    }
+  }, [onLive, report, liveHeld, active])
+
+  const midiDeviceId = props.midiDeviceId ?? null
+  useEffect(() => { midiRef.current?.setDevice(midiDeviceId) }, [midiDeviceId])
+  useEffect(() => { if (props.liveAudio && midiRef.current) void engine?.prepareLive().catch(() => {}) }, [props.liveAudio, engine])
+  const liveHub = useMemo(() => ({ held: liveHeld, enable: enableLive }), [liveHeld, enableLive])
+
   useEffect(() => { if (score) latest.current.onReady?.({ score, duration: score.durationSec }) }, [score])
 
   useImperativeHandle(props.ref, () => ({
@@ -218,8 +274,8 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
 
   const setAudio = useCallback((p: Partial<AudioSettings>) => setAudioPatch((cur) => ({ ...cur, ...p })), [])
   const value = useMemo<IvoriesContextValue | null>(() => (clock && engine && frames
-    ? { score, clock, engine, settings, fallSeconds, maxNoteDur, audio, frames, active, status, setAudio, reportError: report }
-    : null), [score, clock, engine, settings, fallSeconds, maxNoteDur, audio, frames, active, status, setAudio, report])
+    ? { score, clock, engine, settings, fallSeconds, maxNoteDur, audio, frames, active, status, setAudio, reportError: report, live: liveHub }
+    : null), [score, clock, engine, settings, fallSeconds, maxNoteDur, audio, frames, active, status, setAudio, report, liveHub])
 
   // Children render once the clock, engine and frame loop exist (after the
   // first effect; never on the server), so a view always finds a context.

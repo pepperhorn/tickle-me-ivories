@@ -11,10 +11,7 @@ export const PROVIDER_KEYS = [
   'onReady', 'onNoteOn', 'onNoteOff', 'onTimeUpdate', 'onError',
 ] as const
 
-export type SelfContainedProps = Omit<IvoriesProviderProps, 'children' | 'ref'> & {
-  liveAudio?: boolean
-  midiDeviceId?: string | null
-}
+export type SelfContainedProps = Omit<IvoriesProviderProps, 'children' | 'ref'>
 
 /** Inside a provider: render the view. Outside: wrap it in its own provider. */
 export function withProvider<P extends object>(View: ComponentType<P>, displayName: string) {

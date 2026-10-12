@@ -26,6 +26,8 @@
     --ivories-flash-warm-rgb: 255, 242, 214;
     --ivories-progress-track: rgba(255, 255, 255, 0.06);
     --ivories-progress-fill: #e8384f;
+    /* Hue (0-360) of keys lit by live MIDI input. */
+    --ivories-live-hue: 35;
     /* Chrome tokens (Transport, messages, stage). */
     --ivories-ink: #e9eaf2;
     --ivories-ink-dim: #9698ad;

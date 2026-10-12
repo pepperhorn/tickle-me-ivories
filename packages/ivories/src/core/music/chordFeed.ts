@@ -38,13 +38,17 @@ export class ChordFeed {
 
   update(
     notes: NoteEvent[], head: number, windowSec: number, maxNoteDur: number,
-    key: KeyContext, nowMs: number,
+    key: KeyContext, nowMs: number, extraPitches?: readonly number[],
   ): ChordReading | null {
     // A backward scrub makes the held reading stale; start over from the new spot.
     if (head < this.lastHead - BACKWARD_JUMP_SEC) this.tracker.reset()
     this.lastHead = head
 
-    const set = pitchesInWindow(notes, head, windowSec, maxNoteDur)
+    // Live keys (spec §4.1) join the score's sounding pitches.
+    const fromScore = pitchesInWindow(notes, head, windowSec, maxNoteDur)
+    const set = extraPitches && extraPitches.length
+      ? [...new Set([...fromScore, ...extraPitches])].sort((a, b) => a - b)
+      : fromScore
     if (key !== this.key || !sameNumbers(set, this.set)) {
       this.set = set
       this.key = key

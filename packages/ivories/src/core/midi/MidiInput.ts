@@ -76,6 +76,7 @@ export class MidiInput {
     try {
       access = await request()
     } catch (e) {
+      if (gen !== this.gen) return // stopped meanwhile (StrictMode): nobody is waiting on MIDI any more
       throw new IvoriesError('midi-unavailable', 'MIDI access was denied or failed.', e)
     }
     if (gen !== this.gen) return // stop() (or a newer start()) ran while access was pending

@@ -26,6 +26,12 @@ export interface IvoriesContextValue {
   status: ValueStore<ProviderStatus>
   setAudio(patch: Partial<AudioSettings>): void
   reportError(e: IvoriesError): void
+  /** Live MIDI input (spec §4.1), started only while a view asks for it. */
+  live: {
+    held: ValueStore<ReadonlyMap<number, LiveNote>>
+    /** Starts MIDI input (ref-counted); returns the release. */
+    enable(): () => void
+  }
 }
 
 export const IvoriesContext = createContext<IvoriesContextValue | null>(null)

@@ -93,4 +93,11 @@ describe('ChordFeed', () => {
     feed.reset()
     expect(feed.update([], 0, WINDOW, MAX_DUR, DEFAULT_KEY, 0)).toBeNull()
   })
+
+  it('reads a chord from live pitches with no score notes (spec §4.1)', () => {
+    const feed = new ChordFeed()
+    let reading = null
+    for (let i = 0; i < 120 && !reading; i++) reading = feed.update([], 0, WINDOW, MAX_DUR, DEFAULT_KEY, i * 16, [60, 64, 67])
+    expect(reading?.symbol).toMatch(/^C/)
+  })
 })

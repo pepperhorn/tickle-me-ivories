@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { createRef } from 'react'
 import { render, screen, waitFor, act } from '@testing-library/react'
 import { Midi } from '@tonejs/midi'
@@ -10,6 +10,7 @@ import { MediaClock } from '../core/clock/MediaClock'
 import { FakeMedia } from '../core/clock/fakeMediaElement.test-helpers'
 import { parseMidi } from '../core/io/parseMidi'
 import { fakeEngine } from './testEngine.test-helpers'
+import { Keyboard } from './views/Keyboard'
 import type { IvoriesHandle } from './IvoriesProvider'
 
 const bytes = () => {
@@ -181,5 +182,86 @@ describe('IvoriesProvider robustness', () => {
     // The provider's own engine has no AudioContext in jsdom, so loadVoice rejects.
     await waitFor(() => expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'audio-unavailable', message: expect.stringContaining('instruments') })))
     expect(status!.error).toBeNull()
+  })
+})
+
+describe('live MIDI (spec §4.1)', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  function stubMidi() {
+    const port = { id: 'k', name: 'Keys', state: 'connected', onmidimessage: null as null | ((e: { data: Uint8Array }) => void) }
+    vi.stubGlobal('navigator', { ...navigator, requestMIDIAccess: async () => ({ inputs: { forEach: (cb: (p: typeof port) => void) => cb(port) }, onstatechange: null }) })
+    return port
+  }
+  function ActivePeek({ onActive }: { onActive(a: ReturnType<ReturnType<typeof useIvories>['active']['get']>): void }) {
+    const iv = useIvories()
+    onActive(iv.active.get())
+    return null
+  }
+
+  it('lights, reports and (with liveAudio) sounds live notes', async () => {
+    const port = stubMidi()
+    const engine = fakeEngine()
+    const onNoteOn = vi.fn()
+    const onNoteOff = vi.fn()
+    let iv: ReturnType<typeof useIvories> | null = null
+    function Grab() { iv = useIvories(); return null }
+    render(<IvoriesProvider score={scoreDoc()} engine={engine} clock={new AudioClock({ currentTime: 0 })} liveAudio onNoteOn={onNoteOn} onNoteOff={onNoteOff}><Keyboard input="midi" /><Grab /></IvoriesProvider>)
+    await waitFor(() => expect(port.onmidimessage).not.toBeNull())
+    expect(engine.prepareLive).toHaveBeenCalled()
+    act(() => port.onmidimessage!({ data: Uint8Array.of(0x90, 62, 70) }))
+    expect(onNoteOn).toHaveBeenCalledWith(expect.objectContaining({ midi: 62, velocity: 70, source: 'live' }))
+    expect(engine.noteOn).toHaveBeenCalledWith(62, 70)
+    expect(iv!.active.get().live.has(62)).toBe(true)
+    expect(iv!.live.held.get().get(62)).toMatchObject({ midi: 62, velocity: 70 })
+    act(() => port.onmidimessage!({ data: Uint8Array.of(0x80, 62, 0) }))
+    expect(onNoteOff).toHaveBeenCalledWith(expect.objectContaining({ midi: 62, source: 'live' }))
+    expect(engine.noteOff).toHaveBeenCalledWith(62)
+    expect(iv!.active.get().live.has(62)).toBe(false)
+  })
+
+  it('without liveAudio it lights but never sounds; noteOff still reaches the engine', async () => {
+    const port = stubMidi()
+    const engine = fakeEngine()
+    render(<IvoriesProvider score={scoreDoc()} engine={engine} clock={new AudioClock({ currentTime: 0 })}><Keyboard input="midi" /></IvoriesProvider>)
+    await waitFor(() => expect(port.onmidimessage).not.toBeNull())
+    act(() => port.onmidimessage!({ data: Uint8Array.of(0x90, 62, 70) }))
+    act(() => port.onmidimessage!({ data: Uint8Array.of(0x80, 62, 0) }))
+    expect(engine.prepareLive).not.toHaveBeenCalled()
+    expect(engine.noteOn).not.toHaveBeenCalled()
+    expect(engine.noteOff).toHaveBeenCalledWith(62)
+  })
+
+  it('input="none" (the default) never asks for MIDI', async () => {
+    const request = vi.fn(async () => ({ inputs: { forEach() {} }, onstatechange: null }))
+    vi.stubGlobal('navigator', { ...navigator, requestMIDIAccess: request })
+    const { container } = render(<IvoriesProvider score={scoreDoc()} engine={fakeEngine()} clock={new AudioClock({ currentTime: 0 })}><Keyboard /></IvoriesProvider>)
+    await waitFor(() => expect(container.querySelector('.ivories-keyboard')).not.toBeNull())
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('unmounting the last live view stops MIDI and clears the held keys', async () => {
+    const port = stubMidi()
+    let seen: { live: ReadonlyMap<number, unknown> } | null = null
+    const tree = (on: boolean) => (
+      <IvoriesProvider score={scoreDoc()} engine={fakeEngine()} clock={new AudioClock({ currentTime: 0 })}>
+        {on && <Keyboard input="midi" />}
+        <ActivePeek onActive={(a) => { seen = a }} />
+      </IvoriesProvider>
+    )
+    const { rerender } = render(tree(true))
+    await waitFor(() => expect(port.onmidimessage).not.toBeNull())
+    act(() => port.onmidimessage!({ data: Uint8Array.of(0x90, 60, 70) }))
+    rerender(tree(false))
+    expect(port.onmidimessage).toBeNull()
+    rerender(tree(false))
+    expect(seen!.live.size).toBe(0)
+  })
+
+  it('reports midi-unavailable and keeps rendering when Web MIDI is missing', async () => {
+    const onError = vi.fn()
+    const { container } = render(<IvoriesProvider score={scoreDoc()} engine={fakeEngine()} clock={new AudioClock({ currentTime: 0 })} onError={onError}><Keyboard input="midi" /></IvoriesProvider>)
+    await waitFor(() => expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'midi-unavailable' })))
+    expect(container.querySelector('.ivories-keyboard')).not.toBeNull()
   })
 })

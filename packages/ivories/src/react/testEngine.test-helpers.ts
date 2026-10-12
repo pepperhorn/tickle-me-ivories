@@ -15,5 +15,13 @@ export function fakeEngine(src = { currentTime: 0 }) {
     setMasterVolume: vi.fn(),
     setVoiceVolume: vi.fn(),
     dispose: vi.fn(),
-  } as unknown as AudioEngine & { play: ReturnType<typeof vi.fn> }
+    noteOn: vi.fn(),
+    noteOff: vi.fn(),
+    prepareLive: vi.fn(async () => {}),
+  } as unknown as AudioEngine & {
+    play: ReturnType<typeof vi.fn>
+    noteOn: ReturnType<typeof vi.fn>
+    noteOff: ReturnType<typeof vi.fn>
+    prepareLive: ReturnType<typeof vi.fn>
+  }
 }

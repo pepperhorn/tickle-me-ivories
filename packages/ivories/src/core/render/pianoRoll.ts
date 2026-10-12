@@ -7,6 +7,7 @@ import type { Theme } from './theme'
 import type { KeyboardLayout } from './geometry'
 import type { NoteEvent, Voice } from '../model/types'
 import type { VelocityScheme } from '../settings/types'
+import type { LiveNote } from '../midi/types'
 
 export interface RenderState {
   notes: NoteEvent[]           // sorted by startSec
@@ -25,6 +26,8 @@ export interface RenderState {
   flashScale: number           // 0-1.5 multiplier on flash intensity
   showMiddleC: boolean
   theme: Theme
+  /** Keys held on a live MIDI input (spec §4.1); drawn in theme.liveHue over the score colour. */
+  live?: ReadonlyMap<number, LiveNote>
 }
 
 const FLASH_TAIL = FLASH_MS / 1000

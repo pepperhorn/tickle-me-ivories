@@ -34,7 +34,7 @@ export interface StageViewProps {
 /** Shared by the labels-off overlay state so it never allocates. */
 const NO_PITCHES: number[] = []
 
-export function StageView(p: StageViewProps & { kind: 'keyboard' | 'falling'; lookahead?: number }) {
+export function StageView(p: StageViewProps & { kind: 'keyboard' | 'falling'; lookahead?: number; input?: 'none' | 'midi' }) {
   const iv = useIvories()
   const rootRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -54,6 +54,10 @@ export function StageView(p: StageViewProps & { kind: 'keyboard' | 'falling'; lo
   const overlayRef = useRef(overlay)
   const lastReadingRef = useRef<ChordReading | null | undefined>(undefined)
   const lastKeyRef = useRef<KeyContext | null>(null)
+
+  // Live input is ref-counted by the provider: MIDI runs while any view asks.
+  const wantsMidi = p.input === 'midi'
+  useEffect(() => (wantsMidi ? iv.live.enable() : undefined), [wantsMidi, iv.live])
 
   // A seek or a new score makes the held chord stale (App's old seek did this).
   useEffect(() => iv.clock.subscribe((e) => { if (e.type === 'seek') chordFeed.reset() }), [iv.clock, chordFeed])
@@ -85,6 +89,7 @@ export function StageView(p: StageViewProps & { kind: 'keyboard' | 'falling'; lo
       const settings = props.theme && props.theme !== c.settings.theme.name
         ? { ...c.settings, theme: { ...c.settings.theme, name: props.theme } }
         : c.settings
+      const liveMap = c.live.held.get()
       const frame = renderer.draw(ctx, w, h, t, {
         score: c.score,
         settings,
@@ -92,17 +97,20 @@ export function StageView(p: StageViewProps & { kind: 'keyboard' | 'falling'; lo
         maxNoteDur: c.maxNoteDur,
         showRoll: props.kind === 'falling',
         range: rangeFromProp(props.range),
+        live: liveMap,
       })
       const held = frame.held
+      // Labels name live keys as well as the score's sounding ones.
+      const lit = liveMap.size ? new Map<number, unknown>([...held, ...liveMap]) : held
 
       // The overlay is DOM: push only when the sounding set or the layout
       // changes. While labels are off the pitches are emptied once and left.
       const shown = overlayRef.current
       const labelsOn = tx.labels !== 'off'
-      const stale = labelsOn ? !samePitches(held, shown.pitches) : shown.pitches !== NO_PITCHES
+      const stale = labelsOn ? !samePitches(lit, shown.pitches) : shown.pitches !== NO_PITCHES
       if (frame.layout !== shown.layout || stale) {
         if (frame.layout !== shown.layout) props.onLayout?.(frame.layout)
-        const next = { layout: frame.layout, pitches: labelsOn ? [...held.keys()].sort((a, b) => a - b) : NO_PITCHES }
+        const next = { layout: frame.layout, pitches: labelsOn ? [...lit.keys()].sort((a, b) => a - b) : NO_PITCHES }
         overlayRef.current = next
         setOverlay(next)
       }
@@ -118,7 +126,8 @@ export function StageView(p: StageViewProps & { kind: 'keyboard' | 'falling'; lo
         return
       }
       const key = keys.get(c.score, tx.keyOverride)
-      const reading = chordFeed.update(c.score?.notes ?? [], t, tx.chordWindowMs / 1000, c.maxNoteDur, key, performance.now())
+      const reading = chordFeed.update(c.score?.notes ?? [], t, tx.chordWindowMs / 1000, c.maxNoteDur, key, performance.now(),
+        liveMap.size ? [...liveMap.keys()] : undefined)
       if (reading !== lastReadingRef.current || key !== lastKeyRef.current) {
         lastReadingRef.current = reading
         lastKeyRef.current = key

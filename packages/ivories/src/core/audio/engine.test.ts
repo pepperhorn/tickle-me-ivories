@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { AudioEngine, clampToNow, volumeToGain } from './engine'
+import { AudioEngine, LIVE_VOICE_ID, clampToNow, volumeToGain } from './engine'
 import type { InstrumentFactoryFn } from './engine'
 import type { Voice } from '../model/types'
 import type { ScheduledNote } from './scheduler'
@@ -292,5 +292,64 @@ describe('AudioEngine.resume / running', () => {
     expect(engine.running).toBe(false)
     ctx.state = 'running'
     expect(engine.running).toBe(true)
+  })
+})
+
+describe('AudioEngine live voice (spec §4.1)', () => {
+  function liveHarness() {
+    const starts: number[] = []
+    const stops: number[] = []
+    const instStops: string[] = []
+    const engine = new AudioEngine({
+      makeContext: () => fakeContext() as unknown as AudioContext,
+      makeInstrument: async () => ({
+        start: (o: { note: number }) => { starts.push(o.note); return () => { stops.push(o.note) } },
+        stop() { instStops.push('stop') },
+        dispose() {},
+      }) as never,
+    })
+    return { engine, starts, stops, instStops }
+  }
+
+  it('sounds live keys on a dedicated bus that survives retainVoices', async () => {
+    const { engine, starts, stops } = liveHarness()
+    await engine.prepareLive()
+    engine.noteOn(60, 90)
+    engine.retainVoices([])
+    engine.noteOff(60)
+    expect(stops).toEqual([60])
+    engine.noteOn(62, 90)
+    expect(starts).toEqual([60, 62])
+  })
+
+  it('is silent before prepareLive and ignores an unknown noteOff', () => {
+    const { engine, starts } = liveHarness()
+    engine.noteOn(60, 90)
+    expect(() => engine.noteOff(61)).not.toThrow()
+    expect(starts).toEqual([])
+  })
+
+  it('a repeated noteOn retriggers: the old note stops first', async () => {
+    const { engine, stops } = liveHarness()
+    await engine.prepareLive()
+    engine.noteOn(60, 90)
+    engine.noteOn(60, 50)
+    expect(stops).toEqual([60])
+  })
+
+  it('stopAll (seek/pause/rate) leaves the live bus sounding', async () => {
+    const { engine, instStops } = liveHarness()
+    await engine.prepareLive()
+    engine.stopAll()
+    expect(instStops).toEqual([])
+    expect(LIVE_VOICE_ID).toBe('__live')
+  })
+
+  it('dispose stops held live notes', async () => {
+    const { engine, stops } = liveHarness()
+    await engine.prepareLive()
+    engine.noteOn(64, 80)
+    engine.dispose()
+    expect(stops).toEqual([64])
   })
 })

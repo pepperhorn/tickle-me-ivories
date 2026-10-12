@@ -5,6 +5,12 @@ import { MetronomeVoice } from './metronome'
 
 const GRAND_PIANO_ID = 'acoustic_grand_piano'
 
+/** The bus live MIDI keys sound on (spec §4.1). retainVoices and stopAll leave it alone. */
+export const LIVE_VOICE_ID = '__live'
+const LIVE_VOICE: Voice = {
+  id: LIVE_VOICE_ID, label: 'Live', hue: 0, instrument: GRAND_PIANO_ID, visible: true, audible: true, volume: 1,
+}
+
 /** The instance type produced by either smplr instrument factory we use. */
 type Instrument = ReturnType<typeof SplendidGrandPiano> | ReturnType<typeof Soundfont>
 
@@ -72,6 +78,7 @@ export class AudioEngine {
   private loading = new Map<string, Promise<void>>()
   private masterVolume = 0.8
   private metro: MetronomeVoice | null = null
+  private readonly liveStops = new Map<number, () => void>()
   private readonly makeContext: () => AudioContext
   private readonly makeInstrument: InstrumentFactoryFn
 
@@ -224,15 +231,41 @@ export class AudioEngine {
     return task
   }
 
-  /** Disposes every voice bus not in `ids`. Called when a score is replaced. */
+  /** Disposes every voice bus not in `ids` (the live bus always stays). Called when a score is replaced. */
   retainVoices(ids: string[]): void {
-    const keep = new Set(ids)
+    const keep = new Set([...ids, LIVE_VOICE_ID])
     for (const [id, bus] of this.buses) {
       if (keep.has(id)) continue
-      bus.instrument?.dispose()
-      bus.gain.disconnect()
-      this.buses.delete(id)
+      this.disposeBus(id, bus)
     }
+  }
+
+  private disposeBus(id: string, bus: VoiceBus): void {
+    bus.instrument?.dispose()
+    bus.gain.disconnect()
+    this.buses.delete(id)
+  }
+
+  /** Loads the live piano (spec §4.1 liveAudio). Safe to call repeatedly. */
+  prepareLive(): Promise<void> {
+    return this.loadVoice(LIVE_VOICE)
+  }
+
+  /** Sounds a live key now. Silent until prepareLive() has finished. */
+  noteOn(midi: number, velocity: number): void {
+    const inst = this.buses.get(LIVE_VOICE_ID)?.instrument
+    if (!inst) return
+    this.noteOff(midi)
+    const stop = inst.start({ note: midi, velocity }) as unknown as () => void
+    this.liveStops.set(midi, stop)
+  }
+
+  /** Releases a live key. A key that never sounded is ignored. */
+  noteOff(midi: number): void {
+    const stop = this.liveStops.get(midi)
+    if (!stop) return
+    this.liveStops.delete(midi)
+    try { stop() } catch { /* already stopped */ }
   }
 
   /** The click, built on first use so it never creates the AudioContext early. */
@@ -261,8 +294,10 @@ export class AudioEngine {
     })
   }
 
+  /** Silences scheduled score audio (seek, pause, rate). Live keys keep sounding. */
   stopAll(): void {
-    for (const bus of this.buses.values()) {
+    for (const [id, bus] of this.buses) {
+      if (id === LIVE_VOICE_ID) continue
       try {
         bus.instrument?.stop()
       } catch {
@@ -272,7 +307,9 @@ export class AudioEngine {
   }
 
   dispose(): void {
-    this.retainVoices([])
+    for (const midi of [...this.liveStops.keys()]) this.noteOff(midi)
+    this.liveStops.clear()
+    for (const [id, bus] of [...this.buses]) this.disposeBus(id, bus)
     this.master?.disconnect()
   }
 }

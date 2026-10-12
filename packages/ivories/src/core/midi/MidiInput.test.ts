@@ -96,6 +96,15 @@ describe('MidiInput (spec §4.1)', () => {
     expect(input.devices()).toEqual([])
   })
 
+  it('a failure that lands after stop() resolves quietly (StrictMode, no spurious midi-unavailable)', async () => {
+    let reject!: (e: unknown) => void
+    const input = new MidiInput({ requestAccess: () => new Promise<MidiAccessLike>((_r, j) => { reject = j }) })
+    const pending = input.start()
+    input.stop()
+    reject(new Error('SecurityError'))
+    await expect(pending).resolves.toBeUndefined()
+  })
+
   it('lists devices without binding any port', async () => {
     const f = fakeAccess(['x'])
     expect(await listMidiDevices(async () => f.access)).toEqual([{ id: 'x', name: 'Port x' }])

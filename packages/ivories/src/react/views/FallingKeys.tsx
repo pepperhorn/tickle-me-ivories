@@ -6,11 +6,12 @@ import type { StageViewProps } from './StageView'
 export interface FallingKeysProps extends StageViewProps {
   /** Seconds of music visible above the keys (default: the provider's fallSeconds). */
   lookahead?: number
-  /** Live input (Task 17). */
+  /** Live MIDI input (spec §4.1): 'midi' lights, reports and (with the provider's liveAudio) sounds
+      live keys while this view is mounted. Default 'none'. */
   input?: 'none' | 'midi'
 }
 
-function FallingKeysView({ input: _input, ...props }: FallingKeysProps) {
+function FallingKeysView(props: FallingKeysProps) {
   return <Guarded><StageView {...props} kind="falling" /></Guarded>
 }
 

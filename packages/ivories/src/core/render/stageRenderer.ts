@@ -5,6 +5,7 @@ import type { RenderState } from './pianoRoll'
 import type { Theme } from './theme'
 import type { NoteEvent, ScoreDocument, Voice } from '../model/types'
 import type { Settings, ThemeName, ZoomMode } from '../settings/types'
+import type { LiveNote } from '../midi/types'
 
 export interface StageInput {
   score: ScoreDocument | null
@@ -14,6 +15,8 @@ export interface StageInput {
   showRoll: boolean
   /** Explicit crop (the `range` prop); null follows settings.display.zoom. */
   range: [number, number] | null
+  /** Keys held on a live MIDI input (spec §4.1). */
+  live?: ReadonlyMap<number, LiveNote>
 }
 
 export interface StageFrame { layout: KeyboardLayout; held: Map<number, NoteEvent> }
@@ -58,6 +61,7 @@ export class StageRenderer {
       flashScale: st.display.flashScale,
       showMiddleC: st.display.showMiddleC,
       theme: this.themeFor(st.theme.name, st.theme.stageBgOverride, layout),
+      live: input.live,
     }
     const dur = input.score?.durationSec ?? 0
     const held = drawStage(ctx, rs, t, dur > 0 ? t / dur : 0)
