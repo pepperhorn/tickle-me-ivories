@@ -9,6 +9,7 @@ import { AudioClock } from '../../core/clock/AudioClock'
 import { parseMusicXml } from '../../core/io/parseMusicXml'
 import { fakeEngine } from '../testEngine.test-helpers'
 import type { StageHandle } from './Stage'
+import { stubCtx } from '../../core/render/pianoRoll.test-helpers'
 import type { Layout } from '../../core/layout/types'
 
 vi.mock('pepperscore', () => ({ PepperScore: () => { throw new Error('engraver crashed') } }))
@@ -199,5 +200,18 @@ describe('Stage (spec §5.2)', () => {
     const { container } = inProvider(<Stage layout={{ kind: 'split', top: { kind: 'ivories', view: 'notation' }, bottom: falling, ratio: 0.5 }} />)
     await waitFor(() => expect(container.querySelector('.ivories-slot-top [role="alert"]')).not.toBeNull())
     expect(container.querySelector('.ivories-slot-bottom .ivories-falling')).not.toBeNull()
+  })
+
+  it('slotViewProps: a per-slot override reaches only that slot (onLayout for the primary keys slot)', async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
+      (() => stubCtx().ctx) as unknown as typeof HTMLCanvasElement.prototype.getContext,
+    )
+    const shared = vi.fn(), topOnly = vi.fn()
+    const layout: Layout = { kind: 'split', top: falling, bottom: { kind: 'ivories', view: 'keyboard' }, ratio: 0.5 }
+    inProvider(<Stage layout={layout} viewProps={{ onLayout: shared }} slotViewProps={{ top: { onLayout: topOnly }, bottom: { onLayout: undefined } }} />)
+    await waitFor(() => expect(topOnly).toHaveBeenCalled())
+    // The top slot's override replaces the shared callback; the bottom slot's clears it.
+    expect(shared).not.toHaveBeenCalled()
+    vi.restoreAllMocks()
   })
 })

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { decodeScene, defaultLayoutFor, sceneApplyPlan, sceneForShare, sceneFromState } from './scene'
+import { decodeScene, defaultLayoutFor, viewForMode, sceneApplyPlan, sceneForShare, sceneFromState } from './scene'
 import { buildProfile } from '../settings/profile'
 import { DEFAULT_SETTINGS } from '../settings/types'
 import { isPayloadVersionError } from './codec'
@@ -96,5 +96,13 @@ describe('SceneV2 decode of crafted shares (Review Focus 4)', () => {
   it('sceneFromState refuses an invalid layout or aspect', () => {
     expect(() => sceneFromState({ song, profile: profile(), layout: { kind: 'grid' } as unknown as Layout })).toThrow(/layout/)
     expect(() => sceneFromState({ song, profile: profile(), aspect: '4:3' as never })).toThrow(/aspect/)
+  })
+})
+
+describe('viewForMode (R7)', () => {
+  it('maps the display mode to its keys view', () => {
+    expect(viewForMode('roll')).toBe('falling')
+    expect(viewForMode('keyboard')).toBe('keyboard')
+    expect(defaultLayoutFor('roll')).toEqual({ kind: 'single', main: { kind: 'ivories', view: viewForMode('roll') } })
   })
 })

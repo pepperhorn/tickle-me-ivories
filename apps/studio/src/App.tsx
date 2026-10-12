@@ -5,8 +5,9 @@ import { NO_LEAD_IN, leadInFor } from 'ivories/core'
 import { sceneForShare } from 'ivories/core'
 import { bindTransportClock, useTransport } from './transport/useTransport'
 import { useSettings } from './settings/useSettings'
-import { FallingKeys, IvoriesProvider, Keyboard } from 'ivories'
-import type { KeyboardLayout } from 'ivories'
+import { IvoriesProvider, Stage } from 'ivories'
+import type { KeyboardLayout, StageSlotViewProps } from 'ivories'
+import type { SlotName } from 'ivories/core'
 import { CountIn } from './ui/CountIn'
 import { FileDropZone } from './ui/FileDropZone'
 import { TransportBar } from './ui/TransportBar'
@@ -22,6 +23,9 @@ import { useSceneActions } from './studio/useSceneActions'
 import { ScenesSection } from './studio/ScenesSection'
 import { StudioSettings } from './studio/StudioSettings'
 import { useLiveMidi } from './studio/liveMidi'
+import { useStudioStage } from './studio/stageStore'
+import { primarySlot, withPrimaryMode } from './studio/modeSync'
+import { LayoutToolbar } from './studio/LayoutToolbar'
 
 export default function App() {
   const t = useTransport()
@@ -58,6 +62,22 @@ export default function App() {
   )
 
   const midiInput = liveMidi.enabled ? 'midi' : 'none'
+  const stage = useStudioStage()
+  // Keep the primary keys slot in step with the display mode, whatever changed
+  // it: the TransportBar toggle, a profile, a look or a scene (R7).
+  useEffect(() => {
+    const s = useStudioStage.getState()
+    const next = withPrimaryMode(s.layout, t.mode)
+    if (next !== s.layout) s.setLayout(next)
+  }, [t.mode])
+  const viewProps = useMemo<StageSlotViewProps>(() => ({ input: midiInput }), [midiInput])
+  // Only the primary keys slot reports geometry to CountIn; with none, it has none.
+  const primary = primarySlot(stage.layout)
+  const slotViewProps = useMemo<Partial<Record<SlotName, StageSlotViewProps>>>(
+    () => (primary ? { [primary]: { onLayout: setKbLayout } } : {}),
+    [primary],
+  )
+  useEffect(() => { if (!primary) setKbLayout(null) }, [primary])
   const onProviderError = useCallback((e: { code: string; message: string }) => {
     if (e.code !== 'midi-unavailable') return
     setLiveMidi({ error: 'MIDI unavailable in this browser' })
@@ -135,9 +155,14 @@ export default function App() {
           midiDeviceId={liveMidi.deviceId}
           onError={onProviderError}
         >
-          {t.mode === 'roll'
-            ? <FallingKeys className="studio-stage-view" input={midiInput} onLayout={setKbLayout} />
-            : <Keyboard className="studio-stage-view" input={midiInput} onLayout={setKbLayout} />}
+          <Stage
+            className="studio-stage"
+            layout={stage.layout}
+            aspect={stage.aspect}
+            onLayoutChange={stage.setLayout}
+            viewProps={viewProps}
+            slotViewProps={slotViewProps}
+          />
         </IvoriesProvider>
         {t.score && (
           <CountIn
@@ -220,6 +245,7 @@ export default function App() {
         )}
       </div>
 
+      {t.score && <LayoutToolbar />}
       {t.score && (
         <TransportBar
           playing={t.playing}

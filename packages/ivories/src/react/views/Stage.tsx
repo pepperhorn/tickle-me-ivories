@@ -34,6 +34,8 @@ export interface StageProps {
   /** Controlled: every change (drag, keys, swap) comes back here. Absent: the Stage keeps its own copy. */
   onLayoutChange?(layout: Layout): void
   viewProps?: StageSlotViewProps
+  /** Per-slot overrides, merged over `viewProps` for that slot only (e.g. `onLayout` for one keys slot). */
+  slotViewProps?: Partial<Record<SlotName, StageSlotViewProps>>
   className?: string
   height?: number | string
   cameraRegistry?: StreamRegistry
@@ -123,7 +125,7 @@ function SplitDivider({ ratio, boxRef, onRatio }: { ratio: number; boxRef: RefOb
 }
 
 function StageInner(props: StageProps) {
-  const { aspect = 'free', viewProps, className, height, cameraRegistry } = props
+  const { aspect = 'free', viewProps, slotViewProps, className, height, cameraRegistry } = props
   const [inner, setInner] = useState(props.layout)
   // Keyed on the layout's content, not its identity: an inline literal re-created on every host render
   // must not wipe the Stage's own changes (drag, keys, swap) in uncontrolled mode.
@@ -216,7 +218,7 @@ function StageInner(props: StageProps) {
             {...(s.inset ? insetHandlers : {})}
           >
             <Guarded code={errorCode(s.source)}>
-              <SlotContent source={s.source} viewProps={viewProps} registry={cameraRegistry} />
+              <SlotContent source={s.source} viewProps={slotViewProps?.[s.name] ? { ...viewProps, ...slotViewProps[s.name] } : viewProps} registry={cameraRegistry} />
             </Guarded>
           </div>
         ))}

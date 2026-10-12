@@ -12,7 +12,7 @@ import type { SavedVoice, SongProfile } from '../settings/profile'
 import type { DisplayMode, TempoSetting } from '../model/types'
 import { singleLayout, stripDeviceIds } from '../layout/layout'
 import { validAspect, validLayout } from '../layout/validate'
-import type { Aspect, Layout } from '../layout/types'
+import type { Aspect, IvoriesView, Layout } from '../layout/types'
 import type {
   AudioSettings, DisplaySettings, TextSettings, ThemeSettings, VelocityScheme,
 } from '../settings/types'
@@ -26,9 +26,14 @@ export const MAX_SCENE_VOICES = 64
 /** The newest scene envelope this build reads (v1 is upgraded on decode). */
 export const SCENE_VERSION = 2
 
+/** The keys view a display mode shows: roll -> falling, keyboard -> keyboard (R7). */
+export function viewForMode(mode: DisplayMode): IvoriesView {
+  return mode === 'roll' ? 'falling' : 'keyboard'
+}
+
 /** A V1 scene's single slot: its display mode as a view (R7). */
 export function defaultLayoutFor(mode: DisplayMode): Layout {
-  return singleLayout(mode === 'roll' ? 'falling' : 'keyboard')
+  return singleLayout(viewForMode(mode))
 }
 
 /** Drops per-browser camera device ids before a scene leaves this browser (spec §5.4). */

@@ -4,6 +4,7 @@ import type { LookV1, SceneV2, SongRefWithTitle } from 'ivories/core'
 import { getPlatform, subscribePlatform } from '../platform/registry'
 import { useScenes } from '../ui/useScenes'
 import { useTransport } from '../transport/useTransport'
+import { useStudioStage } from './stageStore'
 import { currentSettings, useSettings } from '../settings/useSettings'
 import type { ProfileParts } from './useProfileActions'
 import type { useSongLoader } from './useSongLoader'
@@ -37,7 +38,8 @@ export function useSceneActions(o: {
       fallSeconds: tr.fallSeconds, settings: currentSettings(),
     })
     // sceneFromState asserts profile.song.id === songKey(song) (preflight F10a).
-    return sceneFromState({ song, profile })
+    const stage = useStudioStage.getState()
+    return sceneFromState({ song, profile, layout: stage.layout, aspect: stage.aspect })
   }, [])
 
   const buildLook = useCallback((): LookV1 => {
@@ -58,6 +60,8 @@ export function useSceneActions(o: {
     })
     if (r?.partial) throw new Error(`The scene was only partly applied: ${r.message}`)
     if (r) throw new Error(`Could not apply the scene: ${r.message}`)
+    // Only after the profile half applied, so a refused scene leaves the stage alone.
+    useStudioStage.getState().replace(plan.layout, plan.aspect)
   }, [applyProfileParts])
 
   // A look needs no song. keyOverride is song-specific, so the current one stays.
