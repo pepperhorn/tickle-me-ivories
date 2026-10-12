@@ -100,15 +100,18 @@ export class PlaybackDriver {
 
     const audible = this.o.audioEnabled()
     const rate = clock.rate
+    // Engine time is read only when scheduling: with audio off (or no Web
+    // Audio at all) the cursors still advance without touching the engine.
+    const collected = s.collect(head)
+    if (!audible) { this.beats?.seek(head); return }
     const origin = this.originFor(head)
-    for (const sched of s.collect(head)) {
-      if (!audible) continue
+    for (const sched of collected) {
       const voice = score.voices.find((v) => v.id === sched.note.voiceId)
       if (voice) engine.play(sched, voice, origin, rate)
     }
 
     const audio = this.o.getAudio()
-    if (audible && audio.metronome && this.beats) {
+    if (audio.metronome && this.beats) {
       this.metronome ??= engine.metronome()
       for (const beat of this.beats.collect(head)) {
         // Count-in clicks (sec < 0) only while the Count-in setting is on.

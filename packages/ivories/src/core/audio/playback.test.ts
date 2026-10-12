@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { PlaybackDriver } from './playback'
 import { AudioClock } from '../clock/AudioClock'
+import { ManualClock } from '../clock/ManualClock'
 import { DEFAULT_SETTINGS } from '../settings/types'
 import { buildTempoMap } from '../model/tempoMap'
 import type { ScoreDocument, NoteEvent } from '../model/types'
@@ -138,5 +139,36 @@ describe('PlaybackDriver (spec §3.1: the scheduler consumes a Clock)', () => {
     tick.mockClear()
     vi.advanceTimersByTime(100)
     expect(tick).not.toHaveBeenCalled()
+  })
+})
+
+describe('PlaybackDriver driven by a ManualClock', () => {
+  it('derives the engine origin from engine time when the clock is not an AudioClock', () => {
+    let ms = 0
+    const clock = new ManualClock({ nowMs: () => ms })
+    const engine = { currentTime: 50, play: vi.fn(), stopAll: vi.fn(), metronome: () => ({ click: vi.fn(), stop: vi.fn() }) }
+    const s = score()
+    const d = new PlaybackDriver({ clock, engine, getScore: () => s, getAudio: () => DEFAULT_SETTINGS.audio, audioEnabled: () => true })
+    d.setScore(s, { mode: 'scale', scale: 1 })
+    clock.seek(0.45)
+    clock.play()
+    ms += 10
+    d.tick()
+    const [sched, , origin] = engine.play.mock.calls[0]
+    expect(sched.note.id).toBe(1)
+    expect(origin).toBeCloseTo(50 - clock.now(), 9)
+  })
+
+  it('reads no engine time while audio is off (a missing AudioContext must not throw per tick)', () => {
+    const clock = new ManualClock({ nowMs: () => 0 })
+    const engine = {
+      get currentTime(): number { throw new Error('no Web Audio') },
+      play: vi.fn(), stopAll: vi.fn(), metronome: () => ({ click: vi.fn(), stop: vi.fn() }),
+    }
+    const s = score()
+    const d = new PlaybackDriver({ clock, engine, getScore: () => s, getAudio: () => DEFAULT_SETTINGS.audio, audioEnabled: () => false })
+    d.setScore(s, { mode: 'scale', scale: 1 })
+    clock.play()
+    expect(() => d.tick()).not.toThrow()
   })
 })

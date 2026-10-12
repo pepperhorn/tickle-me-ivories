@@ -2,6 +2,7 @@ import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState 
 import type { ReactNode, Ref } from 'react'
 import { AudioEngine } from '../core/audio/engine'
 import { AudioClock } from '../core/clock/AudioClock'
+import { MediaClock } from '../core/clock/MediaClock'
 import { PlaybackDriver } from '../core/audio/playback'
 import { claimPlayback, releasePlayback } from '../core/audio/claim'
 import { sharedAudioContext } from '../core/audio/sharedContext'
@@ -45,7 +46,8 @@ export interface IvoriesProviderProps extends ScoreSource, IvoriesEvents {
   clock?: Clock
   /** Advanced/test seam; the provider builds one on the page-wide AudioContext otherwise. */
   engine?: AudioEngine
-  /** Schedule audio. Default true (false by default for a MediaClock, Task 15). */
+  /** Schedule audio. Default true with the provider's own clock or an AudioClock; false for a
+      ManualClock or MediaClock (the host carries the sound). */
   audio?: boolean
   /** The TempoSetting a controlled `score` is timed at (studio only; default scale 1).
       Describes the given score only: a provider never retimes a score it loads (R1). */
@@ -67,10 +69,14 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   const [status] = useState(() => new ValueStore<ProviderStatus>({ loading: false, error: null }))
   const [active] = useState(() => new ValueStore<ActiveNotes>(NO_ACTIVE))
 
+  // audio-unavailable never becomes status.error: the score still plays, silently.
   const report = useCallback((e: IvoriesError) => {
-    status.set({ loading: false, error: e })
+    if (e.code !== 'audio-unavailable') status.set({ loading: false, error: e })
     latest.current.onError?.(e)
   }, [status])
+  // Set once Web Audio has failed (no AudioContext): the own clock then runs on
+  // the wall clock and the driver stops handing anything to the engine.
+  const audioDead = useRef(false)
 
   // ---- engine and clock: the host's, or our own ----
   const ownEngine = useDisposable(
@@ -79,7 +85,11 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   )
   const engine = props.engine ?? ownEngine
   const ownClock = useDisposable(
-    () => (props.clock || !engine ? null : new AudioClock(engine, { isRunning: () => engine.running })),
+    () => (props.clock || !engine ? null : ownAudioClock(engine, (e) => {
+      if (audioDead.current) return
+      audioDead.current = true
+      report(new IvoriesError('audio-unavailable', 'Web Audio is unavailable; playing silently.', e))
+    })),
     (c) => c.dispose(), [!props.clock, engine],
   )
   const clock = props.clock ?? ownClock
@@ -118,7 +128,8 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   const fallSeconds = props.fallSeconds ?? props.look?.display.fallSeconds ?? 3
   const notes = score?.notes
   const maxNoteDur = useMemo(() => (score ? longestNoteSec(score) : 0), [notes]) // eslint-disable-line react-hooks/exhaustive-deps
-  const audio = props.audio ?? true
+  // Spec §3.1: only the provider's own clock or an AudioClock schedules audio by default.
+  const audio = props.audio ?? (!props.clock || props.clock instanceof AudioClock)
 
   // Read by the driver and the frame loop without re-subscribing.
   const scoreRef = useRef(score); scoreRef.current = score
@@ -135,7 +146,9 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
       clock, engine,
       getScore: () => scoreRef.current,
       getAudio: () => settingsRef.current.audio,
-      audioEnabled: () => audioRef.current,
+      audioEnabled: () => audioRef.current && !audioDead.current,
+      // The media decides where it ends (it may run past the score).
+      stopAtEnd: !(clock instanceof MediaClock),
     })
     d.setScore(scoreRef.current, tempoRef.current)
     d.start()
@@ -171,14 +184,17 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   useEffect(() => {
     if (!frames) return
     let lastT = Number.NaN
+    let lastNotes: readonly NoteEvent[] | undefined
     let lastTenth = Number.NaN
     let held: ReadonlyMap<number, NoteEvent> = EMPTY_HELD
     return frames.add((t) => {
-      if (t === lastT) return
+      const s = scoreRef.current
+      // A score that arrives (or is replaced) while paused must still light t.
+      if (t === lastT && s?.notes === lastNotes) return
       lastT = t
+      lastNotes = s?.notes
       const tenth = Math.round(t * 10)
       if (tenth !== lastTenth) { lastTenth = tenth; latest.current.onTimeUpdate?.(t) }
-      const s = scoreRef.current
       const next = s ? heldScoreNotes(s, t, maxNoteDurRef.current) : EMPTY_HELD
       const d = diffHeld(held, next)
       if (!d) return
@@ -208,4 +224,26 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   // Children render once the clock, engine and frame loop exist (after the
   // first effect; never on the server), so a view always finds a context.
   return <IvoriesContext.Provider value={value}>{value ? props.children : null}</IvoriesContext.Provider>
+}
+
+/**
+ * The provider's own AudioClock. Without Web Audio, reading the engine's time
+ * throws (no AudioContext); that is reported once and the clock falls back to
+ * the wall clock for good, so frames and playback keep running silently.
+ */
+function ownAudioClock(engine: AudioEngine, onDead: (e: unknown) => void): AudioClock {
+  const wallNow = () => performance.now() / 1000
+  let dead = false
+  const fail = (e: unknown) => { if (!dead) { dead = true; onDead(e) } }
+  const source = {
+    get currentTime() {
+      if (dead) return wallNow()
+      try { return engine.currentTime } catch (e) { fail(e); return wallNow() }
+    },
+  }
+  const isRunning = () => {
+    if (dead) return false
+    try { return engine.running } catch (e) { fail(e); return false }
+  }
+  return new AudioClock(source, { isRunning, wallNow })
 }

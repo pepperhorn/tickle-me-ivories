@@ -43,6 +43,14 @@ export function describeClockContract(name: string, make: () => ClockHarness): v
       expect(h.clock.playing).toBe(false)
     })
 
+    it('negative times (the count-in) are legal and unclamped', () => {
+      h.clock.seek(-2)
+      expect(h.clock.now()).toBeCloseTo(-2, 6)
+      h.clock.play()
+      h.advance(1)
+      expect(h.clock.now()).toBeCloseTo(-1, 6)
+    })
+
     it('seek while playing jumps and keeps playing from the target', () => {
       h.clock.play()
       h.advance(1)
