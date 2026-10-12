@@ -104,6 +104,12 @@ describe('AudioEngine voice bus', () => {
     expect(h.made[0].destination).not.toBe(h.made[1].destination)
   })
 
+  it('scales the note time and duration by the clock rate', async () => {
+    await h.engine.loadVoice(voice('v1'))
+    h.engine.play(sched(60, 4), voice('v1'), 100, 2)
+    expect(h.made[0].start).toHaveBeenCalledWith(expect.objectContaining({ time: 102, duration: 0.5 }))
+  })
+
   it('passes raw velocity to smplr -- volume must NOT fold into it', async () => {
     await h.engine.loadVoice(voice('v1', { volume: 0.25 }))
     h.engine.play(sched(60, 0.5, 100), voice('v1', { volume: 0.25 }), 0)

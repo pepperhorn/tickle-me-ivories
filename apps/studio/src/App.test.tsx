@@ -18,6 +18,7 @@ import type { SceneV1 } from 'ivories/core'
 
 // The engine owns an AudioContext and smplr, neither of which jsdom has. The
 // fake records what App asks of it; everything App decides is still real.
+const clicks = vi.hoisted(() => [] as { time: number; accent: boolean }[])
 const engine = vi.hoisted(() => ({
   currentTime: 0,
   running: true,
@@ -28,15 +29,12 @@ const engine = vi.hoisted(() => ({
   retainVoices: vi.fn(),
   play: vi.fn(),
   stopAll: vi.fn(),
+  // Records the metronome's clicks instead of building oscillators.
+  metronome: () => ({ click: (time: number, accent: boolean) => { clicks.push({ time, accent }) }, stop: () => {} }),
 }))
-// Records the metronome's clicks instead of building oscillators.
-const clicks = vi.hoisted(() => [] as { time: number; accent: boolean }[])
 vi.mock('ivories/core', async (importOriginal) => ({
   ...(await importOriginal<typeof import('ivories/core')>()),
   AudioEngine: function AudioEngine() { return engine },
-  MetronomeVoice: function MetronomeVoice() {
-    return { click: (time: number, accent: boolean) => { clicks.push({ time, accent }) }, stop: () => {} }
-  },
 }))
 // The rAF + canvas loop is the draw path, covered by the render tests.
 vi.mock('./render/useCanvasStage', () => ({ useCanvasStage: () => ({ current: null }) }))

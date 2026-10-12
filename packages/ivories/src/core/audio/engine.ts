@@ -1,6 +1,7 @@
 import { SampleLoader, Soundfont, SplendidGrandPiano } from 'smplr'
 import type { Voice } from '../model/types'
 import type { ScheduledNote } from './scheduler'
+import { MetronomeVoice } from './metronome'
 
 const GRAND_PIANO_ID = 'acoustic_grand_piano'
 
@@ -70,6 +71,7 @@ export class AudioEngine {
   private buses = new Map<string, VoiceBus>()
   private loading = new Map<string, Promise<void>>()
   private masterVolume = 0.8
+  private metro: MetronomeVoice | null = null
   private readonly makeContext: () => AudioContext
   private readonly makeInstrument: InstrumentFactoryFn
 
@@ -233,20 +235,28 @@ export class AudioEngine {
     }
   }
 
+  /** The click, built on first use so it never creates the AudioContext early. */
+  metronome(): MetronomeVoice {
+    if (!this.metro) this.metro = new MetronomeVoice(this.audioContext, this.masterNode)
+    return this.metro
+  }
+
   /**
    * Schedules one note at an exact AudioContext time. originSec is the context
-   * time corresponding to playhead zero, so atSec (a score time) becomes an
-   * absolute context time. Velocity is passed THROUGH -- see volumeToGain.
+   * time corresponding to playhead zero and `rate` the clock's score-seconds per
+   * context-second, so atSec (a score time) lands at originSec + atSec / rate and
+   * the duration shrinks or stretches by the same factor. Velocity is passed
+   * THROUGH -- see volumeToGain.
    */
-  play(s: ScheduledNote, voice: Voice, originSec: number): void {
+  play(s: ScheduledNote, voice: Voice, originSec: number, rate = 1): void {
     if (!voice.audible) return
     const inst = this.buses.get(voice.id)?.instrument
     if (!inst) return
 
     inst.start({
       note: s.note.pitch,
-      time: clampToNow(originSec + s.atSec, this.currentTime),
-      duration: Math.max(0.02, s.note.endSec - s.note.startSec),
+      time: clampToNow(originSec + s.atSec / rate, this.currentTime),
+      duration: Math.max(0.02, (s.note.endSec - s.note.startSec) / rate),
       velocity: s.note.velocity,
     })
   }

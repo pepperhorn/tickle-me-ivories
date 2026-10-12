@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties } from 'react'
-import { AudioClock, AudioEngine } from 'ivories/core'
-import { BeatCursor, MetronomeVoice, beatTimes, countInBeats } from 'ivories/core'
-import { LOOKAHEAD_SEC, Scheduler, TICK_MS } from 'ivories/core'
+import { AudioClock, AudioEngine, PlaybackDriver } from 'ivories/core'
+import { LOOKAHEAD_SEC } from 'ivories/core'
 import { parseScoreFile } from 'ivories/core'
 import { hashFile } from 'ivories/core'
 import { computeLayout, fitRange, FIRST_PITCH, LAST_PITCH } from 'ivories/core'
@@ -70,9 +69,6 @@ export default function App() {
   const t = useTransport()
   const settings = useSettings()
   const engineRef = useRef<AudioEngine | null>(null)
-  const schedulerRef = useRef<Scheduler | null>(null)
-  const beatsRef = useRef<BeatCursor | null>(null)
-  const metronomeRef = useRef<MetronomeVoice | null>(null)
   const [playhead, setPlayhead] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -125,6 +121,23 @@ export default function App() {
   const clock = clockRef.current
   // Bound in an effect, not during render: StrictMode renders twice.
   useEffect(() => bindTransportClock(clock), [clock])
+  // The scheduler and metronome tick (ivories PlaybackDriver). It silences and
+  // re-seats on the clock's own seek/rate/pause events, so the callers below
+  // only drive the store.
+  const driverRef = useRef<PlaybackDriver | null>(null)
+  useEffect(() => {
+    const d = new PlaybackDriver({
+      clock, engine,
+      getScore: () => useTransport.getState().score,
+      getAudio: () => useSettings.getState().audio,
+      audioEnabled: () => true,
+    })
+    driverRef.current = d
+    const s = useTransport.getState()
+    d.setScore(s.score, s.tempo)
+    d.start()
+    return () => { d.dispose(); driverRef.current = null }
+  }, [clock, engine])
   if (!chordFeedRef.current) chordFeedRef.current = new ChordFeed()
   const chordFeed = chordFeedRef.current
 
@@ -192,69 +205,14 @@ export default function App() {
     return key
   }
 
-  // Rebuild the scheduler whenever the note array is REPLACED (load or retime).
+  // Rebuild the cursors whenever the note array is REPLACED (load or retime).
   // Keyed on score.notes, not score: updateVoice replaces the score object while
-  // keeping the same notes, and rebuilding there would re-seat the cursor behind
-  // notes already handed to smplr and sound them twice.
+  // keeping the same notes, and rebuilding there would sound notes twice.
   const notes = t.score?.notes
   useEffect(() => {
-    if (!notes) { schedulerRef.current = null; beatsRef.current = null; return }
-    const head = playheadAt(useTransport.getState(), engine.currentTime)
-    const s = new Scheduler(notes)
-    s.seek(head)
-    schedulerRef.current = s
-    const score = useTransport.getState().score!
-    const tempo = useTransport.getState().tempo
-    // The count-in clicks sit before t = 0 in the same cursor: a start from the
-    // top (playhead at -lead) reaches them, a resume or seek skips them.
-    const b = new BeatCursor([...countInBeats(leadInFor(score, tempo)), ...beatTimes(score, tempo)])
-    b.seek(head)
-    beatsRef.current = b
-  }, [notes, engine])
-
-  // The scheduler tick. Runs on a plain interval; audio timing comes from the
-  // exact `time` passed to smplr, not from when this fires.
-  useEffect(() => {
-    const id = setInterval(() => {
-      const state = useTransport.getState()
-      const s = schedulerRef.current
-      if (!state.playing || !s || !state.score) return
-      const now = engine.currentTime
-      const head = playheadAt(state, now)
-
-      // Playback stop lives here, not in the draw callback -- the render path
-      // stays a pure function of t with no side effects beyond its existing
-      // throttled setState.
-      if (head >= state.score.durationSec) {
-        state.pause(state.originSec + state.score.durationSec)
-        engine.stopAll()
-        metronomeRef.current?.stop()
-        return
-      }
-
-      for (const sched of s.collect(head)) {
-        const voice = state.score.voices.find((v) => v.id === sched.note.voiceId)
-        if (voice) engine.play(sched, voice, state.originSec)
-      }
-
-      const audio = useSettings.getState().audio
-      if (audio.metronome && beatsRef.current) {
-        if (!metronomeRef.current) {
-          metronomeRef.current = new MetronomeVoice(engine.audioContext, engine.masterNode)
-        }
-        for (const beat of beatsRef.current.collect(head)) {
-          // Count-in clicks (sec < 0) only while the Count-in setting is on.
-          if (beat.sec < 0 && audio.countIn === false) continue
-          metronomeRef.current.click(state.originSec + beat.sec, beat.accent, audio.metronomeVolume)
-        }
-      } else {
-        // Keep the cursor level with the playhead while the click is off, so
-        // switching it on mid-piece does not fire every beat since the start.
-        beatsRef.current?.seek(head)
-      }
-    }, TICK_MS)
-    return () => clearInterval(id)
-  }, [engine])
+    const s = useTransport.getState()
+    driverRef.current?.setScore(notes ? s.score : null, s.tempo)
+  }, [notes])
 
   const canvasRef = useCanvasStage(
     useCallback((ctx, w, h) => {
@@ -452,13 +410,8 @@ export default function App() {
     // by up to a tick), and the "1", which shows when the playhead reaches
     // -lead, appears as it sounds.
     const pad = lead > 0 ? LOOKAHEAD_SEC : 0
+    // The driver re-seats its cursors at the exact start on the play event.
     state.play(now, lead + pad)
-    // Seek to the EXACT start rather than now - originSec: that subtraction
-    // lands an ulp either side of -(lead + pad), and a hair above it would
-    // skip the accented first count-in beat.
-    const head = lead > 0 ? -(lead + pad) : playheadAt(useTransport.getState(), now)
-    schedulerRef.current?.seek(head)
-    beatsRef.current?.seek(head)
   }, [engine])
 
   /**
@@ -510,7 +463,7 @@ export default function App() {
   const toggle = useCallback(() => {
     const state = useTransport.getState()
     if (state.playing) {
-      state.pause(engine.currentTime); engine.stopAll(); metronomeRef.current?.stop()
+      state.pause(engine.currentTime)
     } else if (startGate === 'loading') {
       cancelStart()   // Play pressed again while the sounds load: stop waiting
     } else {
@@ -522,27 +475,18 @@ export default function App() {
   const liveHead = useCallback(() => playheadAt(useTransport.getState(), engine.currentTime), [engine])
 
   const seek = useCallback((sec: number) => {
-    const now = engine.currentTime
-    useTransport.getState().seek(sec, now)
-    schedulerRef.current?.seek(playheadAt(useTransport.getState(), now))
-    beatsRef.current?.seek(playheadAt(useTransport.getState(), now))
-    engine.stopAll()
-    metronomeRef.current?.stop()
+    useTransport.getState().seek(sec, engine.currentTime)
     chordFeed.reset()
   }, [engine, chordFeed])
 
-  // setTempo replaces score.notes, so the score-identity effect above rebuilds
-  // and re-seats the scheduler on its own. What it CANNOT undo is the notes
-  // already handed to smplr at their old times -- those keep sounding across
-  // the change unless we cancel them here, exactly as seek and pause do.
+  // setTempo replaces score.notes, so the notes effect above rebuilds the
+  // driver's cursors. The notes already handed to smplr at their old times are
+  // cancelled by the driver on the clock's seek event, exactly as seek and pause.
   // A setting equal to the current one is a no-op: retiming to it would change
   // nothing but still cut every sustained note.
   const changeTempo = useCallback((setting: TempoSetting) => {
     if (sameTempo(setting, useTransport.getState().tempo)) return
-    const now = engine.currentTime
-    useTransport.getState().setTempo(setting, now)
-    engine.stopAll()
-    metronomeRef.current?.stop()
+    useTransport.getState().setTempo(setting, engine.currentTime)
   }, [engine])
 
   // Volume and instrument have audio-side effects; colour, label and visibility
@@ -576,8 +520,7 @@ export default function App() {
     // sounding after the drop zone reappears.
     const state = useTransport.getState()
     if (state.playing) state.pause(engine.currentTime)
-    engine.stopAll()
-    metronomeRef.current?.stop()
+    driverRef.current?.silence()
     // The debounced autosave is keyed on this score; flush it before
     // clearScore() or an edit made in the last 400ms is lost.
     flushAutosave()
