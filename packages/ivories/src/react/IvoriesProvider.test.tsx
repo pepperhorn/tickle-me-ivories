@@ -217,6 +217,19 @@ describe('IvoriesProvider robustness', () => {
     expect(pitches).toEqual([64])
   })
 
+  it('a throwing host onError never escapes the provider', async () => {
+    const onError = vi.fn(() => { throw new Error('host onError') })
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      render(<IvoriesProvider midi={new Uint8Array([1, 2, 3])} engine={fakeEngine()} onError={onError}><ScoreName /></IvoriesProvider>)
+      await waitFor(() => expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'score-parse' })))
+      await new Promise((r) => setTimeout(r, 20))
+      expect(screen.getByTestId('name').textContent).toBe('none')
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
   it('an instrument-load failure calls onError but leaves status.error unset (the score plays silently)', async () => {
     const onError = vi.fn()
     let status: { error: unknown } | null = null
@@ -273,6 +286,36 @@ describe('live MIDI (spec §4.1)', () => {
     expect(engine.prepareLive).not.toHaveBeenCalled()
     expect(engine.noteOn).not.toHaveBeenCalled()
     expect(engine.noteOff).toHaveBeenCalledWith(62)
+  })
+
+  it('a throwing live subscriber or host callback never stops the others or throws into MIDI input', async () => {
+    const port = stubMidi()
+    const engine = fakeEngine()
+    const onNoteOn = vi.fn(() => { throw new Error('host onNoteOn') })
+    const onNoteOff = vi.fn()
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let iv: ReturnType<typeof useIvories> | null = null
+    function Grab() { iv = useIvories(); return null }
+    try {
+      render(<IvoriesProvider score={scoreDoc()} engine={engine} clock={new AudioClock({ currentTime: 0 })} onNoteOn={onNoteOn} onNoteOff={onNoteOff}><Keyboard input="midi" /><Grab /></IvoriesProvider>)
+      await waitFor(() => expect(port.onmidimessage).not.toBeNull())
+      const bad = vi.fn(() => { throw new Error('subscriber') })
+      const good = vi.fn()
+      iv!.live.subscribe(bad)
+      iv!.live.subscribe(good)
+      expect(() => act(() => port.onmidimessage!({ data: Uint8Array.of(0x90, 62, 70) }))).not.toThrow()
+      expect(() => act(() => port.onmidimessage!({ data: Uint8Array.of(0x80, 62, 0) }))).not.toThrow()
+      const live = (f: typeof onNoteOff) => f.mock.calls.filter((c) => (c as unknown as [{ source: string }])[0].source === 'live').length
+      expect(live(onNoteOn as unknown as typeof onNoteOff)).toBe(1)
+      expect(live(onNoteOff)).toBe(1)
+      expect(bad).toHaveBeenCalledTimes(2)
+      expect(good).toHaveBeenCalledTimes(2)
+      expect(engine.noteOff).toHaveBeenCalledWith(62)
+      // Logged once per throwing callback, never rethrown.
+      expect(consoleError).toHaveBeenCalledTimes(2)
+    } finally {
+      consoleError.mockRestore()
+    }
   })
 
   it('input="none" (the default) never asks for MIDI', async () => {

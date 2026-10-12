@@ -80,7 +80,8 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   // still loads and plays (silently, or without live keys), spec §4.1.
   const report = useCallback((e: IvoriesError) => {
     if (e.code !== 'audio-unavailable' && e.code !== 'midi-unavailable') status.set({ loading: false, error: e })
-    latest.current.onError?.(e)
+    const onError = latest.current.onError
+    if (onError) safeCall(onError, e)
   }, [status])
   // Set once Web Audio has failed (no AudioContext): the own clock then runs on
   // the wall clock and the driver stops handing anything to the engine.
@@ -219,8 +220,9 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
       held = next
       active.set({ ...active.get(), score: next })
       const ev = latest.current
-      for (const n of d.off) ev.onNoteOff?.({ midi: n.pitch, velocity: 0, time: t, source: 'score' })
-      for (const n of d.on) ev.onNoteOn?.({ midi: n.pitch, velocity: n.velocity, time: n.startSec, source: 'score' })
+      const { onNoteOn, onNoteOff } = ev
+      if (onNoteOff) for (const n of d.off) safeCall(onNoteOff, { midi: n.pitch, velocity: 0, time: t, source: 'score' as const })
+      if (onNoteOn) for (const n of d.on) safeCall(onNoteOn, { midi: n.pitch, velocity: n.velocity, time: n.startSec, source: 'score' as const })
     })
   }, [frames, active])
 
@@ -238,13 +240,17 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
     liveHeld.set(next)
     active.set({ ...active.get(), live: next })
     const ev = latest.current
-    if (e.on) { if (ev.liveAudio) engineRef.current?.noteOn(e.midi, e.velocity) }
-    // Always released: liveAudio may have been switched off while the key was down.
-    else engineRef.current?.noteOff(e.midi)
+    const eng = engineRef.current
+    try {
+      if (e.on) { if (ev.liveAudio) eng?.noteOn(e.midi, e.velocity) }
+      // Always released: liveAudio may have been switched off while the key was down.
+      else eng?.noteOff(e.midi)
+    } catch { /* no Web Audio: the key still lights and reaches every listener */ }
+    // One throwing subscriber must not keep the event from the rest.
     const out = { midi: e.midi, velocity: e.velocity, time: e.time, source: 'live' as const }
-    if (e.on) ev.onNoteOn?.(out)
-    else ev.onNoteOff?.(out)
-    for (const fn of [...liveListeners]) fn(e)
+    const host = e.on ? ev.onNoteOn : ev.onNoteOff
+    if (host) safeCall(host, out)
+    for (const fn of [...liveListeners]) safeCall(fn, e)
   }, [liveHeld, active, liveListeners])
 
   const enableLive = useCallback(() => {
@@ -301,6 +307,22 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   // Children render once the clock, engine and frame loop exist (after the
   // first effect; never on the server), so a view always finds a context.
   return <IvoriesContext.Provider value={value}>{value ? props.children : null}</IvoriesContext.Provider>
+}
+
+const loggedThrowers = new WeakSet<object>()
+
+/**
+ * Calls a host or subscriber callback; a throw is logged (once per callback,
+ * so a note stream cannot flood the console), never rethrown into the provider.
+ */
+function safeCall<T>(fn: (arg: T) => void, arg: T): void {
+  try {
+    fn(arg)
+  } catch (err) {
+    if (loggedThrowers.has(fn)) return
+    loggedThrowers.add(fn)
+    console.error('ivories: a callback threw', err)
+  }
 }
 
 /**
