@@ -9,6 +9,8 @@
     "build": "npm run check:imports && npm run build -w packages/ivories && npm run build -w apps/studio",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:notation": "node scripts/e2e-notation.mjs",
     "check:imports": "node scripts/check-public-imports.mjs",
     "check": "npm run test:geometry && npm run check:imports && npm run check:css -w packages/ivories",
     "test:geometry": "node tests/geometry-check.mjs",
@@ -16,6 +18,7 @@
     "sync:rig": "cp tools/strike-lab.html apps/studio/public/strike-lab.html && diff -q tools/strike-lab.html apps/studio/public/strike-lab.html"
   },
   "devDependencies": {
+    "@playwright/test": "~1.62.0",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/react": "^16.3.3",
     "@types/node": "^24.13.3",

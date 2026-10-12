@@ -6,6 +6,8 @@ import { playheadAt, useTransport } from './transport/useTransport'
 import { LOOKAHEAD_SEC } from 'ivories/core'
 import { useLiveMidi } from './studio/liveMidi'
 import { useSettings } from './settings/useSettings'
+import { useStudioStage } from './studio/stageStore'
+import { singleLayout } from 'ivories/core'
 import { buildProfile, encodeProfile, loadProfile, saveProfile } from 'ivories/core'
 import { DEFAULT_SETTINGS } from 'ivories/core'
 import { hashFile } from 'ivories/core'
@@ -750,6 +752,21 @@ describe('App: lead-in, count-in and audio unlock', () => {
     expect(document.querySelector('.count-in-number')).toBeNull()
     // ...but the lead-in bar itself still plays.
     expect(playheadAt(useTransport.getState(), engine.currentTime)).toBeLessThan(0)
+  })
+
+  it('renders the count-in inside the primary keys slot, following it through a split and a swap', async () => {
+    render(<App />)
+    await loadFile(midiFile(midiBytes()))
+    const host = () => document.querySelector('.count-in-layer')?.closest('.ivories-slot')?.getAttribute('data-ivories-slot')
+    await waitFor(() => expect(host()).toBe('main'))
+    try {
+      act(() => { useStudioStage.getState().dispatch({ type: 'setKind', kind: 'split' }) })
+      await waitFor(() => expect(host()).toBe('top'))
+      act(() => { useStudioStage.getState().dispatch({ type: 'swap' }) })
+      await waitFor(() => expect(host()).toBe('bottom'))
+    } finally {
+      act(() => { useStudioStage.getState().setLayout(singleLayout('falling')) })
+    }
   })
 
   it('waits at the top with "Tap to start sound" while audio is suspended, then taps through', async () => {

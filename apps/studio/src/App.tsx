@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AudioClock, AudioEngine } from 'ivories/core'
 import { effectiveBpmAt } from 'ivories/core'
 import { NO_LEAD_IN, leadInFor } from 'ivories/core'
@@ -78,6 +79,15 @@ export default function App() {
     [primary],
   )
   useEffect(() => { if (!primary) setKbLayout(null) }, [primary])
+  // The count-in belongs over the keys it counts into: it renders inside the
+  // primary keys slot, so a split or PIP layout keeps it in that slot's box.
+  const stageWrapRef = useRef<HTMLDivElement | null>(null)
+  const [countInHost, setCountInHost] = useState<HTMLElement | null>(null)
+  const hasScore = t.score !== null
+  useLayoutEffect(() => {
+    const el = primary && hasScore ? stageWrapRef.current?.querySelector<HTMLElement>(`.ivories-slot-${primary}`) ?? null : null
+    setCountInHost(el)
+  }, [primary, stage.layout, hasScore])
   const onProviderError = useCallback((e: { code: string; message: string }) => {
     if (e.code !== 'midi-unavailable') return
     setLiveMidi({ error: 'MIDI unavailable in this browser' })
@@ -131,12 +141,25 @@ export default function App() {
     />
   )
 
+  const countIn = t.score && (
+    <CountIn
+      active={t.playing}
+      enabled={settings.audio.countIn !== false}
+      lead={lead}
+      head={actions.liveHead}
+      gate={gate.startGate}
+      onTapToStart={gate.requestStart}
+      keyboardH={kbLayout?.keyboardH ?? 0}
+    />
+  )
+
   return (
     <div className="app-shell flex h-full flex-col bg-[var(--ground)]">
       {/* No Tailwind background here: the stage view paints the stage itself
           (theme class and stage-bg override included), and a background behind
           it would defeat spec §13.1. */}
       <div
+        ref={stageWrapRef}
         className="stage-wrap relative min-h-0 flex-1"
         // Any stage interaction unlocks audio (pointerup, not only pointerdown:
         // on touch screens only the former counts as user activation).
@@ -164,17 +187,7 @@ export default function App() {
             slotViewProps={slotViewProps}
           />
         </IvoriesProvider>
-        {t.score && (
-          <CountIn
-            active={t.playing}
-            enabled={settings.audio.countIn !== false}
-            lead={lead}
-            head={actions.liveHead}
-            gate={gate.startGate}
-            onTapToStart={gate.requestStart}
-            keyboardH={kbLayout?.keyboardH ?? 0}
-          />
-        )}
+        {countInHost && countIn ? createPortal(countIn, countInHost) : countIn}
         {!t.score && (
           <div className="stage-empty absolute inset-0 flex flex-col items-center justify-center gap-3 overflow-y-auto p-4">
             {/* While a scene waits for its song (§8.3), a file dropped here is

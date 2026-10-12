@@ -56,14 +56,14 @@ export function CountIn(props: {
 
   return (
     <div
-      className="count-in-layer pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-center"
+      className="count-in-layer pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-center [container-type:size]"
       style={{ bottom: keyboardH }}
     >
       <p aria-live="polite" className="count-in-live m-0 flex items-center justify-center">
         {shown > 0 && (
           <span
             key={shown}
-            className="count-in-number block select-none text-[min(28vw,28vh)] leading-none"
+            className="count-in-number block select-none text-[min(28cqw,45cqh)] leading-none"
             style={{ animationDuration: `${lead.beatSec}s` }}
           >
             {shown}
