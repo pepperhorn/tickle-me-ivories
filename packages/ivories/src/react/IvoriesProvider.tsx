@@ -76,9 +76,10 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   const [status] = useState(() => new ValueStore<ProviderStatus>({ loading: false, error: null }))
   const [active] = useState(() => new ValueStore<ActiveNotes>(NO_ACTIVE))
 
-  // audio-unavailable never becomes status.error: the score still plays, silently.
+  // audio-unavailable and midi-unavailable never become status.error: the score
+  // still loads and plays (silently, or without live keys), spec §4.1.
   const report = useCallback((e: IvoriesError) => {
-    if (e.code !== 'audio-unavailable') status.set({ loading: false, error: e })
+    if (e.code !== 'audio-unavailable' && e.code !== 'midi-unavailable') status.set({ loading: false, error: e })
     latest.current.onError?.(e)
   }, [status])
   // Set once Web Audio has failed (no AudioContext): the own clock then runs on
@@ -241,7 +242,11 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
       midiRef.current = m
       m.subscribe(onLive)
       // A MIDI failure only reports; playback and the views carry on.
-      m.start().catch((err) => report(isIvoriesError(err) ? err : new IvoriesError('midi-unavailable', 'MIDI input is unavailable.', err)))
+      // A MidiInput released meanwhile (StrictMode's discarded mount) stays quiet.
+      m.start().catch((err) => {
+        if (midiRef.current !== m) return
+        report(isIvoriesError(err) ? err : new IvoriesError('midi-unavailable', 'MIDI input is unavailable.', err))
+      })
       if (latest.current.liveAudio) void engineRef.current?.prepareLive().catch(() => {})
     }
     let released = false

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { createRef } from 'react'
+import { StrictMode, createRef } from 'react'
 import { render, screen, waitFor, act } from '@testing-library/react'
 import { Midi } from '@tonejs/midi'
 import { IvoriesProvider } from './IvoriesProvider'
@@ -242,9 +242,11 @@ describe('live MIDI (spec §4.1)', () => {
 
   it('unmounting the last live view stops MIDI and clears the held keys', async () => {
     const port = stubMidi()
+    const engine = fakeEngine()
+    const onNoteOff = vi.fn()
     let seen: { live: ReadonlyMap<number, unknown> } | null = null
     const tree = (on: boolean) => (
-      <IvoriesProvider score={scoreDoc()} engine={fakeEngine()} clock={new AudioClock({ currentTime: 0 })}>
+      <IvoriesProvider score={scoreDoc()} engine={engine} clock={new AudioClock({ currentTime: 0 })} onNoteOff={onNoteOff}>
         {on && <Keyboard input="midi" />}
         <ActivePeek onActive={(a) => { seen = a }} />
       </IvoriesProvider>
@@ -254,6 +256,9 @@ describe('live MIDI (spec §4.1)', () => {
     act(() => port.onmidimessage!({ data: Uint8Array.of(0x90, 60, 70) }))
     rerender(tree(false))
     expect(port.onmidimessage).toBeNull()
+    // The key still down at release is let go: nothing keeps sounding or stays reported held.
+    expect(engine.noteOff).toHaveBeenCalledWith(60)
+    expect(onNoteOff).toHaveBeenCalledWith(expect.objectContaining({ midi: 60, source: 'live' }))
     rerender(tree(false))
     expect(seen!.live.size).toBe(0)
   })
@@ -263,5 +268,26 @@ describe('live MIDI (spec §4.1)', () => {
     const { container } = render(<IvoriesProvider score={scoreDoc()} engine={fakeEngine()} clock={new AudioClock({ currentTime: 0 })} onError={onError}><Keyboard input="midi" /></IvoriesProvider>)
     await waitFor(() => expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'midi-unavailable' })))
     expect(container.querySelector('.ivories-keyboard')).not.toBeNull()
+  })
+
+  it('midi-unavailable only calls onError: a loading score stays loading and unerrored', async () => {
+    vi.stubGlobal('fetch', () => new Promise(() => {}))
+    const onError = vi.fn()
+    let status: { loading: boolean; error: unknown } | null = null
+    function Peek() { status = useIvories().status.get(); return null }
+    const { container } = render(<IvoriesProvider scoreUrl="/never.mid" engine={fakeEngine()} clock={new AudioClock({ currentTime: 0 })} onError={onError}><Keyboard input="midi" /><Peek /></IvoriesProvider>)
+    await waitFor(() => expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'midi-unavailable' })))
+    const st = status as unknown as { loading: boolean; error: unknown }
+    expect(st.error).toBeNull()
+    expect(st.loading).toBe(true)
+    expect(container.textContent).toContain('Loading score')
+  })
+
+  it('reports midi-unavailable once under StrictMode (the discarded first MidiInput stays quiet)', async () => {
+    const onError = vi.fn()
+    render(<StrictMode><IvoriesProvider score={scoreDoc()} engine={fakeEngine()} clock={new AudioClock({ currentTime: 0 })} onError={onError}><Keyboard input="midi" /></IvoriesProvider></StrictMode>)
+    await waitFor(() => expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'midi-unavailable' })))
+    await new Promise((r) => setTimeout(r, 30))
+    expect(onError.mock.calls.filter(([e]) => e.code === 'midi-unavailable')).toHaveLength(1)
   })
 })
