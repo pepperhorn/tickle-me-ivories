@@ -1,4 +1,8 @@
-import { Midi } from '@tonejs/midi'
+import * as tonejsMidi from '@tonejs/midi'
+
+// @tonejs/midi is CJS for Node ("main") and ESM for bundlers ("module"): Node's
+// named-export detection misses `Midi`, so fall back to the default namespace.
+const Midi: typeof tonejsMidi.Midi = tonejsMidi.Midi ?? (tonejsMidi as unknown as { default: typeof tonejsMidi }).default.Midi
 import { Key } from 'tonal'
 import { buildTempoMap, ticksToSec } from '../model/tempoMap'
 import { normaliseTimeSignatures } from '../model/timeSignatures'

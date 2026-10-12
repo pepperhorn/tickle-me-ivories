@@ -6,7 +6,7 @@
   "workspaces": ["packages/*", "apps/*"],
   "scripts": {
     "dev": "npm run dev -w apps/studio --",
-    "build": "npm run check:imports && npm run build -w apps/studio",
+    "build": "npm run check:imports && npm run build -w packages/ivories && npm run build -w apps/studio",
     "test": "vitest run",
     "test:watch": "vitest",
     "check:imports": "node scripts/check-public-imports.mjs",

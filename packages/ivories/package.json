@@ -30,8 +30,10 @@
     "LICENSE"
   ],
   "scripts": {
+    "build": "vite build && tsc -p tsconfig.build.json && node scripts/copy-css.mjs && node scripts/css-scope.mjs && node scripts/check-dist.mjs",
     "check": "tsc -p tsconfig.json",
-    "check:css": "node scripts/css-scope.mjs"
+    "check:css": "node scripts/css-scope.mjs",
+    "prepack": "npm run build"
   },
   "peerDependencies": {
     "react": ">=19",
