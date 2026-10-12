@@ -1,65 +1,41 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { AudioClock, AudioEngine, PlaybackDriver } from 'ivories/core'
-import { LOOKAHEAD_SEC } from 'ivories/core'
-import { parseScoreFile } from 'ivories/core'
-import { hashFile } from 'ivories/core'
 import { computeLayout, fitRange, FIRST_PITCH, LAST_PITCH } from 'ivories/core'
 import { drawStage } from 'ivories/core'
 import { DEFAULT_THEME, readTheme } from 'ivories/core'
 import { useCanvasStage } from './render/useCanvasStage'
-import { effectiveBpmAt, sameTempo } from 'ivories/core'
+import { effectiveBpmAt } from 'ivories/core'
 import { NO_LEAD_IN, leadInFor } from 'ivories/core'
 import { keyOfScore } from 'ivories/core'
 import { ChordFeed } from 'ivories/core'
 import { displayChordSymbol } from 'ivories/core'
 import { toRomanNumeral } from 'ivories/core'
 import { bindTransportClock, playheadAt, useTransport } from './transport/useTransport'
-import { currentSettings, useSettings } from './settings/useSettings'
-import {
-  buildProfile, decodeProfile, encodeProfile, loadGlobals, loadProfile, mergeVoices,
-  saveGlobals, saveProfile,
-} from 'ivories/core'
-import { DEFAULT_SETTINGS } from 'ivories/core'
+import { useSettings } from './settings/useSettings'
 import { ChordReadout, StageText, samePitches } from 'ivories'
 import { CountIn } from './ui/CountIn'
-import type { StartGate } from './ui/CountIn'
-import { DisplaySettings } from './ui/DisplaySettings'
 import { FileDropZone } from './ui/FileDropZone'
-import { TextSettings } from './ui/TextSettings'
-import { ProfileSettings } from './ui/ProfileSettings'
-import { SettingsPanel, SettingsRow, SettingsSection } from './ui/SettingsPanel'
-import { TempoControl } from './ui/TempoControl'
-import { ThemeSettings } from './ui/ThemeSettings'
 import { TransportBar } from './ui/TransportBar'
-import { VelocityEditor } from './ui/VelocityEditor'
-import { VoicePanel } from './ui/VoicePanel'
-import { ScenesPanel } from './ui/ScenesPanel'
-import { SharePanel } from './ui/SharePanel'
 import { SharedPreviewBanner } from './ui/SharedPreviewBanner'
 import { SceneFilePrompt } from './ui/SceneFilePrompt'
-import { useScenes } from './ui/useScenes'
-import { getPlatform, subscribePlatform } from './platform/registry'
-import { sceneApplyPlan, sceneFromState } from 'ivories/core'
-import { applyLook, lookFromSettings } from 'ivories/core'
-import type { LookV1, SceneV1, SongRefWithTitle } from 'ivories/core'
+import { useTransparentPage } from './studio/useTransparentPage'
+import { useAutosave } from './studio/useAutosave'
+import { useSongLoader } from './studio/useSongLoader'
+import { useStartGate } from './studio/useStartGate'
+import { usePlaybackActions } from './studio/usePlaybackActions'
+import { useProfileActions } from './studio/useProfileActions'
+import { useSceneActions } from './studio/useSceneActions'
+import { ScenesSection } from './studio/ScenesSection'
+import { StudioSettings } from './studio/StudioSettings'
 import type { RenderState } from 'ivories/core'
 import type { KeyboardLayout } from 'ivories/core'
 import type { Theme } from 'ivories/core'
 import type { ChordReading } from 'ivories/core'
 import type { KeyContext } from 'ivories/core'
 import type { ChordDisplayValue } from 'ivories'
-import type { DisplayMode, ScoreDocument, TempoSetting, Voice } from 'ivories/core'
-import type {
-  AudioSettings, DisplaySettings as DisplaySettingsValue, SavedVoice, Settings,
-  TextSettings as TextSettingsValue, ThemeName, ThemeSettings as ThemeSettingsValue, VelocityScheme, ZoomMode,
-} from 'ivories/core'
-
-/** The tempo a song with no saved profile starts at: the file's own tempi. */
-const DEFAULT_TEMPO: TempoSetting = { mode: 'scale', scale: 1 }
-
-/** How long a start waits for resume() to settle before showing "Tap to start sound". */
-const START_GATE_GRACE_MS = 150
+import type { ScoreDocument, Voice } from 'ivories/core'
+import type { ThemeName, ZoomMode } from 'ivories/core'
 
 /** Shared by identity so the labels-off overlay state never allocates. */
 const NO_PITCHES: number[] = []
@@ -69,9 +45,7 @@ export default function App() {
   const settings = useSettings()
   const engineRef = useRef<AudioEngine | null>(null)
   const [playhead, setPlayhead] = useState(0)
-  const [error, setError] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [profileError, setProfileError] = useState<string | null>(null)
   // The "Scenes & looks" card on the empty stage (no song loaded, so no
   // TransportBar and no Settings panel to host it).
   const [emptyScenesOpen, setEmptyScenesOpen] = useState(false)
@@ -93,10 +67,6 @@ export default function App() {
   const themeRef = useRef<{ key: string; layout: KeyboardLayout | null; theme: Theme }>({
     key: '', layout: null, theme: DEFAULT_THEME,
   })
-  // Bumped on every loadFile/loadAnother so a slow, now-superseded load can't
-  // prune the CURRENT score's voice buses out from under it once it finally
-  // resolves (voice ids like 'hand-left'/'hand-right' repeat across files).
-  const loadTokenRef = useRef(0)
   // The chord readout (spec §15.2). The feed is the draw loop's stateful chord
   // step; lastReadingRef is the last reading pushed to React, compared by
   // identity so a steady chord costs no re-render. `undefined` means "nothing
@@ -106,12 +76,6 @@ export default function App() {
   const lastReadingKeyRef = useRef<KeyContext | null>(null)
   const [chord, setChord] = useState<ChordDisplayValue | null>(null)
   const keyRef = useRef<{ sig: ScoreDocument['keySignature'] | null; override: string | null; key: KeyContext } | null>(null)
-  // Playback start (count-in task). A start waits for audio to be running and
-  // for the current file's instruments; startGate says which, on stage.
-  // startTokenRef supersedes a waiting start (a second press, a new file).
-  const [startGate, setStartGate] = useState<StartGate>(null)
-  const startTokenRef = useRef(0)
-  const voicesReadyRef = useRef<{ promise: Promise<void>; done: boolean }>({ promise: Promise.resolve(), done: true })
 
   if (!engineRef.current) engineRef.current = new AudioEngine()
   const engine = engineRef.current
@@ -298,222 +262,15 @@ export default function App() {
     }, [engine, chordFeed]),
   )
 
-  // Resolves false if the file was refused. Two optional hooks serve the
-  // scene file prompt (§8.3):
-  // - `beforeLoad` runs once the file has parsed, before anything changes,
-  //   so a caller can unload the current song only for a file that is good;
-  // - `onLoaded` runs synchronously as soon as the file is the loaded score,
-  //   BEFORE the audio half: engine.resume() can wait indefinitely for a user
-  //   gesture (autoplay policy), and a scene applied in onLoaded must be what
-  //   the audio half then loads.
-  const loadFile = useCallback(async (
-    file: File,
-    hooks: { beforeLoad?: () => void; onLoaded?: () => void } = {},
-  ): Promise<boolean> => {
-    let score
-    try {
-      const bytes = await file.arrayBuffer()
-      score = parseScoreFile(bytes, file.name, useTransport.getState().tempo)
-      score.id = await hashFile(bytes)
-      if (score.notes.length === 0) { setError(`${file.name} contains no notes.`); return false }
-    } catch (e) {
-      setError(`Could not read ${file.name}: ${(e as Error).message}`)
-      return false
-    }
-    hooks.beforeLoad?.()
+  useTransparentPage(settings.theme)
+  const autosave = useAutosave(engine)
+  const loader = useSongLoader({ engine, onScoreReplaced: () => chordFeed.reset() })
+  const gate = useStartGate({ engine, voicesReady: loader.voicesReady })
+  const actions = usePlaybackActions({ engine, onSeek: () => chordFeed.reset() })
 
-    // Claim this load's slot before the first await below. If a newer
-    // loadFile or loadAnother runs before this one's instruments finish
-    // loading, the token no longer matches and this call's retainVoices is
-    // skipped -- otherwise a slow file A resolving after file B is already
-    // current would prune B's voices right back out.
-    const token = ++loadTokenRef.current
-
-    setError(null)
-
-    // Restore this piece's autosaved profile, matched by content hash.
-    const saved = loadProfile(score.id)
-    if (saved) {
-      score.voices = mergeVoices(score.voices, saved.voices)
-      // Set tempo BEFORE loadScore: loadScore retimes the incoming score to the
-      // live tempo setting, so the setting has to be right first.
-      useTransport.setState({ tempo: saved.tempo })
-      useSettings.getState().replaceAll({
-        ...currentSettings(), theme: saved.theme, text: saved.text,
-        ...(saved.display.settings ? { display: saved.display.settings } : {}),
-      })
-    } else {
-      // Tempo is song-scoped (§10): a song with no profile starts at its own
-      // tempo, not the previous song's -- which, in absolute mode, would
-      // flatten this file's tempo map and then be autosaved as its profile.
-      useTransport.setState({ tempo: DEFAULT_TEMPO })
-    }
-
-    useTransport.getState().loadScore(score)
-    chordFeed.reset()
-    if (saved) {
-      useTransport.getState().setMode(saved.display.mode)
-      useTransport.getState().setFallSeconds(saved.display.fallSeconds)
-    }
-    hooks.onLoaded?.()
-
-    const audioFailed = (e: unknown) => {
-      // The score is loaded and visible; only sound is affected.
-      if (loadTokenRef.current === token) {
-        setError(`${file.name} is loaded, but audio could not start: ${(e as Error).message}`)
-      }
-    }
-    // NOT awaited (count-in task): outside a user gesture resume() can stay
-    // pending until one arrives, and the instruments used to wait behind it --
-    // so they only started loading when Play was pressed, and the first
-    // seconds played silent. Sample fetch and decode work on a suspended
-    // context; the gesture that unlocks audio is the file picker's click
-    // (unlockAudio) or, failing that, Play / "Tap to start sound".
-    engine.resume().catch(audioFailed)
-    const ready = (async () => {
-      engine.setMasterVolume(useSettings.getState().audio.masterVolume)
-      // Load the voices as they are NOW, not this function's parsed copy: a
-      // scene applied in onLoaded must not have its instruments and gains
-      // overwritten by the file's defaults.
-      const voices = loadTokenRef.current === token
-        ? useTransport.getState().score?.voices ?? score.voices
-        : score.voices
-      await Promise.all(voices.map((v) => engine.loadVoice(v)))
-      if (loadTokenRef.current === token) engine.retainVoices(voices.map((v) => v.id))
-    })()
-    const entry = { promise: ready.catch(() => {}), done: false }
-    void entry.promise.then(() => { entry.done = true })
-    voicesReadyRef.current = entry
-    try {
-      await ready
-    } catch (e) {
-      audioFailed(e)
-    }
-    return true
-  }, [engine, chordFeed])
-
-  // Any tap or click on the stage, and the file pickers' own clicks, unlock
-  // audio in the gesture itself. Cheap when already running (resume is a no-op).
-  const unlockAudio = useCallback(() => {
-    engine.resume().catch(() => { /* reported by loadFile / the start gate */ })
-  }, [engine])
-
-  /** Starts the transport now. From the top that is one bar early (the lead-in). */
-  const beginPlayback = useCallback(() => {
-    const state = useTransport.getState()
-    if (!state.score || state.playing) return
-    const now = engine.currentTime
-    const lead = state.pausedAtSec <= 0 ? leadInFor(state.score, state.tempo).sec : 0
-    // From the top, the bar begins one scheduler lookahead from now, so the
-    // first click is handed to Web Audio ahead of its time (not clamped late
-    // by up to a tick), and the "1", which shows when the playhead reaches
-    // -lead, appears as it sounds.
-    const pad = lead > 0 ? LOOKAHEAD_SEC : 0
-    // The driver re-seats its cursors at the exact start on the play event.
-    state.play(now, lead + pad)
-  }, [engine])
-
-  /**
-   * A start never plays silent notes: it waits at the top of the count-in until
-   * the AudioContext is running ("Tap to start sound" -- a dropped file is no
-   * user activation, so nothing may have unlocked audio yet) and until this
-   * file's instruments have loaded ("Loading sounds"). resume() is CALLED
-   * synchronously, inside whatever gesture got us here.
-   */
-  const requestStart = useCallback(() => {
-    const token = ++startTokenRef.current
-    const resumed = engine.resume()
-    resumed.catch(() => { /* handled below: the gate stays up */ })
-    void (async () => {
-      if (!engine.running) {
-        // A resume() inside a real gesture settles within a few ms; give it a
-        // short grace before asking for a tap, so the gate never flashes up
-        // on a press that has just unlocked audio.
-        let grace: ReturnType<typeof setTimeout> | undefined
-        await Promise.race([
-          resumed.catch(() => {}),
-          new Promise<void>((r) => { grace = setTimeout(r, START_GATE_GRACE_MS) }),
-        ])
-        clearTimeout(grace)
-        if (token !== startTokenRef.current) return
-        if (!engine.running) {
-          setStartGate('sound')
-          try { await resumed } catch { /* still suspended: the gate stays up */ }
-          if (token !== startTokenRef.current) return
-          if (!engine.running) return   // a tap on the gate (or Play) calls requestStart again
-        }
-      }
-      const voices = voicesReadyRef.current
-      if (!voices.done) {
-        setStartGate('loading')
-        await voices.promise
-        if (token !== startTokenRef.current) return
-      }
-      setStartGate(null)
-      beginPlayback()
-    })()
-  }, [engine, beginPlayback])
-
-  const cancelStart = useCallback(() => {
-    startTokenRef.current++
-    setStartGate(null)
-  }, [])
-
-  const toggle = useCallback(() => {
-    const state = useTransport.getState()
-    if (state.playing) {
-      state.pause(engine.currentTime)
-    } else if (startGate === 'loading') {
-      cancelStart()   // Play pressed again while the sounds load: stop waiting
-    } else {
-      // Includes the 'sound' gate: this press is a real gesture, so it is the tap.
-      requestStart()
-    }
-  }, [engine, startGate, cancelStart, requestStart])
-
-  const liveHead = useCallback(() => playheadAt(useTransport.getState(), engine.currentTime), [engine])
-
-  const seek = useCallback((sec: number) => {
-    useTransport.getState().seek(sec, engine.currentTime)
-    chordFeed.reset()
-  }, [engine, chordFeed])
-
-  // setTempo replaces score.notes, so the notes effect above rebuilds the
-  // driver's cursors. The notes already handed to smplr at their old times are
-  // cancelled by the driver on the clock's seek event, exactly as seek and pause.
-  // A setting equal to the current one is a no-op: retiming to it would change
-  // nothing but still cut every sustained note.
-  const changeTempo = useCallback((setting: TempoSetting) => {
-    if (sameTempo(setting, useTransport.getState().tempo)) return
-    useTransport.getState().setTempo(setting, engine.currentTime)
-  }, [engine])
-
-  // Volume and instrument have audio-side effects; colour, label and visibility
-  // are model-only and the draw loop picks them up on the next frame.
-  const changeVoice = useCallback((id: string, patch: Partial<Voice>) => {
-    useTransport.getState().updateVoice(id, patch)
-    if (patch.volume !== undefined) engine.setVoiceVolume(id, patch.volume)
-    if (patch.instrument !== undefined) {
-      const v = useTransport.getState().score?.voices.find((x) => x.id === id)
-      if (v) void engine.loadVoice(v)
-    }
-  }, [engine])
-
-  // Autosave, debounced so a slider drag writes once rather than sixty times.
-  // The pending save is also stashed in a ref so it can be flushed on demand:
-  // "Load another file" (before the score it describes is cleared) and
-  // pagehide (before the tab actually closes) both fire well inside the
-  // 400ms window and must not lose the last edit.
-  const pendingAutosaveRef = useRef<{ timer: ReturnType<typeof setTimeout>; run: () => void } | null>(null)
-
-  const flushAutosave = useCallback(() => {
-    const pending = pendingAutosaveRef.current
-    if (!pending) return
-    clearTimeout(pending.timer)
-    pendingAutosaveRef.current = null
-    pending.run()
-  }, [])
-
+  const { flush: flushAutosave } = autosave
+  const { cancelStart } = gate
+  const { clearSong } = loader
   const loadAnother = useCallback(() => {
     // Stop and pause before clearing the model, or the previous file keeps
     // sounding after the drop zone reappears.
@@ -524,228 +281,12 @@ export default function App() {
     // clearScore() or an edit made in the last 400ms is lost.
     flushAutosave()
     cancelStart()
-    state.clearScore()
-    // Silence holds the last chord, so a cleared score would keep showing it.
-    chordFeed.reset()
-    loadTokenRef.current++ // invalidate any in-flight loadFile's retainVoices
-    engine.retainVoices([])
-  }, [engine, chordFeed, flushAutosave, cancelStart])
+    clearSong()
+  }, [engine, flushAutosave, cancelStart, clearSong])
 
-  // The canvas has alpha, but the page behind it does not. Without this the host
-  // page paints its own ground and an OBS browser source composites only black.
-  useEffect(() => {
-    const transparent = settings.theme.name === 'transparent' && settings.theme.stageBgOverride === null
-    document.documentElement.classList.toggle('ivories-transparent', transparent)
-    return () => document.documentElement.classList.remove('ivories-transparent')
-  }, [settings.theme.name, settings.theme.stageBgOverride])
-
-  // Globals follow the user, not the song: restore them once at startup.
-  useEffect(() => {
-    const g = loadGlobals()
-    if (!g) return
-    useSettings.getState().setVelocity(g.velocity)
-    useSettings.getState().setAudio(g.audio)
-    engine.setMasterVolume(g.audio.masterVolume)
-  }, [engine])
-
-  useEffect(() => {
-    const run = () => {
-      pendingAutosaveRef.current = null
-      const st = useSettings.getState()
-      saveGlobals({ velocity: st.velocity, audio: st.audio })
-      const tr = useTransport.getState()
-      if (!tr.score?.id) return
-      saveProfile(buildProfile({
-        song: { id: tr.score.id, name: tr.score.name, format: tr.score.sourceFormat },
-        voices: tr.score.voices,
-        tempo: tr.tempo,
-        mode: tr.mode,
-        fallSeconds: tr.fallSeconds,
-        settings: currentSettings(),
-      }))
-    }
-    const timer = setTimeout(run, 400)
-    pendingAutosaveRef.current = { timer, run }
-    return () => clearTimeout(timer)
-  }, [t.score, t.tempo, t.mode, t.fallSeconds, settings])
-
-  // A tab close (or refresh) can land inside the 400ms debounce window;
-  // pagehide fires reliably before that, unlike beforeunload/unload.
-  useEffect(() => {
-    window.addEventListener('pagehide', flushAutosave)
-    return () => window.removeEventListener('pagehide', flushAutosave)
-  }, [flushAutosave])
-
-  const exportProfile = useCallback(() => {
-    const tr = useTransport.getState()
-    if (!tr.score) return
-    const p = buildProfile({
-      song: { id: tr.score.id, name: tr.score.name, format: tr.score.sourceFormat },
-      voices: tr.score.voices, tempo: tr.tempo, mode: tr.mode,
-      fallSeconds: tr.fallSeconds, settings: currentSettings(),
-    })
-    const url = URL.createObjectURL(new Blob([encodeProfile(p)], { type: 'application/json' }))
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${tr.score.name.replace(/\.[^.]+$/, '')}.tmi.json`
-    a.className = 'profile-download hidden'
-    // Safari and Firefox can cancel a download from a detached anchor, or one
-    // whose URL is revoked in the same task as the click.
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 0)
-  }, [])
-
-  // The apply half shared by a profile import and a scene. Everything derived
-  // is computed before the first mutation, so a refusal leaves the app as it
-  // was ({ partial: false }); a failure mid-apply reports { partial: true }.
-  // Voices, tempo, mode and fall time need a loaded score; with none, only
-  // the settings apply. `velocity`/`audio` apply only when given.
-  const applyProfileParts = useCallback((p: {
-    theme: ThemeSettingsValue
-    text: TextSettingsValue
-    display?: DisplaySettingsValue
-    velocity?: VelocityScheme
-    audio?: AudioSettings | null
-    voices: SavedVoice[]
-    tempo: TempoSetting
-    mode: DisplayMode
-    fallSeconds: number
-  }): { partial: boolean; message: string } | null => {
-    const tr = useTransport.getState()
-    let next: Settings, voices: Voice[] | null
-    try {
-      next = {
-        ...currentSettings(), theme: p.theme, text: p.text,
-        ...(p.display ? { display: p.display } : {}),
-        ...(p.velocity ? { velocity: p.velocity } : {}),
-        // Merged over the current audio: a save made before a setting existed
-        // (Count-in) must not switch it back to its default.
-        ...(p.audio ? { audio: { ...currentSettings().audio, ...p.audio } } : {}),
-      }
-      voices = tr.score ? mergeVoices(tr.score.voices, p.voices) : null
-    } catch (e) {
-      return { partial: false, message: (e as Error).message }
-    }
-    try {
-      useSettings.getState().replaceAll(next)
-      if (p.audio) engine.setMasterVolume(p.audio.masterVolume)
-      if (tr.score && voices) {
-        useTransport.setState({ score: { ...tr.score, voices } })
-        for (const v of voices) { engine.setVoiceVolume(v.id, v.volume); void engine.loadVoice(v) }
-        changeTempo(p.tempo)
-        tr.setMode(p.mode)
-        tr.setFallSeconds(p.fallSeconds)
-      }
-      return null
-    } catch (e) {
-      return { partial: true, message: (e as Error).message }
-    }
-  }, [engine, changeTempo])
-
-  const importProfile = useCallback(async (file: File, applyGlobals: boolean) => {
-    let p
-    try {
-      p = decodeProfile(await file.text())
-    } catch (e) {
-      // Refused outright -- current settings are untouched.
-      setProfileError((e as Error).message)
-      return
-    }
-    const r = applyProfileParts({
-      theme: p.theme, text: p.text, display: p.display.settings,
-      ...(applyGlobals ? { velocity: p.global.velocity, audio: p.global.audio } : {}),
-      voices: p.voices, tempo: p.tempo, mode: p.display.mode, fallSeconds: p.display.fallSeconds,
-    })
-    if (!r) setProfileError(null)
-    else if (r.partial) setProfileError(`Profile was only partly applied: ${r.message}`)
-    else setProfileError(`Could not import profile: ${r.message}`)
-  }, [applyProfileParts])
-
-  // ---- scenes, looks and shares (task 2.5) ----
-
-  // Read through useSyncExternalStore (preflight F15): getPlatform returns the
-  // same object until a plugin installs, so this never loops. The draw loop
-  // never reads it.
-  const platform = useSyncExternalStore(subscribePlatform, getPlatform)
-
-  /** The loaded song as a scene (spec §8.1). Phase 2's only song source is a
-      dropped file, so the ref is always `local`. Throws with nothing loaded. */
-  const buildScene = useCallback((): SceneV1 => {
-    const tr = useTransport.getState()
-    if (!tr.score) throw new Error('Load a song first.')
-    const song: SongRefWithTitle = {
-      kind: 'local', sha256: tr.score.id, name: tr.score.name, format: tr.score.sourceFormat,
-      title: tr.score.name.replace(/\.[^.]+$/, '') || tr.score.name,
-    }
-    const profile = buildProfile({
-      song: { id: tr.score.id, name: tr.score.name, format: tr.score.sourceFormat },
-      voices: tr.score.voices, tempo: tr.tempo, mode: tr.mode,
-      fallSeconds: tr.fallSeconds, settings: currentSettings(),
-    })
-    // sceneFromState asserts profile.song.id === songKey(song) (preflight F10a).
-    return sceneFromState({ song, profile })
-  }, [])
-
-  const buildLook = useCallback((): LookV1 => {
-    const tr = useTransport.getState()
-    return lookFromSettings(currentSettings(), tr.mode, tr.fallSeconds)
-  }, [])
-
-  // Applies a scene to the loaded score through the same apply half as a
-  // profile import (same refusal and partial-apply handling). A shared
-  // scene's plan never carries audio (sceneApplyPlan, spec §8.1). The 400ms
-  // autosave then records the result under tmi.profile.<id> as usual.
-  const applySceneToScore = useCallback((scene: SceneV1, shared: boolean) => {
-    if (!useTransport.getState().score) throw new Error('Load the scene’s song first.')
-    const plan = sceneApplyPlan(scene, { shared })
-    const r = applyProfileParts({
-      ...plan.settings, audio: plan.audio,
-      voices: plan.voices, tempo: plan.tempo, mode: plan.mode, fallSeconds: plan.fallSeconds,
-    })
-    if (r?.partial) throw new Error(`The scene was only partly applied: ${r.message}`)
-    if (r) throw new Error(`Could not apply the scene: ${r.message}`)
-  }, [applyProfileParts])
-
-  // A look needs no song. keyOverride is song-specific, so the current one stays.
-  const applyLookSettings = useCallback((look: LookV1) => {
-    const a = applyLook(look)
-    const cur = currentSettings()
-    useSettings.getState().replaceAll({
-      ...cur, theme: a.theme, display: a.display, velocity: a.velocity,
-      text: { ...a.text, keyOverride: cur.text.keyOverride },
-    })
-    useTransport.getState().setMode(a.mode)
-    useTransport.getState().setFallSeconds(a.fallSeconds)
-  }, [])
-
-  // Swapping songs for a scene goes through "Load another" first, so playback
-  // stops and the outgoing song's pending autosave is flushed -- but only once
-  // the new file has parsed, so a bad file leaves the current song alone.
-  // Resolves true right after onLoaded (not after audio); false if the file
-  // was refused or loadFile threw. Never rejects, so the prompt's busy state
-  // always clears.
-  const replaceSong = useCallback((file: File, onLoaded: () => void) => new Promise<boolean>((resolve) => {
-    loadFile(file, {
-      beforeLoad: () => { if (useTransport.getState().score) loadAnother() },
-      onLoaded: () => { try { onLoaded() } finally { resolve(true) } },
-    }).then((ok) => { if (!ok) resolve(false) }, () => resolve(false))
-  }), [loadAnother, loadFile])
-
-  const scenes = useScenes({
-    scoreId: () => useTransport.getState().score?.id ?? null,
-    applyScene: applySceneToScore,
-    applyLook: applyLookSettings,
-    replaceSong,
-    currentAudio: () => currentSettings().audio,
-  })
-
-  // Reset reaches the engine too, or the master gain stays at the old level.
-  const resetSettings = useCallback(() => {
-    useSettings.getState().reset()
-    engine.setMasterVolume(DEFAULT_SETTINGS.audio.masterVolume)
-  }, [engine])
+  const profile = useProfileActions({ engine, changeTempo: actions.changeTempo })
+  const sceneApi = useSceneActions({ applyProfileParts: profile.applyProfileParts, loadFile: loader.loadFile, loadAnother })
+  const { platform, scenes, buildScene, buildLook } = sceneApi
 
   // Memoised: keyOfScore builds a fresh object, and StageText would otherwise
   // receive a new keyContext on every App render.
@@ -766,36 +307,17 @@ export default function App() {
     return s && tempoMap && timeSignatures ? leadInFor(s, t.tempo) : NO_LEAD_IN
   }, [tempoMap, timeSignatures, t.tempo])
 
-  // Master volume has an audio-side effect (the engine's gain node) as well as
-  // a persisted setting, so it goes through its own callback rather than a
-  // direct settings.setAudio call, mirroring changeVoice's split above.
-  const changeMasterVolume = useCallback((v: number) => {
-    useSettings.getState().setAudio({ masterVolume: v })
-    engine.setMasterVolume(v)
-  }, [engine])
-
   // One instance of the panel pair, hosted by the Settings panel with a song
-  // loaded and by the empty-stage card without one. Loading a scene with no
-  // song starts the §8.3 drop-the-file flow.
+  // loaded and by the empty-stage card without one.
   const scenesSection = (
-    <>
-      <ScenesPanel
-        storage={platform.storage}
-        refreshKey={scenes.savesVersion}
-        canSaveScene={t.score !== null}
-        defaultName={t.score?.name.replace(/\.[^.]+$/, '') || 'Untitled'}
-        buildScene={buildScene}
-        buildLook={buildLook}
-        onOpenScene={(s) => void scenes.openScene(s, false)}
-        onApplyLook={scenes.applyLook}
-      />
-      <SharePanel
-        share={platform.share}
-        canShareScene={t.score !== null}
-        buildScene={buildScene}
-        buildLook={buildLook}
-      />
-    </>
+    <ScenesSection
+      platform={platform}
+      scenes={scenes}
+      canSave={t.score !== null}
+      defaultName={t.score?.name.replace(/\.[^.]+$/, '') || 'Untitled'}
+      buildScene={buildScene}
+      buildLook={buildLook}
+    />
   )
 
   return (
@@ -807,8 +329,8 @@ export default function App() {
         className={`stage-wrap ivories ivories-theme-${settings.theme.name} relative min-h-0 flex-1`}
         // Any stage interaction unlocks audio (pointerup, not only pointerdown:
         // on touch screens only the former counts as user activation).
-        onPointerDown={unlockAudio}
-        onPointerUp={unlockAudio}
+        onPointerDown={loader.unlockAudio}
+        onPointerUp={loader.unlockAudio}
         style={settings.theme.stageBgOverride
           ? ({ '--ivories-stage-bg': settings.theme.stageBgOverride } as CSSProperties)
           : undefined}
@@ -826,9 +348,9 @@ export default function App() {
             active={t.playing}
             enabled={settings.audio.countIn !== false}
             lead={lead}
-            head={liveHead}
-            gate={startGate}
-            onTapToStart={requestStart}
+            head={actions.liveHead}
+            gate={gate.startGate}
+            onTapToStart={gate.requestStart}
             keyboardH={stageText.layout?.keyboardH ?? 0}
           />
         )}
@@ -837,8 +359,8 @@ export default function App() {
             {/* While a scene waits for its song (§8.3), a file dropped here is
                 checked against the scene's hash rather than loaded blind. */}
             <FileDropZone
-              onFile={scenes.pending ? scenes.provideFile : (f) => void loadFile(f)}
-              onPick={unlockAudio}
+              onFile={scenes.pending ? scenes.provideFile : (f) => void loader.loadFile(f)}
+              onPick={loader.unlockAudio}
             />
             <button
               type="button"
@@ -865,7 +387,7 @@ export default function App() {
             mismatch={scenes.pending.mismatch?.name ?? null}
             busy={scenes.busy}
             onFile={scenes.provideFile}
-            onPick={unlockAudio}
+            onPick={loader.unlockAudio}
             onUseAnyway={scenes.acceptMismatch}
             onCancel={scenes.cancelPending}
           />
@@ -895,9 +417,9 @@ export default function App() {
             </button>
           </p>
         )}
-        {error && (
+        {loader.error && (
           <p className="stage-error absolute left-4 top-4 rounded bg-black/70 px-3 py-2 text-sm text-[#ff6b6b]">
-            {error}
+            {loader.error}
           </p>
         )}
       </div>
@@ -910,97 +432,20 @@ export default function App() {
           mode={t.mode}
           name={t.score.name}
           effectiveBpm={effectiveBpm}
-          onToggle={toggle}
-          onSeek={seek}
+          onToggle={gate.toggle}
+          onSeek={actions.seek}
           onMode={t.setMode}
           onLoadAnother={loadAnother}
           settings={
-            <>
-              <button
-                type="button"
-                aria-label="Settings"
-                aria-expanded={settingsOpen}
-                className="btn-settings rounded-md border border-[var(--line)] px-3 py-1 text-xs text-[var(--ink-dim)]"
-                onClick={() => setSettingsOpen((v) => !v)}
-              >
-                Settings
-              </button>
-              <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)}>
-                <SettingsSection id="tempo" title="Tempo" defaultOpen>
-                  <TempoControl tempo={t.tempo} effectiveBpm={effectiveBpm} onChange={changeTempo} />
-                </SettingsSection>
-                <SettingsSection id="voices" title="Voices">
-                  <VoicePanel voices={t.score?.voices ?? []} onChange={changeVoice} />
-                </SettingsSection>
-                <SettingsSection id="velocity" title="Velocity colour">
-                  <VelocityEditor scheme={settings.velocity} onChange={settings.setVelocity} />
-                </SettingsSection>
-                <SettingsSection id="display" title="Display">
-                  <DisplaySettings
-                    display={settings.display}
-                    fallSeconds={t.fallSeconds}
-                    onDisplay={settings.setDisplay}
-                    onFallSeconds={t.setFallSeconds}
-                  />
-                </SettingsSection>
-                <SettingsSection id="theme" title="Theme &amp; compositing">
-                  <ThemeSettings theme={settings.theme} onChange={settings.setTheme} />
-                </SettingsSection>
-                <SettingsSection id="text" title="On-stage text">
-                  <TextSettings
-                    text={settings.text}
-                    onChange={settings.setText}
-                    onStyle={settings.setTextStyle}
-                  />
-                </SettingsSection>
-                <SettingsSection id="audio" title="Audio">
-                  <SettingsRow label="Master volume" htmlFor="master-volume">
-                    <input
-                      id="master-volume" type="range" aria-label="Master volume"
-                      className="master-volume-slider h-1 w-32 accent-[var(--accent)]"
-                      min={0} max={1} step={0.01} value={settings.audio.masterVolume}
-                      onChange={(e) => changeMasterVolume(Number(e.target.value))}
-                    />
-                  </SettingsRow>
-                  <SettingsRow label="Metronome">
-                    <input
-                      type="checkbox" aria-label="Metronome"
-                      className="metronome-toggle accent-[var(--accent)]"
-                      checked={settings.audio.metronome}
-                      onChange={(e) => settings.setAudio({ metronome: e.target.checked })}
-                    />
-                  </SettingsRow>
-                  <SettingsRow label="Count-in">
-                    <input
-                      type="checkbox" aria-label="Count-in"
-                      className="count-in-toggle accent-[var(--accent)]"
-                      checked={settings.audio.countIn !== false}
-                      onChange={(e) => settings.setAudio({ countIn: e.target.checked })}
-                    />
-                  </SettingsRow>
-                  <SettingsRow label="Metronome volume" htmlFor="metronome-volume">
-                    <input
-                      id="metronome-volume" type="range" aria-label="Metronome volume"
-                      className="metronome-volume-slider h-1 w-32 accent-[var(--accent)]"
-                      min={0} max={1} step={0.01} value={settings.audio.metronomeVolume}
-                      disabled={!settings.audio.metronome}
-                      onChange={(e) => settings.setAudio({ metronomeVolume: Number(e.target.value) })}
-                    />
-                  </SettingsRow>
-                </SettingsSection>
-                <SettingsSection id="scenes" title="Scenes &amp; looks">
-                  {scenesSection}
-                </SettingsSection>
-                <SettingsSection id="profile" title="Profile">
-                  <ProfileSettings
-                    onExport={exportProfile}
-                    onImport={(f, g) => void importProfile(f, g)}
-                    onReset={resetSettings}
-                    error={profileError}
-                  />
-                </SettingsSection>
-              </SettingsPanel>
-            </>
+            <StudioSettings
+              open={settingsOpen}
+              onToggle={() => setSettingsOpen((v) => !v)}
+              onClose={() => setSettingsOpen(false)}
+              effectiveBpm={effectiveBpm}
+              actions={actions}
+              profile={profile}
+              scenesSection={scenesSection}
+            />
           }
         />
       )}
