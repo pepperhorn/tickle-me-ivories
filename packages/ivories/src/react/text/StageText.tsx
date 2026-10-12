@@ -2,7 +2,9 @@ import { useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { ensureGoogleFont } from './googleFont'
 import { spellPitch } from '../../core/music/spell'
-import type { KeyboardLayout } from '../../core/render/geometry'
+import { toScreen } from '../../core/render/orientation'
+import type { KeyboardLayout, KeyRect } from '../../core/render/geometry'
+import type { Orientation } from '../../core/layout/types'
 import type { KeyContext } from '../../core/music/spell'
 import type { NoteLabelContent, TextSettings as TextSettingsType, TextStyle } from '../../core/settings/types'
 import { isSafeFontFamily } from '../../core/settings/profile'
@@ -57,13 +59,37 @@ export function textCss(style: TextStyle, whiteW: number): CSSProperties {
   return css
 }
 
+/**
+ * Where one note label sits. Vertical: centred over its key, above the hit
+ * line or over the key face. Horizontal (R-H): the same anchors mapped to the
+ * screen, with the text running right from the keyboard edge (or key end).
+ */
+export function labelPosition(
+  layout: KeyboardLayout, k: KeyRect, placement: TextSettingsType['labelPlacement'], size: number,
+  orientation?: Orientation,
+): CSSProperties {
+  const cx = k.x + k.w / 2
+  if (orientation === 'horizontal') {
+    const y = placement === 'above' ? layout.hitY - size * 0.9 : layout.hitY + layout.keyboardH - size * 0.4
+    const p = toScreen('horizontal', layout, cx, y)
+    return { left: `${p.x}px`, top: `${p.y}px`, transform: 'translateY(-50%)' }
+  }
+  // Above: just clear of the hit line, in the stage area. Below: over the
+  // key face, clear of the black keys' lower edge.
+  const top = placement === 'above'
+    ? layout.hitY - size * 1.5
+    : layout.hitY + layout.keyboardH - size * 1.6
+  return { left: `${cx}px`, top: `${top}px`, transform: 'translateX(-50%)' }
+}
+
 export function StageText(props: {
   layout: KeyboardLayout | null
   pitches: number[]
   text: TextSettingsType
   keyContext: KeyContext
+  orientation?: Orientation
 }) {
-  const { layout, pitches, text, keyContext } = props
+  const { layout, pitches, text, keyContext, orientation } = props
   const { family, weight } = text.style
   // F37: no CDN request for text nobody can see, nor for the bundled family.
   const wantsFont = !(text.labels === 'off' && text.chord === 'off')
@@ -86,11 +112,6 @@ export function StageText(props: {
         const k = layout.byPitch.get(pitch)
         if (!k) return null
         const name = spellPitch(pitch, keyContext)
-        // Above: just clear of the hit line, in the stage area. Below: over the
-        // key face, clear of the black keys' lower edge.
-        const top = text.labelPlacement === 'above'
-          ? layout.hitY - size * 1.5
-          : layout.hitY + layout.keyboardH - size * 1.6
         return (
           <span
             key={pitch}
@@ -100,9 +121,7 @@ export function StageText(props: {
             style={{
               ...css,
               position: 'absolute',
-              left: `${k.x + k.w / 2}px`,
-              top: `${top}px`,
-              transform: 'translateX(-50%)',
+              ...labelPosition(layout, k, text.labelPlacement, size, orientation),
               whiteSpace: 'nowrap',
               lineHeight: 1,
             }}

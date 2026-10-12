@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
-import { StageText, labelText, samePitches, textCss } from './StageText'
+import { StageText, labelPosition, labelText, samePitches, textCss } from './StageText'
 import { computeLayout } from '../../core/render/geometry'
 import { DEFAULT_SETTINGS } from '../../core/settings/types'
 import { DEFAULT_KEY } from '../../core/music/spell'
@@ -173,5 +173,28 @@ describe('StageText font loading', () => {
   it('never fetches Poppins from the CDN -- it is self-hosted', () => {
     render(<StageText layout={layout} pitches={[]} text={text({ labels: 'pitch' })} keyContext={DEFAULT_KEY} />)
     expect(links()).toHaveLength(0)
+  })
+})
+
+describe('labelPosition (R-H)', () => {
+  const layout = computeLayout(400, 1000)   // canonical frame of a 1000 x 400 horizontal view
+  const k = layout.byPitch.get(60)!
+
+  it('vertical: centred over the key, above the hit line (unchanged)', () => {
+    expect(labelPosition(layout, k, 'above', 10)).toEqual({
+      left: `${k.x + k.w / 2}px`, top: `${layout.hitY - 15}px`, transform: 'translateX(-50%)',
+    })
+  })
+
+  it('horizontal: just right of the keyboard edge, centred on the key row', () => {
+    const p = labelPosition(layout, k, 'above', 10, 'horizontal')
+    expect(Number.parseFloat(String(p.left))).toBeCloseTo(layout.keyboardH + 9, 6)
+    expect(Number.parseFloat(String(p.top))).toBeCloseTo(layout.stageW - (k.x + k.w / 2), 6)
+    expect(p.transform).toBe('translateY(-50%)')
+  })
+
+  it('horizontal below: on the key face near the outer end', () => {
+    const p = labelPosition(layout, k, 'below', 10, 'horizontal')
+    expect(Number.parseFloat(String(p.left))).toBeCloseTo(4, 6)
   })
 })

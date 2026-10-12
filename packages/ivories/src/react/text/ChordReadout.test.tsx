@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'
-import { ChordReadout, chordDisplayText } from './ChordReadout'
+import { ChordReadout, chordDisplayText, chordPosition } from './ChordReadout'
 import { computeLayout } from '../../core/render/geometry'
 import { DEFAULT_SETTINGS } from '../../core/settings/types'
 
@@ -80,5 +80,20 @@ describe('ChordReadout', () => {
       <ChordReadout layout={layout} value={value} text={text({ chord: 'symbol', chordPlacement: 'above-keys' })} />,
     )
     expect(container.querySelector('.ivories-chord-readout')!.className).toContain('ivories-chord-readout--above-keys')
+  })
+})
+
+describe('chordPosition (R-H)', () => {
+  const layout = computeLayout(400, 1000)
+
+  it('vertical above-keys is unchanged', () => {
+    expect(chordPosition('above-keys', layout, 20)).toEqual({ left: '50%', top: `${layout.hitY - 52}px`, transform: 'translateX(-50%)' })
+  })
+
+  it('horizontal keeps the readout off the keyboard on the left', () => {
+    expect(chordPosition('above-keys', layout, 20, 'horizontal')).toEqual({
+      left: `${layout.keyboardH + 12}px`, top: '50%', transform: 'translateY(-50%)',
+    })
+    expect(chordPosition('stage-left', layout, 20, 'horizontal')).toEqual({ left: `${layout.keyboardH + 12}px`, top: '12px' })
   })
 })

@@ -18,6 +18,7 @@ import type { ChordReading } from '../../core/music/chords'
 import type { KeyContext } from '../../core/music/spell'
 import type { ThemeName } from '../../core/settings/types'
 import { IvoriesError } from '../../core/errors'
+import type { Orientation } from '../../core/layout/types'
 
 export interface StageViewProps {
   /** 'full' (88 keys) or [lowMidi, highMidi]; absent follows settings.display.zoom. */
@@ -34,7 +35,7 @@ export interface StageViewProps {
 /** Shared by the labels-off overlay state so it never allocates. */
 const NO_PITCHES: number[] = []
 
-export function StageView(p: StageViewProps & { kind: 'keyboard' | 'falling'; lookahead?: number; input?: 'none' | 'midi' }) {
+export function StageView(p: StageViewProps & { kind: 'keyboard' | 'falling'; lookahead?: number; input?: 'none' | 'midi'; orientation?: Orientation }) {
   const iv = useIvories()
   const rootRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -98,6 +99,7 @@ export function StageView(p: StageViewProps & { kind: 'keyboard' | 'falling'; lo
         showRoll: props.kind === 'falling',
         range: rangeFromProp(props.range),
         live: liveMap,
+        orientation: props.orientation,
       })
       // The last drawn time, for hosts and e2e sync checks (never read back here).
       const root = rootRef.current
@@ -175,11 +177,12 @@ export function StageView(p: StageViewProps & { kind: 'keyboard' | 'falling'; lo
       ref={rootRef}
       className={cx('ivories', 'ivories-view', `ivories-${p.kind}`, `ivories-theme-${themeName}`, p.className)}
       data-ivories-view={p.kind}
+      data-orientation={p.orientation ?? 'vertical'}
       style={style}
     >
       <canvas ref={canvasRef} className="ivories-canvas" />
-      <StageText layout={overlay.layout} pitches={overlay.pitches} text={text} keyContext={keyContext} />
-      <ChordReadout layout={overlay.layout} value={chord} text={text} />
+      <StageText layout={overlay.layout} pitches={overlay.pitches} text={text} keyContext={keyContext} orientation={p.orientation} />
+      <ChordReadout layout={overlay.layout} value={chord} text={text} orientation={p.orientation} />
       {failed && <p className="ivories-message" role="alert">This view stopped working.</p>}
       {!failed && error && <p className="ivories-message" role="alert">{error.message}</p>}
       {status.loading && !iv.score && <p className="ivories-message" role="status">Loading score…</p>}

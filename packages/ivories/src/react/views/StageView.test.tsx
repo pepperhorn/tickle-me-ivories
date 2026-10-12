@@ -116,4 +116,13 @@ describe('Keyboard and FallingKeys (spec §4)', () => {
     expect(onError.mock.calls[0][0].code).toBe('render-failed')
     expect(consoleError).not.toHaveBeenCalled()
   })
+  it('FallingKeys orientation="horizontal" draws under the reflection and marks its root', async () => {
+    const stub = stubCtx()
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
+      (() => stub.ctx) as unknown as typeof HTMLCanvasElement.prototype.getContext,
+    )
+    const { container } = render(<FallingKeys score={doc()} engine={fakeEngine()} orientation="horizontal" />)
+    await waitFor(() => expect(stub.calls).toContain('transform(6)'))
+    expect(container.querySelector('.ivories-falling')!.getAttribute('data-orientation')).toBe('horizontal')
+  })
 })

@@ -6,6 +6,8 @@ import type { Theme } from './theme'
 import type { NoteEvent, ScoreDocument, Voice } from '../model/types'
 import type { Settings, ThemeName, ZoomMode } from '../settings/types'
 import type { LiveNote } from '../midi/types'
+import { applyOrientation, canonicalSize } from './orientation'
+import type { Orientation } from '../layout/types'
 
 export interface StageInput {
   score: ScoreDocument | null
@@ -17,6 +19,8 @@ export interface StageInput {
   range: [number, number] | null
   /** Keys held on a live MIDI input (spec §4.1). */
   live?: ReadonlyMap<number, LiveNote>
+  /** 'horizontal' draws the keyboard up the left edge (R-H). Default vertical. */
+  orientation?: Orientation
 }
 
 export interface StageFrame { layout: KeyboardLayout; held: Map<number, NoteEvent> }
@@ -47,7 +51,9 @@ export class StageRenderer {
     const st = input.settings
     const [first, last] = input.range ?? this.rangeFor(input.score, st.display.zoom)
     // A hidden container reports 0x0; clamp so geometry never divides by zero.
-    const layout = this.layoutFor(Math.max(1, w), Math.max(1, h), first, last)
+    // Horizontal views compute the canonical geometry on the swapped box (R-H).
+    const [cw, ch] = canonicalSize(input.orientation, Math.max(1, w), Math.max(1, h))
+    const layout = this.layoutFor(cw, ch, first, last)
     const rs: RenderState = {
       notes: input.score?.notes ?? [],
       voices: this.voicesFor(input.score),
@@ -62,10 +68,18 @@ export class StageRenderer {
       showMiddleC: st.display.showMiddleC,
       theme: this.themeFor(st.theme.name, st.theme.stageBgOverride, layout),
       live: input.live,
+      orientation: input.orientation,
     }
     const dur = input.score?.durationSec ?? 0
-    const held = drawStage(ctx, rs, t, dur > 0 ? t / dur : 0)
-    return { layout, held }
+    const progress = dur > 0 ? t / dur : 0
+    ctx.save()
+    try {
+      applyOrientation(ctx, input.orientation, layout)
+      const held = drawStage(ctx, rs, t, progress)
+      return { layout, held }
+    } finally {
+      ctx.restore()
+    }
   }
 
   // Cached by score identity so the draw loop does not allocate a fresh Map

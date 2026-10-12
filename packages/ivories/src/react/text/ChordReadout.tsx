@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 import { textCss } from './StageText'
 import type { KeyboardLayout } from '../../core/render/geometry'
 import type { ChordDisplay, TextSettings as TextSettingsType } from '../../core/settings/types'
+import type { Orientation } from '../../core/layout/types'
 
 export interface ChordDisplayValue {
   symbol: string
@@ -20,9 +21,22 @@ export function chordDisplayText(v: ChordDisplayValue, mode: ChordDisplay): stri
   }
 }
 
-function position(
+export function chordPosition(
   placement: TextSettingsType['chordPlacement'], layout: KeyboardLayout, size: number,
+  orientation?: Orientation,
 ): CSSProperties {
+  if (orientation === 'horizontal') {
+    // The keyboard occupies the left keyboardH pixels: keep the readout on the stage.
+    const left = `${layout.keyboardH + size * 0.6}px`
+    switch (placement) {
+      case 'stage-centre':
+        return { left: `calc(${layout.keyboardH}px + (100% - ${layout.keyboardH}px) / 2)`, top: `${size * 0.6}px`, transform: 'translateX(-50%)' }
+      case 'above-keys':
+        return { left, top: '50%', transform: 'translateY(-50%)' }
+      default:
+        return { left, top: `${size * 0.6}px` }
+    }
+  }
   switch (placement) {
     case 'stage-centre':
       return { left: '50%', top: `${size * 0.6}px`, transform: 'translateX(-50%)' }
@@ -37,8 +51,9 @@ export function ChordReadout(props: {
   layout: KeyboardLayout | null
   value: ChordDisplayValue | null
   text: TextSettingsType
+  orientation?: Orientation
 }) {
-  const { layout, value, text } = props
+  const { layout, value, text, orientation } = props
   if (!layout || !value || text.chord === 'off') return null
 
   const body = chordDisplayText(value, text.chord)
@@ -58,7 +73,7 @@ export function ChordReadout(props: {
         pointerEvents: 'none', // F42: the overlay never intercepts the stage (§15)
         whiteSpace: 'pre', // keeps the two-space separator, and never wraps
         lineHeight: 1.1,
-        ...position(text.chordPlacement, layout, size),
+        ...chordPosition(text.chordPlacement, layout, size, orientation),
       }}
     >
       {body}

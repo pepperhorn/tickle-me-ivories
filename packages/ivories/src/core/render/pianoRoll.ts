@@ -8,6 +8,7 @@ import type { KeyboardLayout } from './geometry'
 import type { NoteEvent, Voice } from '../model/types'
 import type { VelocityScheme } from '../settings/types'
 import type { LiveNote } from '../midi/types'
+import type { Orientation } from '../layout/types'
 
 export interface RenderState {
   notes: NoteEvent[]           // sorted by startSec
@@ -28,6 +29,9 @@ export interface RenderState {
   theme: Theme
   /** Keys held on a live MIDI input (spec §4.1); drawn in theme.liveHue over the score colour. */
   live?: ReadonlyMap<number, LiveNote>
+  /** Horizontal views draw this same canonical frame under a reflection (R-H);
+      only canvas text needs to know, to stay upright. */
+  orientation?: Orientation
 }
 
 const FLASH_TAIL = FLASH_MS / 1000

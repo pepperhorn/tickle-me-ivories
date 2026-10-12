@@ -49,8 +49,17 @@ export function drawKeyboard(
         ctx.fillStyle = theme.middleCMark
         ctx.font = `600 ${Math.round(layout.whiteW * 0.42)}px Poppins, sans-serif`
         ctx.textAlign = 'center'
-        ctx.textBaseline = 'alphabetic'
-        ctx.fillText('C4', k.x + k.w / 2, hitY + keyboardH - layout.whiteW * 0.3)
+        if (state.orientation === 'horizontal') {
+          // The stage is drawn under the horizontal reflection; applying the same
+          // matrix again here cancels it, so the label reads upright (R-H).
+          ctx.translate(k.x + k.w / 2, hitY + keyboardH - layout.whiteW * 0.6)
+          ctx.transform(0, -1, -1, 0, 0, 0)
+          ctx.textBaseline = 'middle'
+          ctx.fillText('C4', 0, 0)
+        } else {
+          ctx.textBaseline = 'alphabetic'
+          ctx.fillText('C4', k.x + k.w / 2, hitY + keyboardH - layout.whiteW * 0.3)
+        }
         ctx.restore()
       }
     }

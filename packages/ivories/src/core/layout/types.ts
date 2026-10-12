@@ -1,5 +1,7 @@
 // Spec §5.1. Types only: platform/types.ts imports this file and must stay runtime-free.
 export type IvoriesView = 'keyboard' | 'falling' | 'notation' | 'endless'
+/** Falling/rising views: keyboard along the bottom (vertical) or up the left edge (horizontal piano roll). */
+export type Orientation = 'vertical' | 'horizontal'
 export type CameraFit = 'cover' | 'contain'
 
 export type SlotSource =

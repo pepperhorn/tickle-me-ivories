@@ -67,3 +67,32 @@ describe('range crop equals the full keyboard scaled to the range (spec §4, R5)
     expect(rangeFromProp(undefined)).toBeNull()
   })
 })
+
+describe('StageRenderer orientation (R-H, Review Focus 2)', () => {
+  it('horizontal: canonical geometry on the swapped box, drawn under the reflection', () => {
+    const r = new StageRenderer(() => DEFAULT_THEME)
+    const { ctx, calls } = stubCtx()
+    const f = r.draw(ctx, 800, 400, 0, input({ orientation: 'horizontal' }))
+    expect(f.layout.stageW).toBe(400)
+    expect(f.layout.hitY + f.layout.keyboardH).toBe(800)
+    expect(calls[0]).toBe('save(0)')
+    expect(calls).toContain('transform(6)')
+    expect(calls.at(-1)).toBe('restore(0)')
+  })
+
+  it('vertical: same geometry as before and no transform', () => {
+    const r = new StageRenderer(() => DEFAULT_THEME)
+    const { ctx, calls } = stubCtx()
+    const f = r.draw(ctx, 800, 400, 0, input())
+    expect(f.layout.stageW).toBe(800)
+    expect(calls).not.toContain('transform(6)')
+  })
+
+  it('horizontal at 0x0 stays finite', () => {
+    const r = new StageRenderer(() => DEFAULT_THEME)
+    const { ctx } = stubCtx()
+    const f = r.draw(ctx, 0, 0, 0, input({ orientation: 'horizontal' }))
+    for (const k of f.layout.keys) expect(Number.isFinite(k.x) && Number.isFinite(k.w)).toBe(true)
+    expect(Number.isFinite(f.layout.hitY)).toBe(true)
+  })
+})

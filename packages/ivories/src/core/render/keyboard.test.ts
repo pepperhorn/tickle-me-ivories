@@ -69,3 +69,19 @@ describe('live input on the keys (spec §4.1)', () => {
     expect(fillStyles).toContain(s.theme.blackKeyTop)
   })
 })
+
+describe('drawKeyboard in a horizontal view (R-H)', () => {
+  it('draws the C4 label upright through a local counter-transform', () => {
+    const { ctx, calls, texts } = stubCtx()
+    drawKeyboard(ctx, { ...state([]), orientation: 'horizontal' }, new Map())
+    expect(texts).toContain('C4')
+    expect(calls).toContain('translate(2)')
+    expect(calls).toContain('transform(6)')
+  })
+
+  it('a vertical view never transforms', () => {
+    const { ctx, calls } = stubCtx()
+    drawKeyboard(ctx, state([]), new Map())
+    expect(calls).not.toContain('transform(6)')
+  })
+})
