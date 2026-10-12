@@ -12,6 +12,7 @@ import { parseMidi } from '../core/io/parseMidi'
 import { fakeEngine } from './testEngine.test-helpers'
 import { Keyboard } from './views/Keyboard'
 import type { IvoriesHandle } from './IvoriesProvider'
+import { IvoriesError } from '../core/errors'
 
 const bytes = () => {
   const m = new Midi(); m.header.setTempo(120)
@@ -428,5 +429,62 @@ describe('live MIDI (spec §4.1)', () => {
     await waitFor(() => expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'midi-unavailable' })))
     await new Promise((r) => setTimeout(r, 30))
     expect(onError.mock.calls.filter(([e]) => e.code === 'midi-unavailable')).toHaveLength(1)
+  })
+})
+
+describe('errors also reach the console (rising-roll spec §2, R-E)', () => {
+  it('logs a reported error once as console.warn with code, message and cause', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const onError = vi.fn()
+      render(<IvoriesProvider midi={new Uint8Array([1, 2, 3])} engine={fakeEngine()} onError={onError}><ScoreName /></IvoriesProvider>)
+      await waitFor(() => expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'score-parse' })))
+      const err = onError.mock.calls[0][0] as IvoriesError
+      expect(warn).toHaveBeenCalledWith(`[ivories] score-parse: ${err.message}`, err.cause)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('de-duplicates per provider by code and message; onError still sees every report', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      let iv: ReturnType<typeof useIvories> | null = null
+      function Grab() { iv = useIvories(); return null }
+      const onError = vi.fn()
+      render(<IvoriesProvider score={scoreDoc()} engine={fakeEngine()} clock={new AudioClock({ currentTime: 0 })} onError={onError}><Grab /></IvoriesProvider>)
+      await waitFor(() => expect(iv).not.toBeNull())
+      act(() => {
+        iv!.reportError(new IvoriesError('midi-unavailable', 'MIDI input is unavailable.'))
+        iv!.reportError(new IvoriesError('midi-unavailable', 'MIDI input is unavailable.'))
+        iv!.reportError(new IvoriesError('midi-unavailable', 'MIDI access was denied or failed.'))
+      })
+      expect(onError).toHaveBeenCalledTimes(3)
+      const midiLogs = warn.mock.calls.filter(([m]) => String(m).startsWith('[ivories] midi-unavailable'))
+      expect(midiLogs.map(([m]) => m)).toEqual([
+        '[ivories] midi-unavailable: MIDI input is unavailable.',
+        '[ivories] midi-unavailable: MIDI access was denied or failed.',
+      ])
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('a second provider logs its own copy of the same error', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const grabbed: ReturnType<typeof useIvories>[] = []
+      function Grab() { const iv = useIvories(); if (!grabbed.includes(iv)) grabbed.push(iv); return null }
+      render(<>
+        <IvoriesProvider score={scoreDoc()} engine={fakeEngine()} clock={new AudioClock({ currentTime: 0 })}><Grab /></IvoriesProvider>
+        <IvoriesProvider score={scoreDoc()} engine={fakeEngine()} clock={new AudioClock({ currentTime: 0 })}><Grab /></IvoriesProvider>
+      </>)
+      await waitFor(() => expect(new Set(grabbed.map((g) => g.reportError)).size).toBe(2))
+      const reporters = [...new Set(grabbed.map((g) => g.reportError))]
+      act(() => { for (const r of reporters) r(new IvoriesError('render-failed', 'This view stopped working.')) })
+      expect(warn.mock.calls.filter(([m]) => m === '[ivories] render-failed: This view stopped working.')).toHaveLength(2)
+    } finally {
+      warn.mockRestore()
+    }
   })
 })

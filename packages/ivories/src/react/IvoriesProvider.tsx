@@ -76,13 +76,22 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   const [status] = useState(() => new ValueStore<ProviderStatus>({ loading: false, error: null }))
   const [active] = useState(() => new ValueStore<ActiveNotes>(NO_ACTIVE))
 
+  // Every reported error also reaches the console, once per code+message for
+  // this provider (rising-roll spec §2): a host without onError still sees why
+  // audio or MIDI went quiet, and a repeating failure cannot flood the log.
+  const [logged] = useState(() => new Set<string>())
   // audio-unavailable and midi-unavailable never become status.error: the score
   // still loads and plays (silently, or without live keys), spec §4.1.
   const report = useCallback((e: IvoriesError) => {
+    const key = `${e.code}|${e.message}`
+    if (!logged.has(key)) {
+      logged.add(key)
+      console.warn(`[ivories] ${e.code}: ${e.message}`, e.cause)
+    }
     if (e.code !== 'audio-unavailable' && e.code !== 'midi-unavailable') status.set({ loading: false, error: e })
     const onError = latest.current.onError
     if (onError) safeCall(onError, e)
-  }, [status])
+  }, [status, logged])
   // Set once Web Audio has failed (no AudioContext): the own clock then runs on
   // the wall clock and the driver stops handing anything to the engine.
   const audioDead = useRef(false)
