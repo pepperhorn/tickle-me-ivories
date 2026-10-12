@@ -49,8 +49,7 @@ export function ChordReadout(props: {
 
   return (
     <div
-      id="chord-readout"
-      className={`chord-readout chord-readout--${text.chordPlacement}`}
+      className={`ivories-chord-readout ivories-chord-readout--${text.chordPlacement}`}
       data-symbol={value.symbol}
       data-numeral={value.numeral ?? ''}
       style={{
@@ -64,7 +63,7 @@ export function ChordReadout(props: {
     >
       {body}
       {text.chordAlternates && value.alternates.length > 0 && (
-        <div className="chord-alternates" style={{ fontSize: '0.5em', opacity: 0.7 }}>
+        <div className="ivories-chord-alternates" style={{ fontSize: '0.5em', opacity: 0.7 }}>
           {value.alternates.join('  ·  ')}
         </div>
       )}

@@ -147,7 +147,7 @@ describe('decodeProfile validation of untrusted input', () => {
   })
 
   it('drops a stageBgOverride that is not a colour, keeping the theme', () => {
-    // A junk string reaches --tmi-stage-bg, the canvas cannot parse it, and
+    // A junk string reaches --ivories-stage-bg, the canvas cannot parse it, and
     // keeps whatever fill it last had -- so it is dropped to the theme token.
     const p = decodeProfile(tampered((x) => { x.theme = { name: 'contrast', stageBgOverride: 'not a colour!' } }))
     expect(p.theme).toEqual({ name: 'contrast', stageBgOverride: null })

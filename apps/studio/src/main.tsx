@@ -1,5 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import 'ivories/style.css'
 import './index.css'
 import App from './App.tsx'
 import { DebugRoute } from './debug/DebugRoute'

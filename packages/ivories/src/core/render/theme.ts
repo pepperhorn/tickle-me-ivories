@@ -77,7 +77,7 @@ export function isTransparent(color: string): boolean {
 }
 
 /**
- * Resolves every --tmi-* token into a plain object. Call ONCE per layout or
+ * Resolves every --ivories-* token into a plain object. Call ONCE per layout or
  * theme change and cache it: getComputedStyle forces a style recalculation and
  * would cost more per frame than the drawing does.
  */
@@ -91,27 +91,27 @@ export function readTheme(
   const str = (token: string, fallback: string) => raw(token) || fallback
   const num = (token: string, fallback: number) => parsePx(raw(token), fallback)
 
-  const gridLineWidth = num('--tmi-grid-line-width', DEFAULT_THEME.gridLineWidth)
+  const gridLineWidth = num('--ivories-grid-line-width', DEFAULT_THEME.gridLineWidth)
 
   return {
-    stageBg: str('--tmi-stage-bg', DEFAULT_THEME.stageBg),
-    keyWhite: str('--tmi-key-white', DEFAULT_THEME.keyWhite),
-    keyBlack: str('--tmi-key-black', DEFAULT_THEME.keyBlack),
-    keyBorder: str('--tmi-key-border', DEFAULT_THEME.keyBorder),
-    keyBorderWidth: num('--tmi-key-border-width', DEFAULT_THEME.keyBorderWidth),
-    keyOutline: str('--tmi-key-outline', DEFAULT_THEME.keyOutline),
-    keyRadius: num('--tmi-key-radius', DEFAULT_THEME.keyRadius),
-    keyGap: num('--tmi-key-gap', DEFAULT_THEME.keyGap),
-    middleCMark: str('--tmi-middle-c-mark', DEFAULT_THEME.middleCMark),
-    blackKeyTop: str('--tmi-black-key-top', DEFAULT_THEME.blackKeyTop),
-    gridLine: str('--tmi-grid-line', DEFAULT_THEME.gridLine),
-    gridLineC4: str('--tmi-grid-line-c4', DEFAULT_THEME.gridLineC4),
+    stageBg: str('--ivories-stage-bg', DEFAULT_THEME.stageBg),
+    keyWhite: str('--ivories-key-white', DEFAULT_THEME.keyWhite),
+    keyBlack: str('--ivories-key-black', DEFAULT_THEME.keyBlack),
+    keyBorder: str('--ivories-key-border', DEFAULT_THEME.keyBorder),
+    keyBorderWidth: num('--ivories-key-border-width', DEFAULT_THEME.keyBorderWidth),
+    keyOutline: str('--ivories-key-outline', DEFAULT_THEME.keyOutline),
+    keyRadius: num('--ivories-key-radius', DEFAULT_THEME.keyRadius),
+    keyGap: num('--ivories-key-gap', DEFAULT_THEME.keyGap),
+    middleCMark: str('--ivories-middle-c-mark', DEFAULT_THEME.middleCMark),
+    blackKeyTop: str('--ivories-black-key-top', DEFAULT_THEME.blackKeyTop),
+    gridLine: str('--ivories-grid-line', DEFAULT_THEME.gridLine),
+    gridLineC4: str('--ivories-grid-line-c4', DEFAULT_THEME.gridLineC4),
     gridLineWidth,
-    gridLineDash: lineDash(raw('--tmi-grid-line-style'), gridLineWidth),
-    barRadius: num('--tmi-bar-radius', DEFAULT_THEME.barRadius),
-    flashCoreRgb: str('--tmi-flash-core-rgb', DEFAULT_THEME.flashCoreRgb),
-    flashWarmRgb: str('--tmi-flash-warm-rgb', DEFAULT_THEME.flashWarmRgb),
-    progressTrack: str('--tmi-progress-track', DEFAULT_THEME.progressTrack),
-    progressFill: str('--tmi-progress-fill', DEFAULT_THEME.progressFill),
+    gridLineDash: lineDash(raw('--ivories-grid-line-style'), gridLineWidth),
+    barRadius: num('--ivories-bar-radius', DEFAULT_THEME.barRadius),
+    flashCoreRgb: str('--ivories-flash-core-rgb', DEFAULT_THEME.flashCoreRgb),
+    flashWarmRgb: str('--ivories-flash-warm-rgb', DEFAULT_THEME.flashWarmRgb),
+    progressTrack: str('--ivories-progress-track', DEFAULT_THEME.progressTrack),
+    progressFill: str('--ivories-progress-fill', DEFAULT_THEME.progressFill),
   }
 }

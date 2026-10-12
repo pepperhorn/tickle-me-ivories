@@ -74,14 +74,14 @@ export function StageText(props: {
   }, [wantsFont, family, weight])
 
   if (!layout || text.labels === 'off') {
-    return <div className="stage-text absolute inset-0" style={{ pointerEvents: 'none' }} />
+    return <div className="ivories-stage-text" style={{ pointerEvents: 'none' }} />
   }
 
   const css = textCss(text.style, layout.whiteW)
   const size = text.style.sizeRatio * layout.whiteW
 
   return (
-    <div className="stage-text absolute inset-0" style={{ pointerEvents: 'none' }}>
+    <div className="ivories-stage-text" style={{ pointerEvents: 'none' }}>
       {pitches.map((pitch) => {
         const k = layout.byPitch.get(pitch)
         if (!k) return null
@@ -94,8 +94,7 @@ export function StageText(props: {
         return (
           <span
             key={pitch}
-            id={`note-label-${pitch}`}
-            className={`note-label note-label--${k.black ? 'black' : 'white'}`}
+            className={`ivories-note-label ivories-note-label--${k.black ? 'black' : 'white'}`}
             data-pitch={name}
             data-midi={pitch}
             style={{

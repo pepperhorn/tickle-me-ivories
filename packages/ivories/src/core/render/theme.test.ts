@@ -55,36 +55,36 @@ describe('readTheme', () => {
   })
 
   it('adopts a colour token', () => {
-    const t = readTheme(el, reader({ '--tmi-key-white': '#ff0000' }))
+    const t = readTheme(el, reader({ '--ivories-key-white': '#ff0000' }))
     expect(t.keyWhite).toBe('#ff0000')
     expect(t.keyBlack).toBe(DEFAULT_THEME.keyBlack)
   })
 
   it('parses numeric tokens rather than leaving them as strings', () => {
-    const t = readTheme(el, reader({ '--tmi-key-radius': '6px', '--tmi-bar-radius': '0px' }))
+    const t = readTheme(el, reader({ '--ivories-key-radius': '6px', '--ivories-bar-radius': '0px' }))
     expect(t.keyRadius).toBe(6)
     expect(t.barRadius).toBe(0)
   })
 
   it('resolves the grid dash from its style token AND its width token', () => {
-    const t = readTheme(el, reader({ '--tmi-grid-line-style': 'dotted', '--tmi-grid-line-width': '2px' }))
+    const t = readTheme(el, reader({ '--ivories-grid-line-style': 'dotted', '--ivories-grid-line-width': '2px' }))
     expect(t.gridLineDash).toEqual([2, 6])
     expect(t.gridLineWidth).toBe(2)
   })
 
   it('carries a transparent stage background through verbatim', () => {
-    const t = readTheme(el, reader({ '--tmi-stage-bg': 'transparent' }))
+    const t = readTheme(el, reader({ '--ivories-stage-bg': 'transparent' }))
     expect(isTransparent(t.stageBg)).toBe(true)
   })
 
   it('trims whitespace, which getComputedStyle leaves on custom properties', () => {
-    const t = readTheme(el, reader({ '--tmi-key-white': '  #abcdef  ' }))
+    const t = readTheme(el, reader({ '--ivories-key-white': '  #abcdef  ' }))
     expect(t.keyWhite).toBe('#abcdef')
   })
 
   it('F32: defaults keyOutline to transparent, and adopts an explicit token', () => {
     expect(isTransparent(readTheme(el, reader({})).keyOutline)).toBe(true)
-    const t = readTheme(el, reader({ '--tmi-key-outline': 'rgba(255, 255, 255, 0.85)' }))
+    const t = readTheme(el, reader({ '--ivories-key-outline': 'rgba(255, 255, 255, 0.85)' }))
     expect(t.keyOutline).toBe('rgba(255, 255, 255, 0.85)')
   })
 })

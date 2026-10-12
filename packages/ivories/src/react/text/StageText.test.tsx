@@ -79,8 +79,8 @@ describe('StageText', () => {
     const { container } = render(
       <StageText layout={layout} pitches={[60, 63]} text={text({ labels: 'pitch' })} keyContext={DEFAULT_KEY} />,
     )
-    expect(container.querySelectorAll('.note-label')).toHaveLength(2)
-    const c4 = container.querySelector('#note-label-60')!
+    expect(container.querySelectorAll('.ivories-note-label')).toHaveLength(2)
+    const c4 = container.querySelector('[data-midi="60"]')!
     expect(c4.getAttribute('data-pitch')).toBe('C4')
     expect(c4.getAttribute('data-midi')).toBe('60')
     expect(c4.textContent).toBe('C4')
@@ -90,15 +90,15 @@ describe('StageText', () => {
     const { container } = render(
       <StageText layout={layout} pitches={[60, 61]} text={text({ labels: 'pitch' })} keyContext={DEFAULT_KEY} />,
     )
-    expect(container.querySelector('#note-label-60')!.className).toContain('note-label--white')
-    expect(container.querySelector('#note-label-61')!.className).toContain('note-label--black')
+    expect(container.querySelector('[data-midi="60"]')!.className).toContain('ivories-note-label--white')
+    expect(container.querySelector('[data-midi="61"]')!.className).toContain('ivories-note-label--black')
   })
 
   it('renders nothing at all when labels are off', () => {
     const { container } = render(
       <StageText layout={layout} pitches={[60]} text={text({ labels: 'off' })} keyContext={DEFAULT_KEY} />,
     )
-    expect(container.querySelectorAll('.note-label')).toHaveLength(0)
+    expect(container.querySelectorAll('.ivories-note-label')).toHaveLength(0)
   })
 
   it('skips a pitch that is not on the current (zoomed) keyboard', () => {
@@ -106,7 +106,7 @@ describe('StageText', () => {
     const { container } = render(
       <StageText layout={narrow} pitches={[48, 60]} text={text({ labels: 'pitch' })} keyContext={DEFAULT_KEY} />,
     )
-    expect(container.querySelectorAll('.note-label')).toHaveLength(1)
+    expect(container.querySelectorAll('.ivories-note-label')).toHaveLength(1)
   })
 
   it('centres each label over its key', () => {
@@ -114,7 +114,7 @@ describe('StageText', () => {
       <StageText layout={layout} pitches={[61]} text={text({ labels: 'pitch' })} keyContext={DEFAULT_KEY} />,
     )
     const k = layout.byPitch.get(61)!
-    const el = container.querySelector('#note-label-61') as HTMLElement
+    const el = container.querySelector('[data-midi="61"]') as HTMLElement
     expect(Number.parseFloat(el.style.left)).toBeCloseTo(k.x + k.w / 2, 6)
   })
 
@@ -123,7 +123,7 @@ describe('StageText', () => {
       const { container, unmount } = render(
         <StageText layout={layout} pitches={[60]} text={text({ labels: 'pitch', labelPlacement: placement })} keyContext={DEFAULT_KEY} />,
       )
-      const top = Number.parseFloat((container.querySelector('#note-label-60') as HTMLElement).style.top)
+      const top = Number.parseFloat((container.querySelector('[data-midi="60"]') as HTMLElement).style.top)
       unmount() // ids are document-unique; a second mount would shadow this one
       return top
     }
@@ -137,14 +137,14 @@ describe('StageText', () => {
     const { container } = render(
       <StageText layout={layout} pitches={[60]} text={text({ labels: 'pitch' })} keyContext={DEFAULT_KEY} />,
     )
-    expect((container.querySelector('.stage-text') as HTMLElement).style.pointerEvents).toBe('none')
+    expect((container.querySelector('.ivories-stage-text') as HTMLElement).style.pointerEvents).toBe('none')
   })
 
   it('renders nothing rather than throwing before the first layout exists', () => {
     const { container } = render(
       <StageText layout={null} pitches={[60]} text={text({ labels: 'pitch' })} keyContext={DEFAULT_KEY} />,
     )
-    expect(container.querySelectorAll('.note-label')).toHaveLength(0)
+    expect(container.querySelectorAll('.ivories-note-label')).toHaveLength(0)
   })
 })
 

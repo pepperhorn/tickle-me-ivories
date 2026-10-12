@@ -36,8 +36,8 @@ describe('ChordReadout', () => {
     const { container } = render(
       <ChordReadout layout={layout} value={value} text={text({ chord: 'symbol' })} />,
     )
-    const el = container.querySelector('#chord-readout')!
-    expect(el.className).toContain('chord-readout')
+    const el = container.querySelector('.ivories-chord-readout')!
+    expect(el.className).toContain('ivories-chord-readout')
     expect(el.getAttribute('data-symbol')).toBe('Cmaj7')
     expect(el.textContent).toContain('Cmaj7')
   })
@@ -46,39 +46,39 @@ describe('ChordReadout', () => {
     const { container } = render(
       <ChordReadout layout={layout} value={value} text={text({ chord: 'symbol' })} />,
     )
-    expect((container.querySelector('#chord-readout') as HTMLElement).style.pointerEvents).toBe('none')
+    expect((container.querySelector('.ivories-chord-readout') as HTMLElement).style.pointerEvents).toBe('none')
   })
 
   it('renders nothing when the readout is off', () => {
     const { container } = render(
       <ChordReadout layout={layout} value={value} text={text({ chord: 'off' })} />,
     )
-    expect(container.querySelector('#chord-readout')).toBeNull()
+    expect(container.querySelector('.ivories-chord-readout')).toBeNull()
   })
 
   it('renders nothing before a chord has been identified', () => {
     const { container } = render(
       <ChordReadout layout={layout} value={null} text={text({ chord: 'symbol' })} />,
     )
-    expect(container.querySelector('#chord-readout')).toBeNull()
+    expect(container.querySelector('.ivories-chord-readout')).toBeNull()
   })
 
   it('shows alternates only when they are switched on', () => {
     const off = render(
       <ChordReadout layout={layout} value={value} text={text({ chord: 'symbol' })} />,
     )
-    expect(off.container.querySelector('.chord-alternates')).toBeNull()
+    expect(off.container.querySelector('.ivories-chord-alternates')).toBeNull()
 
     const on = render(
       <ChordReadout layout={layout} value={value} text={text({ chord: 'symbol', chordAlternates: true })} />,
     )
-    expect(on.container.querySelector('.chord-alternates')!.textContent).toContain('Em7/C')
+    expect(on.container.querySelector('.ivories-chord-alternates')!.textContent).toContain('Em7/C')
   })
 
   it('carries a placement modifier class so a stylesheet can move it', () => {
     const { container } = render(
       <ChordReadout layout={layout} value={value} text={text({ chord: 'symbol', chordPlacement: 'above-keys' })} />,
     )
-    expect(container.querySelector('#chord-readout')!.className).toContain('chord-readout--above-keys')
+    expect(container.querySelector('.ivories-chord-readout')!.className).toContain('ivories-chord-readout--above-keys')
   })
 })

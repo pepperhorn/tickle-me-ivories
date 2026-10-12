@@ -4,7 +4,9 @@
   "description": "Falling keys, keyboard, notation and stage layouts for React, on one shared clock.",
   "license": "MIT",
   "type": "module",
-  "sideEffects": ["*.css"],
+  "sideEffects": [
+    "*.css"
+  ],
   "exports": {
     ".": {
       "source": "./src/index.ts",
@@ -16,11 +18,20 @@
       "types": "./dist/types/core/index.d.ts",
       "import": "./dist/core.js"
     },
+    "./style.css": {
+      "source": "./src/style.css",
+      "default": "./dist/style.css"
+    },
     "./package.json": "./package.json"
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "check": "tsc -p tsconfig.json"
+    "check": "tsc -p tsconfig.json",
+    "check:css": "node scripts/css-scope.mjs"
   },
   "peerDependencies": {
     "react": ">=19",
@@ -34,6 +45,7 @@
     "tonal": "^6.4.3"
   },
   "devDependencies": {
+    "postcss": "^8.5.29",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   }

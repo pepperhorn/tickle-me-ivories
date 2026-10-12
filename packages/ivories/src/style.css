@@ -1,0 +1,84 @@
+/* ivories: every rule is scoped under .ivories (scripts/css-scope.mjs).
+   The whole sheet sits in one cascade layer so a host's unlayered CSS and
+   utilities always win over the library defaults. */
+@layer ivories {
+  .ivories {
+    /* Canvas theme tokens (spec §14.1 of the visualizer spec). readTheme() reads
+       them once per layout or theme change from the view's root element. */
+    --ivories-stage-bg: #000000;
+    --ivories-key-white: #f6f2e4;
+    --ivories-key-black: #0c0c10;
+    --ivories-key-border: rgba(255, 255, 255, 0.16);
+    --ivories-key-border-width: 1px;
+    /* Per-key stroke: drawKeyboard strokes each key only when this is not
+       transparent, so a theme that leaves it alone pays nothing. */
+    --ivories-key-outline: transparent;
+    --ivories-key-radius: 0px;
+    --ivories-key-gap: 1px;
+    --ivories-middle-c-mark: rgba(0, 0, 0, 0.55);
+    --ivories-black-key-top: rgba(255, 255, 255, 0.35);
+    --ivories-grid-line: rgba(255, 255, 255, 0.06);
+    --ivories-grid-line-c4: rgba(255, 255, 255, 0.14);
+    --ivories-grid-line-width: 1px;
+    --ivories-grid-line-style: solid;
+    --ivories-bar-radius: 4px;
+    --ivories-flash-core-rgb: 255, 255, 255;
+    --ivories-flash-warm-rgb: 255, 242, 214;
+    --ivories-progress-track: rgba(255, 255, 255, 0.06);
+    --ivories-progress-fill: #e8384f;
+    /* Chrome tokens (Transport, messages, stage). */
+    --ivories-ink: #e9eaf2;
+    --ivories-ink-dim: #9698ad;
+    --ivories-accent: #ff9c1a;
+    --ivories-panel: #101119;
+    --ivories-line: #22232e;
+    position: relative;
+    box-sizing: border-box;
+    color: var(--ivories-ink);
+    font-family: Poppins, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+  .ivories *, .ivories *::before, .ivories *::after { box-sizing: border-box; }
+
+  /* Theme presets: each is a block of token overrides and nothing else. */
+  .ivories.ivories-theme-classic { /* the .ivories defaults */ }
+
+  .ivories.ivories-theme-outline {
+    --ivories-key-white: transparent;
+    --ivories-key-black: rgba(0, 0, 0, 0.35);
+    --ivories-key-border: rgba(255, 255, 255, 0.85);
+    --ivories-key-border-width: 2px;
+    /* key-white/black are transparent here, so without a stroke the keyboard
+       would be invisible against the stage. */
+    --ivories-key-outline: rgba(255, 255, 255, 0.85);
+    --ivories-key-radius: 3px;
+    --ivories-key-gap: 2px;
+    --ivories-middle-c-mark: rgba(255, 255, 255, 0.85);
+    --ivories-grid-line-style: dashed;
+  }
+  .ivories.ivories-theme-contrast {
+    --ivories-stage-bg: #000000;
+    --ivories-key-white: #ffffff;
+    --ivories-key-black: #000000;
+    --ivories-key-border: #ffffff;
+    --ivories-key-border-width: 2px;
+    --ivories-middle-c-mark: #000000;
+    --ivories-black-key-top: #ffffff;
+    --ivories-grid-line: rgba(255, 255, 255, 0.25);
+    --ivories-grid-line-c4: rgba(255, 255, 255, 0.6);
+    --ivories-progress-fill: #ffff00;
+  }
+  .ivories.ivories-theme-transparent {
+    --ivories-stage-bg: transparent;
+    /* Opaque, per spec §13.1: the keyboard remains opaque. */
+    --ivories-key-white: #f6f2e4;
+    --ivories-key-black: #0c0c10;
+    --ivories-key-border: rgba(255, 255, 255, 0.5);
+    --ivories-grid-line: rgba(255, 255, 255, 0.02);
+    --ivories-grid-line-c4: rgba(255, 255, 255, 0.06);
+    --ivories-progress-track: transparent;
+  }
+
+  /* On-stage text overlays (spec §15 of the visualizer spec). */
+  .ivories .ivories-stage-text { position: absolute; inset: 0; pointer-events: none; }
+  .ivories .ivories-chord-readout { pointer-events: none; }
+}

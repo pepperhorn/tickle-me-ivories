@@ -535,8 +535,8 @@ export default function App() {
   // page paints its own ground and an OBS browser source composites only black.
   useEffect(() => {
     const transparent = settings.theme.name === 'transparent' && settings.theme.stageBgOverride === null
-    document.documentElement.classList.toggle('tmi-transparent', transparent)
-    return () => document.documentElement.classList.remove('tmi-transparent')
+    document.documentElement.classList.toggle('ivories-transparent', transparent)
+    return () => document.documentElement.classList.remove('ivories-transparent')
   }, [settings.theme.name, settings.theme.stageBgOverride])
 
   // Globals follow the user, not the song: restore them once at startup.
@@ -804,13 +804,13 @@ export default function App() {
           background behind a transparent canvas would defeat spec §13.1. */}
       <div
         ref={stageWrapRef}
-        className={`stage-wrap theme-${settings.theme.name} relative min-h-0 flex-1`}
+        className={`stage-wrap ivories ivories-theme-${settings.theme.name} relative min-h-0 flex-1`}
         // Any stage interaction unlocks audio (pointerup, not only pointerdown:
         // on touch screens only the former counts as user activation).
         onPointerDown={unlockAudio}
         onPointerUp={unlockAudio}
         style={settings.theme.stageBgOverride
-          ? ({ '--tmi-stage-bg': settings.theme.stageBgOverride } as CSSProperties)
+          ? ({ '--ivories-stage-bg': settings.theme.stageBgOverride } as CSSProperties)
           : undefined}
       >
         <canvas ref={canvasRef} className="stage-canvas block h-full w-full" />
