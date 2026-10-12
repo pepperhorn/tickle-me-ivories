@@ -9,6 +9,7 @@ import { withProvider } from '../withProvider'
 import { cx } from '../cx'
 import { layoutReducer } from '../../core/layout/layoutReducer'
 import { nearestCorner } from '../../core/layout/geometry'
+import { SPLIT_RATIO_MAX, SPLIT_RATIO_MIN } from '../../core/layout/layout'
 import type { LayoutAction } from '../../core/layout/layoutReducer'
 import type { Aspect, Layout, SlotName, SlotSource } from '../../core/layout/types'
 import type { StreamRegistry } from '../../core/camera/streams'
@@ -82,7 +83,9 @@ function SlotContent({ source, viewProps, registry }: { source: SlotSource; view
 }
 
 function SplitDivider({ ratio, boxRef, onRatio }: { ratio: number; boxRef: RefObject<HTMLDivElement | null>; onRatio(r: number): void }) {
-  const dragging = useRef(false)
+  // The pointer driving the drag; null when idle. Only that pointer, with its primary button held, moves the divider.
+  const dragging = useRef<number | null>(null)
+  const stop = () => { dragging.current = null }
   const at = (clientY: number) => {
     const r = boxRef.current?.getBoundingClientRect()
     return r && r.height > 0 ? (clientY - r.top) / r.height : null
@@ -90,13 +93,23 @@ function SplitDivider({ ratio, boxRef, onRatio }: { ratio: number; boxRef: RefOb
   return (
     <div
       role="separator" tabIndex={0} aria-orientation="horizontal" aria-label="Split position"
-      aria-valuemin={15} aria-valuemax={85} aria-valuenow={Math.round(ratio * 100)}
+      aria-valuemin={Math.round(SPLIT_RATIO_MIN * 100)} aria-valuemax={Math.round(SPLIT_RATIO_MAX * 100)} aria-valuenow={Math.round(ratio * 100)}
       className="ivories-split-divider"
       style={{ top: `${ratio * 100}%` }}
-      onPointerDown={(e) => { dragging.current = true; e.currentTarget.setPointerCapture?.(e.pointerId) }}
-      onPointerMove={(e) => { if (!dragging.current) return; const r = at(e.clientY); if (r !== null) onRatio(r) }}
-      onPointerUp={() => { dragging.current = false }}
-      onPointerCancel={() => { dragging.current = false }}
+      onPointerDown={(e) => {
+        if (e.button !== 0 || dragging.current !== null) return
+        dragging.current = e.pointerId
+        e.currentTarget.setPointerCapture?.(e.pointerId)
+      }}
+      onPointerMove={(e) => {
+        if (dragging.current === null || e.pointerId !== dragging.current) return
+        if ((e.buttons & 1) === 0) { stop(); return }   // released somewhere we never heard about
+        const r = at(e.clientY)
+        if (r !== null) onRatio(r)
+      }}
+      onPointerUp={(e) => { if (e.pointerId === dragging.current) stop() }}
+      onPointerCancel={(e) => { if (e.pointerId === dragging.current) stop() }}
+      onLostPointerCapture={(e) => { if (e.pointerId === dragging.current) stop() }}
       onKeyDown={(e) => {
         const step = e.shiftKey ? 0.1 : 0.05
         const next = e.key === 'ArrowUp' ? ratio - step : e.key === 'ArrowDown' ? ratio + step
@@ -135,7 +148,10 @@ function StageInner(props: StageProps) {
 
   const boxRef = useRef<HTMLDivElement | null>(null)
   const [drag, setDrag] = useState<{ dx: number; dy: number } | null>(null)
-  const start = useRef<{ x: number; y: number; captured: boolean } | null>(null)
+  const start = useRef<{ id: number; x: number; y: number; captured: boolean } | null>(null)
+  const resetDrag = useCallback(() => { start.current = null; setDrag(null) }, [])
+  // Leaving pip mid-drag must not leave a stale press or translate behind for the next inset.
+  useEffect(() => { if (layout.kind !== 'pip') resetDrag() }, [layout.kind, resetDrag])
 
   const slots: SlotSpec[] =
     layout.kind === 'single' ? [{ name: 'main', source: layout.main, style: FULL }]
@@ -151,12 +167,14 @@ function StageInner(props: StageProps) {
 
   const insetHandlers = {
     onPointerDown: (e: ReactPointerEvent<HTMLDivElement>) => {
-      if (e.button !== 0) return
-      start.current = { x: e.clientX, y: e.clientY, captured: false }
+      if (e.button !== 0 || start.current) return   // one pointer drags; a second touch is ignored
+      start.current = { id: e.pointerId, x: e.clientX, y: e.clientY, captured: false }
     },
     onPointerMove: (e: ReactPointerEvent<HTMLDivElement>) => {
       const s = start.current
-      if (!s) return
+      if (!s || e.pointerId !== s.id) return
+      // No primary button: the press ended outside the inset (before capture), so this is a hover.
+      if ((e.buttons & 1) === 0) { resetDrag(); return }
       const dx = e.clientX - s.x, dy = e.clientY - s.y
       // A small threshold keeps clicks (Retry, a note in the score) working.
       if (!s.captured && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return
@@ -165,8 +183,9 @@ function StageInner(props: StageProps) {
     },
     onPointerUp: (e: ReactPointerEvent<HTMLDivElement>) => {
       const s = start.current
+      if (!s || e.pointerId !== s.id) return
       start.current = null
-      if (!s?.captured) { setDrag(null); return }
+      if (!s.captured) { setDrag(null); return }
       const box = boxRef.current?.getBoundingClientRect()
       const r = e.currentTarget.getBoundingClientRect()
       setDrag(null)
@@ -174,7 +193,8 @@ function StageInner(props: StageProps) {
         dispatch({ type: 'setCorner', corner: nearestCorner(r.left + r.width / 2 - box.left, r.top + r.height / 2 - box.top, box.width, box.height) })
       }
     },
-    onPointerCancel: () => { start.current = null; setDrag(null) },
+    onPointerCancel: (e: ReactPointerEvent<HTMLDivElement>) => { if (e.pointerId === start.current?.id) resetDrag() },
+    onLostPointerCapture: (e: ReactPointerEvent<HTMLDivElement>) => { if (e.pointerId === start.current?.id) resetDrag() },
   }
 
   return (
