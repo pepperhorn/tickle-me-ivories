@@ -1,4 +1,4 @@
-# Tickle Me Ivorys
+# Tickle Me Ivories
 
 A browser piano visualiser. Load a MIDI file and watch it play on a full 88-key
 keyboard with a falling piano roll and a white note-strike flash — the

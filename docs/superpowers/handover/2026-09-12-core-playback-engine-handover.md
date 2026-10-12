@@ -16,7 +16,7 @@ Task 7: CARRY TO PLAN 2 — do NOT build the per-voice volume slider on top of t
 
 ## Parked findings (real, deferred, not defects)
 
-- **Task 1:** package-lock.json name still "tmi-scaffold" vs package.json "tickle-me-ivorys" — will cause spurious lockfile churn on next npm install
+- **Task 1:** package-lock.json name still "tmi-scaffold" vs package.json "tickle-me-ivories" — will cause spurious lockfile churn on next npm install
 - **Task 1:** oxlint script/devDep retained from template without .oxlintrc.json — `npm run lint` exists but is unconfigured
 - **Task 2:** unshift of default tempo breaks sort if input has negative ticks (not reachable from MIDI/MusicXML data)
 - **Task 2:** scale:0 unguarded -> Infinity. NOTE for plan 2: the BPM slider must keep its 25% minimum, or add a guard.
@@ -76,7 +76,7 @@ four residual test-coverage gaps parked rather than triggering a second fix wave
 **Shipped and merged:** plan 1, the core playback engine. `master` at parity with
 `origin/master`. 94 tests, `npm run build` clean, geometry oracle passing.
 
-**Repo is public:** github.com/pepperhorn/tickle-me-ivorys. Before publishing, the
+**Repo is public:** github.com/pepperhorn/tickle-me-ivories. Before publishing, the
 reference screenshot was purged from git history with `git filter-repo` (it was a
 full phone screenshot, committed only as a measurement oracle — the oracle that
 matters is the 36 measured black-key centres in `tests/geometry-check.mjs`), and
