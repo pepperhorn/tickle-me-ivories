@@ -44,9 +44,14 @@ export function useMidiRecorder() {
     const end = nowSec() - origin.current
     for (const [midi, o] of open.current) done.current.push({ midi, velocity: o.velocity, start: o.start, end })
     open.current.clear()
-    if (done.current.length === 0) return null
-    const score = buildRecordedScore(done.current)
-    score.id = await hashFile(new TextEncoder().encode(JSON.stringify(done.current)).buffer as ArrayBuffer)
+    const notes = done.current
+    // Taken once: a repeated stop() has nothing left to return.
+    done.current = []
+    // Zero-length notes are dropped while building; a take of nothing but
+    // those is no take, and must not replace the host's song.
+    const score = buildRecordedScore(notes)
+    if (score.notes.length === 0) return null
+    score.id = await hashFile(new TextEncoder().encode(JSON.stringify(notes)).buffer as ArrayBuffer)
     return score
   }, [])
 

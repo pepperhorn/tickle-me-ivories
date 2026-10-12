@@ -11,7 +11,46 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+function stubPort() {
+  const port = { id: 'k', name: 'Keys', state: 'connected', onmidimessage: null as null | ((e: { data: Uint8Array; timeStamp: number }) => void) }
+  vi.stubGlobal('navigator', { ...navigator, requestMIDIAccess: async () => ({ inputs: { forEach: (cb: (p: typeof port) => void) => cb(port) }, onstatechange: null }) })
+  return port
+}
+
+async function mountRecorder() {
+  const port = stubPort()
+  const ref: { api: ReturnType<typeof useMidiRecorder> | null } = { api: null }
+  function Probe() { ref.api = useMidiRecorder(); return null }
+  render(<IvoriesProvider score={null} engine={fakeEngine()} clock={new AudioClock({ currentTime: 0 })}><Probe /></IvoriesProvider>)
+  await waitFor(() => expect(ref.api).not.toBeNull())
+  vi.spyOn(performance, 'now').mockReturnValue(10_000)
+  act(() => ref.api!.start())
+  await waitFor(() => expect(port.onmidimessage).not.toBeNull())
+  return { port, ref }
+}
+
 describe('useMidiRecorder (spec §4.2)', () => {
+  it('a take of only zero-length notes returns null (it must not replace the song)', async () => {
+    const { port, ref } = await mountRecorder()
+    act(() => port.onmidimessage!({ data: Uint8Array.of(0x90, 60, 100), timeStamp: 10_500 }))
+    act(() => port.onmidimessage!({ data: Uint8Array.of(0x80, 60, 0), timeStamp: 10_500 }))
+    let score: ScoreDocument | null | undefined
+    await act(async () => { score = await ref.api!.stop() })
+    expect(score).toBeNull()
+  })
+
+  it('a second stop() after a take returns null', async () => {
+    const { port, ref } = await mountRecorder()
+    act(() => port.onmidimessage!({ data: Uint8Array.of(0x90, 60, 100), timeStamp: 10_500 }))
+    act(() => port.onmidimessage!({ data: Uint8Array.of(0x80, 60, 0), timeStamp: 11_000 }))
+    let first: ScoreDocument | null = null
+    let second: ScoreDocument | null | undefined
+    await act(async () => { first = await ref.api!.stop() })
+    await act(async () => { second = await ref.api!.stop() })
+    expect(first!.notes).toHaveLength(1)
+    expect(second).toBeNull()
+  })
+
   it('records live notes into a score that can be loaded back', async () => {
     const port = { id: 'k', name: 'Keys', state: 'connected', onmidimessage: null as null | ((e: { data: Uint8Array; timeStamp: number }) => void) }
     vi.stubGlobal('navigator', { ...navigator, requestMIDIAccess: async () => ({ inputs: { forEach: (cb: (p: typeof port) => void) => cb(port) }, onstatechange: null }) })
