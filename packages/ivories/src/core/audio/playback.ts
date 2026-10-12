@@ -29,6 +29,12 @@ export interface PlaybackDriverOptions {
   audioEnabled(): boolean
   /** Pause at the end of the score (default true; off for a MediaClock). */
   stopAtEnd?: boolean
+  /**
+   * Called once if the audio half of a tick throws (no Web Audio, a dead
+   * engine). The driver then keeps its cursors level and never touches the
+   * engine again; nothing ever throws out of the interval.
+   */
+  onAudioError?(e: unknown): void
 }
 
 /**
@@ -42,6 +48,7 @@ export class PlaybackDriver {
   private beats: BeatCursor | null = null
   private metronome: MetronomeLike | null = null
   private timer: ReturnType<typeof setInterval> | null = null
+  private audioFailed = false
   private readonly off: () => void
   private readonly o: PlaybackDriverOptions
 
@@ -86,7 +93,7 @@ export class PlaybackDriver {
   }
 
   tick(): void {
-    const { clock, engine } = this.o
+    const { clock } = this.o
     const score = this.o.getScore()
     const s = this.scheduler
     if (!clock.playing || !s || !score) return
@@ -98,12 +105,33 @@ export class PlaybackDriver {
       return
     }
 
-    const audible = this.o.audioEnabled()
+    const collected = s.collect(head)
+    if (!this.audible()) { this.beats?.seek(head); return }
+    try {
+      this.schedule(score, collected, head)
+    } catch (e) {
+      this.failAudio(e)
+      this.beats?.seek(head)
+    }
+  }
+
+  private audible(): boolean {
+    if (this.audioFailed) return false
+    try { return this.o.audioEnabled() } catch (e) { this.failAudio(e); return false }
+  }
+
+  private failAudio(e: unknown): void {
+    if (this.audioFailed) return
+    this.audioFailed = true
+    try { this.o.onAudioError?.(e) } catch { /* a host callback must not break the tick */ }
+  }
+
+  /** The audio half of a tick: may throw (engine time without Web Audio). */
+  private schedule(score: ScoreDocument, collected: ScheduledNote[], head: number): void {
+    const { clock, engine } = this.o
     const rate = clock.rate
     // Engine time is read only when scheduling: with audio off (or no Web
     // Audio at all) the cursors still advance without touching the engine.
-    const collected = s.collect(head)
-    if (!audible) { this.beats?.seek(head); return }
     const origin = this.originFor(head)
     for (const sched of collected) {
       const voice = score.voices.find((v) => v.id === sched.note.voiceId)

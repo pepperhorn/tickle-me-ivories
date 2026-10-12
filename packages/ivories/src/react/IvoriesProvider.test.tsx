@@ -174,6 +174,49 @@ describe('IvoriesProvider robustness', () => {
     }
   })
 
+  it('a host ManualClock with audio on and no Web Audio reports audio-unavailable once and never throws', async () => {
+    const clock = new ManualClock()
+    const engine = fakeEngine({ get currentTime(): number { throw new Error('no Web Audio') } } as { currentTime: number })
+    const onError = vi.fn()
+    const onNoteOn = vi.fn()
+    const uncaught = vi.fn()
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    window.addEventListener('error', uncaught)
+    try {
+      render(<IvoriesProvider score={scoreDoc()} clock={clock} engine={engine} audio onError={onError} onNoteOn={onNoteOn}><span /></IvoriesProvider>)
+      await waitFor(() => expect(document.querySelector('span')).not.toBeNull())
+      act(() => clock.play())
+      await waitFor(() => expect(onNoteOn).toHaveBeenCalledWith(expect.objectContaining({ midi: 60 })))
+      await new Promise((r) => setTimeout(r, 120))
+      expect(onError).toHaveBeenCalledTimes(1)
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'audio-unavailable' }))
+      expect(engine.play).not.toHaveBeenCalled()
+      expect(uncaught).not.toHaveBeenCalled()
+      expect(consoleError).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener('error', uncaught)
+      consoleError.mockRestore()
+    }
+  })
+
+  it('a suspended engine schedules nothing; once running, only notes from the head on are handed over (no burst)', async () => {
+    let ms = 0
+    const clock = new ManualClock({ nowMs: () => ms })
+    const engine = fakeEngine() as ReturnType<typeof fakeEngine> & { running: boolean }
+    engine.running = false
+    render(<IvoriesProvider score={scoreDoc()} clock={clock} engine={engine} audio><span /></IvoriesProvider>)
+    await waitFor(() => expect(document.querySelector('span')).not.toBeNull())
+    act(() => clock.play())
+    await new Promise((r) => setTimeout(r, 80))   // the note at 0 passes while suspended
+    expect(engine.play).not.toHaveBeenCalled()
+    engine.running = true
+    ms = 900                                       // the note at 1.0 enters the lookahead
+    await waitFor(() => expect(engine.play).toHaveBeenCalled())
+    await new Promise((r) => setTimeout(r, 60))
+    const pitches = engine.play.mock.calls.map((c) => (c[0] as { note: { pitch: number } }).note.pitch)
+    expect(pitches).toEqual([64])
+  })
+
   it('an instrument-load failure calls onError but leaves status.error unset (the score plays silently)', async () => {
     const onError = vi.fn()
     let status: { error: unknown } | null = null

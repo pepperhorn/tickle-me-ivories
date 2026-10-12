@@ -171,4 +171,38 @@ describe('PlaybackDriver driven by a ManualClock', () => {
     clock.play()
     expect(() => d.tick()).not.toThrow()
   })
+  it('an engine whose time throws (no Web Audio) reports once through onAudioError and goes silent', () => {
+    let ms = 0
+    const clock = new ManualClock({ nowMs: () => ms })
+    const engine = {
+      get currentTime(): number { throw new Error('no Web Audio') },
+      play: vi.fn(), stopAll: vi.fn(), metronome: () => ({ click: vi.fn(), stop: vi.fn() }),
+    }
+    const onAudioError = vi.fn()
+    const s = score()
+    const d = new PlaybackDriver({
+      clock, engine, getScore: () => s, getAudio: () => DEFAULT_SETTINGS.audio, audioEnabled: () => true, onAudioError,
+    })
+    d.setScore(s, { mode: 'scale', scale: 1 })
+    clock.play()
+    for (let i = 0; i < 5; i++) { expect(() => d.tick()).not.toThrow(); ms += 300 }
+    expect(onAudioError).toHaveBeenCalledTimes(1)
+    expect(engine.play).not.toHaveBeenCalled()
+  })
+
+  it('a throwing audioEnabled() never throws out of tick', () => {
+    const clock = new ManualClock({ nowMs: () => 0 })
+    const engine = { currentTime: 0, play: vi.fn(), stopAll: vi.fn(), metronome: () => ({ click: vi.fn(), stop: vi.fn() }) }
+    const onAudioError = vi.fn()
+    const s = score()
+    const d = new PlaybackDriver({
+      clock, engine, getScore: () => s, getAudio: () => DEFAULT_SETTINGS.audio,
+      audioEnabled: () => { throw new Error('boom') }, onAudioError,
+    })
+    d.setScore(s, { mode: 'scale', scale: 1 })
+    clock.play()
+    expect(() => { d.tick(); d.tick() }).not.toThrow()
+    expect(onAudioError).toHaveBeenCalledTimes(1)
+    expect(engine.play).not.toHaveBeenCalled()
+  })
 })

@@ -85,6 +85,11 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   // Set once Web Audio has failed (no AudioContext): the own clock then runs on
   // the wall clock and the driver stops handing anything to the engine.
   const audioDead = useRef(false)
+  const markAudioDead = useCallback((e: unknown) => {
+    if (audioDead.current) return
+    audioDead.current = true
+    report(new IvoriesError('audio-unavailable', 'Web Audio is unavailable; playing silently.', e))
+  }, [report])
 
   // ---- engine and clock: the host's, or our own ----
   const ownEngine = useDisposable(
@@ -93,11 +98,7 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   )
   const engine = props.engine ?? ownEngine
   const ownClock = useDisposable(
-    () => (props.clock || !engine ? null : ownAudioClock(engine, (e) => {
-      if (audioDead.current) return
-      audioDead.current = true
-      report(new IvoriesError('audio-unavailable', 'Web Audio is unavailable; playing silently.', e))
-    })),
+    () => (props.clock || !engine ? null : ownAudioClock(engine, markAudioDead)),
     (c) => c.dispose(), [!props.clock, engine],
   )
   const clock = props.clock ?? ownClock
@@ -156,7 +157,14 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
       clock, engine,
       getScore: () => scoreRef.current,
       getAudio: () => settingsRef.current.audio,
-      audioEnabled: () => audioRef.current && !audioDead.current,
+      // Only a running engine is handed notes: while the context is suspended
+      // (autoplay blocked) the cursors stay level with the playhead, so the
+      // "enable sound" tap does not release every note since Play at once.
+      audioEnabled: () => {
+        if (!audioRef.current || audioDead.current) return false
+        try { return engine.running !== false } catch (e) { markAudioDead(e); return false }
+      },
+      onAudioError: markAudioDead,
       // The media decides where it ends (it may run past the score).
       stopAtEnd: !(clock instanceof MediaClock),
     })
@@ -164,7 +172,7 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
     d.start()
     driverRef.current = d
     return () => { d.dispose(); driverRef.current = null }
-  }, [clock, engine])
+  }, [clock, engine, markAudioDead])
   // Rebuilt only when the note array is replaced (a voice edit keeps it).
   useEffect(() => { driverRef.current?.setScore(scoreRef.current, tempoRef.current) }, [notes])
 
