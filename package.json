@@ -6,9 +6,11 @@
   "workspaces": ["packages/*", "apps/*"],
   "scripts": {
     "dev": "npm run dev -w apps/studio --",
-    "build": "npm run build -w apps/studio",
+    "build": "npm run check:imports && npm run build -w apps/studio",
     "test": "vitest run",
     "test:watch": "vitest",
+    "check:imports": "node scripts/check-public-imports.mjs",
+    "check": "npm run test:geometry && npm run check:imports",
     "test:geometry": "node tests/geometry-check.mjs",
     "lint": "oxlint",
     "sync:rig": "cp tools/strike-lab.html apps/studio/public/strike-lab.html && diff -q tools/strike-lab.html apps/studio/public/strike-lab.html"

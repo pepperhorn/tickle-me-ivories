@@ -22,9 +22,9 @@ function collectSourceFiles(dir: string, out: string[] = []): string[] {
 }
 
 describe('the core app never imports the PepperHorn scoped package', () => {
-  it('contains no occurrence of the literal anywhere under src', () => {
+  it('contains no occurrence of the literal anywhere under packages/ivories/src', () => {
     const here = dirname(fileURLToPath(import.meta.url))
-    const srcRoot = resolve(here, '..')
+    const srcRoot = resolve(here, '../..')
     const offenders = collectSourceFiles(srcRoot)
       .filter((f) => readFileSync(f, 'utf8').includes(NEEDLE))
       .map((f) => f.slice(srcRoot.length + 1))
