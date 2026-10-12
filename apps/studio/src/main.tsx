@@ -4,11 +4,14 @@ import 'ivories/style.css'
 import './index.css'
 import App from './App.tsx'
 import { DebugRoute } from './debug/DebugRoute'
+import { EmbedFixture } from './embed/EmbedFixture'
 
-const isDebug = window.location.pathname.replace(/\/+$/, '') === '/debug'
+const path = window.location.pathname.replace(/\/+$/, '')
+const isDebug = path === '/debug'
+const isFixture = path === '/embed-fixture'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {isDebug ? <DebugRoute /> : <App />}
+    {isDebug ? <DebugRoute /> : isFixture ? <EmbedFixture /> : <App />}
   </StrictMode>,
 )
