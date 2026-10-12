@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { KEY_OPTIONS, formatKey, keyOfScore, parseKeyString } from './keyOf'
+import { KEY_OPTIONS, KeyContextCache, formatKey, keyOfScore, parseKeyString } from './keyOf'
 import type { ScoreDocument } from '../model/types'
 
 const score = (keySignature: ScoreDocument['keySignature']): ScoreDocument => ({
@@ -67,5 +67,27 @@ describe('KEY_OPTIONS', () => {
     expect(minors.sort()).toEqual(
       ['A', 'E', 'B', 'F#', 'C#', 'G#', 'D#', 'A#', 'D', 'G', 'C', 'F', 'Bb', 'Eb', 'Ab'].sort(),
     )
+  })
+})
+
+describe('KeyContextCache', () => {
+  const scoreWith = (key: string): ScoreDocument =>
+    ({ keySignature: { key, scale: 'major' } } as unknown as ScoreDocument)
+
+  it('returns the same object for the same signature and override', () => {
+    const c = new KeyContextCache()
+    const s = scoreWith('G')
+    const a = c.get(s, null)
+    expect(c.get(s, null)).toBe(a)
+  })
+
+  it('returns a new object when the override or signature changes', () => {
+    const c = new KeyContextCache()
+    const s = scoreWith('G')
+    const a = c.get(s, null)
+    const b = c.get(s, 'D minor')
+    expect(b).not.toBe(a)
+    expect(b).toEqual({ tonic: 'D', scale: 'minor' })
+    expect(c.get(scoreWith('F'), 'D minor')).not.toBe(b)
   })
 })

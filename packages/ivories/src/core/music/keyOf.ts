@@ -47,3 +47,20 @@ export function keyOfScore(score: ScoreDocument | null, override: string | null)
   }
   return DEFAULT_KEY
 }
+
+/**
+ * keyOfScore parses a key string into a fresh object; this caches it by key
+ * signature and override so the draw loop neither allocates it per frame nor
+ * hands the chord feed a new key identity (which forces a tonal re-detect).
+ */
+export class KeyContextCache {
+  private c: { sig: ScoreDocument['keySignature'] | null; override: string | null; key: KeyContext } | null = null
+
+  get(score: ScoreDocument | null, override: string | null): KeyContext {
+    const sig = score?.keySignature ?? null
+    if (this.c && this.c.sig === sig && this.c.override === override) return this.c.key
+    const key = keyOfScore(score, override)
+    this.c = { sig, override, key }
+    return key
+  }
+}
