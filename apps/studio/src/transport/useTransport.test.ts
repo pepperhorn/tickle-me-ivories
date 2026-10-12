@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useTransport, playheadAt } from './useTransport'
+import { useTransport, playheadAt, bindTransportClock, transportClock } from './useTransport'
 import { buildTempoMap } from 'ivories/core'
-import { retimeScore } from 'ivories/core'
+import { retimeScore, AudioClock } from 'ivories/core'
 import type { ScoreDocument } from 'ivories/core'
 
 const PPQ = 480
@@ -263,5 +263,80 @@ describe('lead-in', () => {
     t.play(10, 2)
     useTransport.getState().seek(0.5, 10.5)
     expect(playheadAt(useTransport.getState(), 10.5)).toBeCloseTo(0.5, 9)
+  })
+})
+
+describe('binding over an AudioClock (spec §3.1)', () => {
+  it('mirrors the store into the bound clock and back', () => {
+    const src = { currentTime: 0 }
+    const clock = new AudioClock(src)
+    const unbind = bindTransportClock(clock)
+    try {
+      useTransport.getState().loadScore(score())
+      useTransport.getState().play(10)
+      expect(clock.playing).toBe(true)
+      src.currentTime = 11.5
+      expect(clock.now()).toBeCloseTo(1.5, 9)
+      // A host driving the clock directly is reflected in the store.
+      clock.pause()
+      expect(useTransport.getState().playing).toBe(false)
+      expect(useTransport.getState().pausedAtSec).toBeCloseTo(1.5, 9)
+      clock.seek(3)
+      expect(playheadAt(useTransport.getState(), 99)).toBeCloseTo(3, 9)
+    } finally { unbind() }
+  })
+
+  it('a store reset is never undone by stale clock anchors', () => {
+    const clock = new AudioClock({ currentTime: 0 })
+    const unbind = bindTransportClock(clock)
+    try {
+      useTransport.getState().loadScore(score())
+      useTransport.getState().play(0)
+      useTransport.setState({ playing: false, originSec: 0, pausedAtSec: 0 })
+      useTransport.getState().play(50)
+      expect(playheadAt(useTransport.getState(), 51)).toBeCloseTo(1, 9)
+    } finally { unbind() }
+  })
+
+  it('playheadAt honours a clock rate', () => {
+    expect(playheadAt({ playing: true, originSec: 10, pausedAtSec: 0, rate: 0.5 }, 12)).toBeCloseTo(1, 9)
+  })
+
+  it('setTempo moves the clock to the same musical moment', () => {
+    const clock = new AudioClock({ currentTime: 0 })
+    const unbind = bindTransportClock(clock)
+    try {
+      useTransport.getState().loadScore(score())
+      useTransport.getState().seek(4, 0)
+      useTransport.getState().setTempo({ mode: 'scale', scale: 2 }, 0)
+      expect(clock.now()).toBeCloseTo(2, 6)
+    } finally { unbind() }
+  })
+
+  it('binds and unbinds the transport clock', () => {
+    const c = new AudioClock({ currentTime: 0 })
+    const un = bindTransportClock(c)
+    expect(transportClock()).toBe(c)
+    un()
+    expect(transportClock()).not.toBe(c)
+    expect(transportClock()).toBeInstanceOf(AudioClock)
+  })
+
+  it('a silent (wall-time) session is never fed AudioContext time', () => {
+    const src = { currentTime: 1000 }
+    let wall = 5
+    const clock = new AudioClock(src, { isRunning: () => false, wallNow: () => wall })
+    const unbind = bindTransportClock(clock)
+    try {
+      useTransport.getState().loadScore(score())
+      clock.play()                       // host starts a silent session on the wall clock
+      wall = 7
+      expect(clock.now()).toBeCloseTo(2, 9)
+      useTransport.getState().seek(1, 1000)   // caller passes AudioContext time
+      wall = 8
+      expect(clock.now()).toBeCloseTo(2, 9)   // 1s + 1 wall second
+      useTransport.getState().pause(1000)
+      expect(useTransport.getState().pausedAtSec).toBeCloseTo(2, 9)
+    } finally { unbind() }
   })
 })

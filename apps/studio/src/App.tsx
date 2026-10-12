@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties } from 'react'
-import { AudioEngine } from 'ivories/core'
+import { AudioClock, AudioEngine } from 'ivories/core'
 import { BeatCursor, MetronomeVoice, beatTimes, countInBeats } from 'ivories/core'
 import { LOOKAHEAD_SEC, Scheduler, TICK_MS } from 'ivories/core'
 import { parseScoreFile } from 'ivories/core'
@@ -15,7 +15,7 @@ import { keyOfScore } from 'ivories/core'
 import { ChordFeed } from 'ivories/core'
 import { displayChordSymbol } from 'ivories/core'
 import { toRomanNumeral } from 'ivories/core'
-import { playheadAt, useTransport } from './transport/useTransport'
+import { bindTransportClock, playheadAt, useTransport } from './transport/useTransport'
 import { currentSettings, useSettings } from './settings/useSettings'
 import {
   buildProfile, decodeProfile, encodeProfile, loadGlobals, loadProfile, mergeVoices,
@@ -120,6 +120,11 @@ export default function App() {
 
   if (!engineRef.current) engineRef.current = new AudioEngine()
   const engine = engineRef.current
+  const clockRef = useRef<AudioClock | null>(null)
+  if (!clockRef.current) clockRef.current = new AudioClock(engine)
+  const clock = clockRef.current
+  // Bound in an effect, not during render: StrictMode renders twice.
+  useEffect(() => bindTransportClock(clock), [clock])
   if (!chordFeedRef.current) chordFeedRef.current = new ChordFeed()
   const chordFeed = chordFeedRef.current
 
