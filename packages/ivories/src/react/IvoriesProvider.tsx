@@ -14,6 +14,7 @@ import { IvoriesError, isIvoriesError } from '../core/errors'
 import { IvoriesContext } from './context'
 import { ValueStore } from './ValueStore'
 import { useDisposable } from './useDisposable'
+import { startPlayback } from './startPlayback'
 import type { Clock } from '../core/clock/types'
 import type { ScoreSource } from '../core/io/loadScoreSource'
 import type { NoteEvent, ScoreDocument, TempoSetting } from '../core/model/types'
@@ -192,13 +193,7 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   useEffect(() => { if (score) latest.current.onReady?.({ score, duration: score.durationSec }) }, [score])
 
   useImperativeHandle(props.ref, () => ({
-    play: () => {
-      if (!clock) return
-      if (engine && audio) {
-        engine.resume().catch((e) => report(new IvoriesError('audio-unavailable', 'Audio could not start; playing silently.', e)))
-      }
-      clock.play()
-    },
+    play: () => { if (clock && engine) startPlayback({ clock, engine, audio, reportError: report }) },
     pause: () => clock?.pause(),
     seek: (t: number) => clock?.seek(t),
     setRate: (r: number) => clock?.setRate(r),
