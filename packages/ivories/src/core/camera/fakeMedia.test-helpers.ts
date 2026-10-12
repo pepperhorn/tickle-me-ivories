@@ -1,8 +1,9 @@
 import { vi } from 'vitest'
 
 export class FakeTrack extends EventTarget {
-  stop = vi.fn()
-  end() { this.dispatchEvent(new Event('ended')) }
+  readyState: MediaStreamTrackState = 'live'
+  stop = vi.fn(() => { this.readyState = 'ended' })
+  end() { this.readyState = 'ended'; this.dispatchEvent(new Event('ended')) }
 }
 
 export function fakeStream() {

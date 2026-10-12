@@ -25,6 +25,40 @@ describe('camera streams (spec §5.3)', () => {
     expect(f.devices.getUserMedia).toHaveBeenCalledTimes(2)
   })
 
+  it('acquire → release → acquire in one tick shares one request (StrictMode remount)', async () => {
+    const f = fakeDevices()
+    const reg = new StreamRegistry(() => f.devices, () => true)
+    reg.acquire('cam-1').release()
+    const b = reg.acquire('cam-1')
+    const stream = await b.promise
+    expect(f.devices.getUserMedia).toHaveBeenCalledTimes(1)
+    expect(stream).toBe(f.made[0].stream)
+    expect(f.made[0].track.stop).not.toHaveBeenCalled()
+    b.release()
+    expect(f.made[0].track.stop).toHaveBeenCalled()
+  })
+
+  it('a pending request released by everyone is stopped when it arrives', async () => {
+    const f = fakeDevices()
+    const reg = new StreamRegistry(() => f.devices, () => true)
+    const a = reg.acquire('cam-1')
+    a.release()
+    await a.promise
+    expect(f.made[0].track.stop).toHaveBeenCalled()
+    await reg.acquire('cam-1').promise
+    expect(f.devices.getUserMedia).toHaveBeenCalledTimes(2)
+  })
+
+  it('a cached stream whose track is already ended is stale and re-requested', async () => {
+    const f = fakeDevices()
+    const reg = new StreamRegistry(() => f.devices, () => true)
+    await reg.acquire('cam-1').promise
+    f.made[0].track.readyState = 'ended'   // ended without an event reaching us
+    const again = await reg.acquire('cam-1').promise
+    expect(f.devices.getUserMedia).toHaveBeenCalledTimes(2)
+    expect(again).toBe(f.made[1].stream)
+  })
+
   it('maps failures: denied, no device, in use, insecure origin', async () => {
     expect(classifyCameraError({ name: 'NotAllowedError' })).toBe('denied')
     expect(classifyCameraError({ name: 'NotFoundError' })).toBe('no-device')

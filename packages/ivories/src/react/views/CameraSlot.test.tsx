@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
+import { StrictMode } from 'react'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { CameraSlot } from './CameraSlot'
 import { StreamRegistry } from '../../core/camera/streams'
@@ -21,6 +22,14 @@ describe('CameraSlot (spec §5.3)', () => {
     expect(video.style.objectFit).toBe('contain')
     expect(video.style.transform).toBe('scaleX(-1)')
     await waitFor(() => expect((video as unknown as { srcObject: unknown }).srcObject).toBe(f.made[0].stream))
+  })
+
+  it('a StrictMode render opens the camera once', async () => {
+    const f = fakeDevices()
+    const { container } = render(<StrictMode><CameraSlot source={webcam} registry={new StreamRegistry(() => f.devices, () => true)} /></StrictMode>)
+    await waitFor(() => expect((container.querySelector('video') as unknown as { srcObject: unknown }).srcObject).toBe(f.made[0].stream))
+    expect(f.devices.getUserMedia).toHaveBeenCalledTimes(1)
+    expect(f.made[0].track.stop).not.toHaveBeenCalled()
   })
 
   it('stops the stream on unmount', async () => {

@@ -70,8 +70,14 @@ export class StreamRegistry {
   acquire(deviceId?: string): CameraLease {
     const key = deviceId || 'default'
     let entry = this.entries.get(key)
+    // A cached stream whose track already ended (unplugged, revoked) is stale.
+    if (entry?.stream?.getVideoTracks().some((t) => t.readyState === 'ended')) {
+      this.entries.delete(key)
+      entry = undefined
+    }
     if (entry) {
-      entry.count++
+      // Also revives a pending entry released to 0 in the same tick (StrictMode remount).
+      entry.count = Math.max(entry.count, 0) + 1
     } else {
       if (!this.secure()) return rejected('insecure')
       const md = this.devices()
@@ -83,7 +89,11 @@ export class StreamRegistry {
           for (const track of stream.getVideoTracks()) {
             track.addEventListener('ended', () => { if (this.entries.get(key) === created) this.entries.delete(key) })
           }
-          if (created.count <= 0) stopStream(stream)
+          if (created.count <= 0) {
+            // Every lease let go while getUserMedia was pending.
+            if (this.entries.get(key) === created) this.entries.delete(key)
+            stopStream(stream)
+          }
           return stream
         },
         (e) => {
@@ -104,8 +114,12 @@ export class StreamRegistry {
         released = true
         held.count--
         if (held.count > 0) return
+        // Still pending: keep the entry so a same-tick re-acquire shares the
+        // request instead of opening the camera twice; the resolve handler
+        // stops the stream if nobody came back.
+        if (!held.stream) return
         if (this.entries.get(key) === held) this.entries.delete(key)
-        if (held.stream) stopStream(held.stream)
+        stopStream(held.stream)
       },
     }
   }
