@@ -18,7 +18,7 @@ import type { LiveNote } from '../core/midi/types'
 import { IvoriesContext } from './context'
 import { ValueStore } from './ValueStore'
 import { useDisposable } from './useDisposable'
-import { startPlayback } from './startPlayback'
+import { cancelPendingStart, startPlayback } from './startPlayback'
 import type { Clock } from '../core/clock/types'
 import type { ScoreSource } from '../core/io/loadScoreSource'
 import type { NoteEvent, ScoreDocument, TempoSetting } from '../core/model/types'
@@ -291,9 +291,12 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
 
   useEffect(() => { if (score) latest.current.onReady?.({ score, duration: score.durationSec }) }, [score])
 
+  // A Play still waiting on resume() never starts a clock this provider has let go of.
+  useEffect(() => () => { if (clock) cancelPendingStart(clock) }, [clock])
+
   useImperativeHandle(props.ref, () => ({
     play: () => { if (clock && engine) startPlayback({ clock, engine, audio, reportError: report }) },
-    pause: () => clock?.pause(),
+    pause: () => { if (clock) { cancelPendingStart(clock); clock.pause() } },
     seek: (t: number) => clock?.seek(t),
     setRate: (r: number) => clock?.setRate(r),
     get clock() { return clock as Clock },

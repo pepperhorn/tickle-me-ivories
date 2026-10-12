@@ -246,6 +246,43 @@ describe('IvoriesProvider robustness', () => {
     expect((engine.play.mock.calls[0][0] as { note: { pitch: number } }).note.pitch).toBe(60)
   })
 
+  it('pause() during the resume wait cancels the start; a second Play while waiting starts exactly once', async () => {
+    const clock = new ManualClock()
+    const play = vi.spyOn(clock, 'play')
+    const engine = fakeEngine() as ReturnType<typeof fakeEngine> & { running: boolean; resume: ReturnType<typeof vi.fn> }
+    engine.running = false
+    engine.resume.mockImplementation(() => new Promise<void>((r) => setTimeout(() => { engine.running = true; r() }, 60)))
+    const ref = createRef<IvoriesHandle>()
+    render(<IvoriesProvider ref={ref} score={scoreDoc()} clock={clock} engine={engine} audio><span /></IvoriesProvider>)
+    await waitFor(() => expect(ref.current).not.toBeNull())
+    act(() => ref.current!.play())
+    act(() => ref.current!.pause())
+    await new Promise((r) => setTimeout(r, 500))
+    expect(play).not.toHaveBeenCalled()
+    expect(clock.playing).toBe(false)
+
+    act(() => ref.current!.play())
+    act(() => ref.current!.play())
+    await waitFor(() => expect(clock.playing).toBe(true))
+    await new Promise((r) => setTimeout(r, 450))
+    expect(play).toHaveBeenCalledTimes(1)
+  })
+
+  it('unmounting during the resume wait never plays the clock afterwards', async () => {
+    const clock = new ManualClock()
+    const play = vi.spyOn(clock, 'play')
+    const engine = fakeEngine() as ReturnType<typeof fakeEngine> & { resume: ReturnType<typeof vi.fn> }
+    engine.resume.mockImplementation(() => new Promise<void>((r) => setTimeout(r, 60)))
+    const ref = createRef<IvoriesHandle>()
+    const { unmount } = render(<IvoriesProvider ref={ref} score={scoreDoc()} clock={clock} engine={engine} audio><span /></IvoriesProvider>)
+    await waitFor(() => expect(ref.current).not.toBeNull())
+    const handle = ref.current!
+    act(() => handle.play())
+    unmount()
+    await new Promise((r) => setTimeout(r, 500))
+    expect(play).not.toHaveBeenCalled()
+  })
+
   it('an instrument-load failure calls onError but leaves status.error unset (the score plays silently)', async () => {
     const onError = vi.fn()
     let status: { error: unknown } | null = null

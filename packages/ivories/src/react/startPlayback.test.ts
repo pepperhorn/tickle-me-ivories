@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { startPlayback, RESUME_WAIT_MS } from './startPlayback'
+import { startPlayback, cancelPendingStart, RESUME_WAIT_MS } from './startPlayback'
 import { ManualClock } from '../core/clock/ManualClock'
 
 afterEach(() => { vi.useRealTimers() })
@@ -67,5 +67,22 @@ describe('startPlayback (audio resumes before the clock starts)', () => {
     startPlayback({ clock, engine, audio: false, reportError: vi.fn() })
     expect(clock.playing).toBe(true)
     expect(engine.resume).not.toHaveBeenCalled()
+  })
+  it('cancelPendingStart drops a waiting start (resume settling or the cap passing later)', async () => {
+    vi.useFakeTimers()
+    const clock = new ManualClock({ nowMs: () => 0 })
+    let resolve!: () => void
+    const engine = { resume: vi.fn(() => new Promise<void>((r) => { resolve = r })) }
+    startPlayback({ clock, engine, audio: true, reportError: vi.fn() })
+    cancelPendingStart(clock)
+    resolve()
+    await vi.advanceTimersByTimeAsync(RESUME_WAIT_MS * 2)
+    expect(clock.playing).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+    // A fresh start afterwards is not blocked by the cancelled one.
+    engine.resume.mockImplementation(async () => {})
+    startPlayback({ clock, engine, audio: true, reportError: vi.fn() })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(clock.playing).toBe(true)
   })
 })

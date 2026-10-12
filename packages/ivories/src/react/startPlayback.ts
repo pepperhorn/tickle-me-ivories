@@ -8,8 +8,8 @@ import type { Clock } from '../core/clock/types'
  */
 export const RESUME_WAIT_MS = 400
 
-/** Clocks with a start waiting on resume(): a second press meanwhile is ignored. */
-const waiting = new WeakSet<Clock>()
+/** Clocks with a start waiting on resume(), and how to cancel it. A second press meanwhile is ignored. */
+const waiting = new WeakMap<Clock, () => void>()
 
 /**
  * Resume audio (when scheduling it), then start the clock. resume() is called
@@ -17,6 +17,7 @@ const waiting = new WeakSet<Clock>()
  * RESUME_WAIT_MS), because the driver hands nothing to a suspended engine and
  * would otherwise pass the downbeat by while the context is still starting.
  * A rejection is reported once as `audio-unavailable` and the clock still starts.
+ * cancelPendingStart(clock) drops a start that is still waiting.
  */
 export function startPlayback(iv: {
   clock: Clock
@@ -27,17 +28,24 @@ export function startPlayback(iv: {
   const { clock } = iv
   if (!iv.audio) { clock.play(); return }
   if (waiting.has(clock)) return
-  waiting.add(clock)
-  let started = false
-  const start = () => {
-    if (started) return
-    started = true
+  let done = false
+  const finish = () => {
+    if (done) return false
+    done = true
     clearTimeout(timer)
-    waiting.delete(clock)
-    clock.play()
+    if (waiting.get(clock) === cancel) waiting.delete(clock)
+    return true
   }
+  const cancel = () => { finish() }
+  const start = () => { if (finish()) clock.play() }
+  waiting.set(clock, cancel)
   const timer = setTimeout(start, RESUME_WAIT_MS)
-  resumeAudio(iv).then(start)
+  void resumeAudio(iv).then(start)
+}
+
+/** Drops a start still waiting on resume() (a pause, an unmount, a clock change). */
+export function cancelPendingStart(clock: Clock): void {
+  waiting.get(clock)?.()
 }
 
 /** Resume the audio context only (the "Tap to enable sound" path). Settles once, never rejects. */

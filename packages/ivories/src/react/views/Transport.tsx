@@ -3,7 +3,7 @@ import { withProvider } from '../withProvider'
 import { Guarded } from '../IvoriesBoundary'
 import { formatTime } from '../format'
 import { cx } from '../cx'
-import { resumeAudio, startPlayback } from '../startPlayback'
+import { cancelPendingStart, resumeAudio, startPlayback } from '../startPlayback'
 
 export interface TransportControls { play?: boolean; seek?: boolean; tempo?: boolean; metronome?: boolean }
 
@@ -14,7 +14,7 @@ function TransportView({ controls, className }: { controls?: TransportControls; 
   const c = { play: true, seek: true, tempo: true, metronome: true, ...controls }
   const duration = iv.score?.durationSec ?? 0
   const toggle = () => {
-    if (playing) { clock.pause(); return }
+    if (playing) { cancelPendingStart(clock); clock.pause(); return }
     startPlayback(iv)
   }
   // Spec §8: blocked audio -> the clock runs silently and we offer a tap.
