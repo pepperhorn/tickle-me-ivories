@@ -125,7 +125,9 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
     return () => { live = false }
   }, [controlled, scoreUrl, file, musicXml, midi, status, report])
   const score = controlled ? (props.score ?? null) : loaded
-  const tempo = controlled ? (props.tempo ?? SCALE_1) : SCALE_1
+  const tempoIn = controlled ? (props.tempo ?? SCALE_1) : SCALE_1
+  const tempoKey = tempoIn.mode === 'scale' ? `s${tempoIn.scale}` : `a${tempoIn.bpm}`
+  const tempo = useMemo(() => tempoIn, [tempoKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- settings ----
   const [audioPatch, setAudioPatch] = useState<Partial<AudioSettings>>({})
@@ -279,8 +281,8 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
 
   const setAudio = useCallback((p: Partial<AudioSettings>) => setAudioPatch((cur) => ({ ...cur, ...p })), [])
   const value = useMemo<IvoriesContextValue | null>(() => (clock && engine && frames
-    ? { score, clock, engine, settings, fallSeconds, maxNoteDur, audio, frames, active, status, setAudio, reportError: report, live: liveHub }
-    : null), [score, clock, engine, settings, fallSeconds, maxNoteDur, audio, frames, active, status, setAudio, report, liveHub])
+    ? { score, tempo, clock, engine, settings, fallSeconds, maxNoteDur, audio, frames, active, status, setAudio, reportError: report, live: liveHub }
+    : null), [score, tempo, clock, engine, settings, fallSeconds, maxNoteDur, audio, frames, active, status, setAudio, report, liveHub])
 
   // Children render once the clock, engine and frame loop exist (after the
   // first effect; never on the server), so a view always finds a context.

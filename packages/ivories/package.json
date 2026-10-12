@@ -35,7 +35,13 @@
   },
   "peerDependencies": {
     "react": ">=19",
-    "react-dom": ">=19"
+    "react-dom": ">=19",
+    "pepperscore": ">=0.2"
+  },
+  "peerDependenciesMeta": {
+    "pepperscore": {
+      "optional": true
+    }
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",

@@ -143,4 +143,7 @@
     background: var(--ivories-panel); color: var(--ivories-ink-dim); font-size: 0.875rem; text-align: center; padding: 1rem;
   }
   .ivories .ivories-camera-message { margin: 0; }
+  /* Notation (spec §4.3): pepperscore fills the box and scrolls inside it. */
+  .ivories.ivories-notation { display: block; width: 100%; height: 100%; overflow: auto; background: var(--ivories-panel); }
+  .ivories .ivories-notation-score { height: 100%; }
 }

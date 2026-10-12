@@ -4,7 +4,7 @@ import type { Clock } from '../core/clock/types'
 import type { FrameLoop } from '../core/render/frameLoop'
 import type { IvoriesError } from '../core/errors'
 import type { LiveNote } from '../core/midi/types'
-import type { NoteEvent, ScoreDocument } from '../core/model/types'
+import type { NoteEvent, ScoreDocument, TempoSetting } from '../core/model/types'
 import type { AudioSettings, Settings } from '../core/settings/types'
 import type { ValueStore } from './ValueStore'
 
@@ -14,6 +14,8 @@ export interface ProviderStatus { loading: boolean; error: IvoriesError | null }
 
 export interface IvoriesContextValue {
   score: ScoreDocument | null
+  /** The TempoSetting the score is timed at (scale 1 except a studio-retimed controlled score). */
+  tempo: TempoSetting
   clock: Clock
   engine: AudioEngine
   settings: Settings
