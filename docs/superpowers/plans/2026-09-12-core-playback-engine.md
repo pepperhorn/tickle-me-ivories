@@ -84,7 +84,7 @@ src/
 The repo is **not empty** — it already holds `docs/`, `tools/`, `tests/` and `.superpowers/`, none of which may be deleted. `npm create vite@latest .` prompts interactively in a non-empty directory and will hang. Scaffold into a temp directory and copy in:
 
 ```bash
-cd /home/shaun/tickle-me-ivorys
+cd /home/shaun/tickle-me-ivories
 rm -rf /tmp/tmi-scaffold
 npm create vite@latest /tmp/tmi-scaffold -- --template react-ts
 cp -r /tmp/tmi-scaffold/src /tmp/tmi-scaffold/index.html /tmp/tmi-scaffold/package.json .
@@ -153,7 +153,7 @@ body {
 export default function App() {
   return (
     <div className="app-shell flex h-full flex-col items-center justify-center gap-2">
-      <h1 className="app-title text-lg font-semibold">Tickle Me Ivorys</h1>
+      <h1 className="app-title text-lg font-semibold">Tickle Me Ivories</h1>
       <p className="app-tagline text-sm text-[var(--ink-dim)]">Core playback engine</p>
     </div>
   )

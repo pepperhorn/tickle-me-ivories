@@ -1,4 +1,4 @@
-# Tickle Me Ivorys — Design Spec
+# Tickle Me Ivories — Design Spec
 
 **Date:** 2026-09-12
 **Status:** Approved for planning
