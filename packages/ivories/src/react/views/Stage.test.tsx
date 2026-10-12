@@ -215,4 +215,16 @@ describe('Stage (spec §5.2)', () => {
     // The top slot's override replaces the shared callback; the bottom slot's clears it.
     expect(shared).not.toHaveBeenCalled()
   })
+
+  it('a rising slot renders RisingKeys; orientation reaches falling and rising views', async () => {
+    const layout: Layout = {
+      kind: 'split', ratio: 0.5,
+      top: { kind: 'ivories', view: 'rising', orientation: 'horizontal' },
+      bottom: { kind: 'ivories', view: 'falling', orientation: 'horizontal' },
+    }
+    const { container } = inProvider(<Stage layout={layout} />)
+    await waitFor(() => expect(slots(container)).toEqual(['top:rising', 'bottom:falling']))
+    expect(container.querySelector('.ivories-slot-top .ivories-rising')!.getAttribute('data-orientation')).toBe('horizontal')
+    expect(container.querySelector('.ivories-slot-bottom .ivories-falling')!.getAttribute('data-orientation')).toBe('horizontal')
+  })
 })

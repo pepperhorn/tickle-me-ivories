@@ -2,6 +2,7 @@ import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'r
 import type { CSSProperties, PointerEvent as ReactPointerEvent, Ref, RefObject } from 'react'
 import { Keyboard } from './Keyboard'
 import { FallingKeys } from './FallingKeys'
+import { RisingKeys } from './RisingKeys'
 import { CameraSlot } from './CameraSlot'
 import { Notation } from '../notation/Notation'
 import { Guarded } from '../IvoriesBoundary'
@@ -23,6 +24,8 @@ export interface StageSlotViewProps {
   labels?: LabelsProp
   range?: 'full' | [number, number]
   lookahead?: number
+  /** Rising slots: beats visible above the keys (default 8). */
+  visibleBeats?: number
   input?: 'none' | 'midi'
   zoom?: number
   onLayout?(layout: KeyboardLayout): void
@@ -78,7 +81,8 @@ function SlotContent({ source, viewProps, registry }: { source: SlotSource; view
   const v = viewProps ?? {}
   switch (source.view) {
     case 'keyboard': return <Keyboard labels={v.labels} range={v.range} input={v.input} onLayout={v.onLayout} />
-    case 'falling': return <FallingKeys labels={v.labels} range={v.range} lookahead={v.lookahead} input={v.input} onLayout={v.onLayout} />
+    case 'falling': return <FallingKeys labels={v.labels} range={v.range} lookahead={v.lookahead} input={v.input} onLayout={v.onLayout} orientation={source.orientation} />
+    case 'rising': return <RisingKeys labels={v.labels} range={v.range} visibleBeats={v.visibleBeats} input={v.input} onLayout={v.onLayout} orientation={source.orientation} />
     case 'notation': return <Notation view="vertical" zoom={v.zoom} />
     case 'endless': return <Notation view="endless" zoom={v.zoom} />
   }

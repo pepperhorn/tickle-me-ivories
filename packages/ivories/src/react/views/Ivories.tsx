@@ -1,6 +1,7 @@
 import { IvoriesProvider } from '../IvoriesProvider'
 import { Keyboard } from './Keyboard'
 import { FallingKeys } from './FallingKeys'
+import { RisingKeys } from './RisingKeys'
 import { Transport } from './Transport'
 import { Notation } from '../notation/Notation'
 import { cx } from '../cx'
@@ -9,8 +10,9 @@ import type { Ref } from 'react'
 import type { IvoriesProviderProps } from '../IvoriesProvider'
 import type { TransportControls } from './Transport'
 import type { LabelsProp } from './labels'
+import type { Orientation } from '../../core/layout/types'
 
-export type IvoriesPreset = 'falling' | 'keyboard' | 'keyboard+notation' | 'endless+falling' | 'endless+keyboard'
+export type IvoriesPreset = 'falling' | 'rising' | 'keyboard' | 'keyboard+notation' | 'endless+falling' | 'endless+keyboard'
 /** Same semantics as pepperscore: full controls, a play button, or none. */
 export type Chrome = 'full' | 'minimal' | 'none'
 
@@ -27,19 +29,30 @@ export interface IvoriesProps extends IvoriesProviderProps {
   zoom?: number
   /** Handle of the pepperscore clock-driven notation, for the notation presets. */
   notationRef?: Ref<PepperScoreClockHandle>
+  /** The main roll view's orientation (falling and rising presets). Default vertical. */
+  orientation?: Orientation
+  /** Rising preset: beats visible above the keys (default 8). */
+  visibleBeats?: number
+  /** Rising preset, live mode: beats per bar for the grid (default 4). */
+  beatsPerBar?: number
 }
 
-const MINIMAL: TransportControls = { seek: false, tempo: false, metronome: false }
+const MINIMAL: TransportControls = { seek: false, tempo: false, metronome: false, bpm: false }
 const slug = (v: string) => v.replace(/\+/g, '-')
 
 /** One-line preset combos (spec §4). Always its own provider; `ref` is the provider handle. */
 export function Ivories(props: IvoriesProps) {
-  const { view = 'falling', chrome = 'full', labels, height, className, range, lookahead, input, zoom, notationRef, ...provider } = props
+  const {
+    view = 'falling', chrome = 'full', labels, height, className, range, lookahead, input, zoom, notationRef,
+    orientation, visibleBeats, beatsPerBar, ...provider
+  } = props
   const notation = view === 'keyboard+notation' ? 'vertical' : view.startsWith('endless') ? 'endless' : null
   const keysOnly = view === 'keyboard' || view === 'keyboard+notation' || view === 'endless+keyboard'
-  const main = keysOnly
-    ? <Keyboard labels={labels} range={range} input={input} />
-    : <FallingKeys labels={labels} range={range} lookahead={lookahead} input={input} />
+  const main = view === 'rising'
+    ? <RisingKeys labels={labels} range={range} input={input} orientation={orientation} visibleBeats={visibleBeats} beatsPerBar={beatsPerBar} />
+    : keysOnly
+      ? <Keyboard labels={labels} range={range} input={input} />
+      : <FallingKeys labels={labels} range={range} lookahead={lookahead} input={input} orientation={orientation} />
   return (
     <IvoriesProvider {...provider}>
       <div className={cx('ivories', 'ivories-preset', `ivories-preset-${slug(view)}`, className)} style={height !== undefined ? { height } : undefined}>

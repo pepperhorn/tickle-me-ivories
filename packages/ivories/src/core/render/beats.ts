@@ -19,7 +19,7 @@ export function clampBpm(bpm: number): number {
 /** A typed BPM draft -> a committable BPM, or null while it is empty, half-typed or out of range. */
 export function parseBpmDraft(v: string): number | null {
   if (v.trim() === '') return null
-  const n = Number(v)
+  const n = Math.round(Number(v))
   return Number.isFinite(n) && n >= MIN_LIVE_BPM && n <= MAX_LIVE_BPM ? n : null
 }
 

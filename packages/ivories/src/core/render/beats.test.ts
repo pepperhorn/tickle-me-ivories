@@ -91,4 +91,13 @@ describe('parseBpmDraft', () => {
     expect(parseBpmDraft('20')).toBe(20)
     for (const v of ['', ' ', '5', '19', '301', '1e9', 'abc']) expect(parseBpmDraft(v)).toBeNull()
   })
+
+  it('rounds a fractional draft so the display cannot drift from the committed value', () => {
+    expect(parseBpmDraft('120.4')).toBe(120)
+    expect(parseBpmDraft('120.5')).toBe(121)
+    expect(parseBpmDraft('19.6')).toBe(20)
+    expect(parseBpmDraft('300.4')).toBe(300)
+    expect(parseBpmDraft('19.4')).toBeNull()
+    expect(parseBpmDraft('300.6')).toBeNull()
+  })
 })

@@ -50,6 +50,19 @@ describe('SceneV2 (spec §5.4)', () => {
     expect(JSON.stringify(sceneApplyPlan(s, { shared: true }).layout)).not.toContain('cam-1')
     expect(sceneApplyPlan(s, { shared: false }).layout).toEqual(webcamSplit)
   })
+
+  it('round-trips a rising, horizontal slot, shared or not, and stays v2 (R-V)', () => {
+    const layout: Layout = {
+      kind: 'split', ratio: 0.5,
+      top: { kind: 'ivories', view: 'rising', orientation: 'horizontal' },
+      bottom: { kind: 'ivories', view: 'keyboard' },
+    }
+    const s = sceneFromState({ song, profile: profile(), layout })
+    const back = decodeScene(JSON.stringify(s))
+    expect(back.v).toBe(2)
+    expect(back.layout).toEqual(layout)
+    expect(decodeScene(JSON.stringify(s), { shared: true }).layout).toEqual(layout)
+  })
 })
 
 describe('SceneV2 decode of crafted shares (Review Focus 4)', () => {

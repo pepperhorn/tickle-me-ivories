@@ -40,4 +40,16 @@ describe('layout validators (untrusted scenes, Review Focus 4)', () => {
     expect(validLayout({ kind: 'pip', main: top, inset: evil, corner: 'br', size: 0.3, margin: 0 }, { keepDeviceId: false })).toBeNull()
     expect(validLayout({ kind: 'pip', main: top, inset: top, corner: 'br', size: 0.3, margin: 5 })).toMatchObject({ margin: 0.1 })
   })
+
+  it('accepts a rising slot and keeps orientation only on falling/rising, only when valid (R-V)', () => {
+    const single = (main: unknown) => validLayout({ kind: 'single', main })
+    expect(single({ kind: 'ivories', view: 'rising', orientation: 'horizontal' }))
+      .toEqual({ kind: 'single', main: { kind: 'ivories', view: 'rising', orientation: 'horizontal' } })
+    expect(single({ kind: 'ivories', view: 'falling', orientation: 'vertical' }))
+      .toEqual({ kind: 'single', main: { kind: 'ivories', view: 'falling', orientation: 'vertical' } })
+    expect(single({ kind: 'ivories', view: 'keyboard', orientation: 'horizontal' }))
+      .toEqual({ kind: 'single', main: { kind: 'ivories', view: 'keyboard' } })
+    expect(single({ kind: 'ivories', view: 'rising', orientation: 'diagonal;background:url(x)' }))
+      .toEqual({ kind: 'single', main: { kind: 'ivories', view: 'rising' } })
+  })
 })

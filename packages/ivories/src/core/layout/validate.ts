@@ -3,7 +3,7 @@ import type { Aspect, CameraFit, Corner, IvoriesView, Layout, SlotSource } from 
 
 type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
-const VIEWS: readonly IvoriesView[] = ['keyboard', 'falling', 'notation', 'endless']
+const VIEWS: readonly IvoriesView[] = ['keyboard', 'falling', 'rising', 'notation', 'endless']
 const CORNERS: readonly Corner[] = ['tl', 'tr', 'bl', 'br']
 const ASPECTS: readonly Aspect[] = ['free', '16:9', '9:16']
 const FILL_RE = /^(transparent|#[0-9a-f]{3}|#[0-9a-f]{4}|#[0-9a-f]{6}|#[0-9a-f]{8}|(rgb|rgba|hsl|hsla)\([0-9.,%\s/+-]{1,60}\))$/i
@@ -17,7 +17,14 @@ export function validFill(u: unknown): string | null {
 export function validSource(u: unknown, o: { keepDeviceId: boolean }): SlotSource | null {
   if (!isObj(u)) return null
   if (u.kind === 'ivories') {
-    return VIEWS.includes(u.view as IvoriesView) ? { kind: 'ivories', view: u.view as IvoriesView } : null
+    if (!VIEWS.includes(u.view as IvoriesView)) return null
+    const view = u.view as IvoriesView
+    const out: Extract<SlotSource, { kind: 'ivories' }> = { kind: 'ivories', view }
+    // Only the roll views have an orientation; anything else is dropped, the slot kept (R-V).
+    if ((view === 'falling' || view === 'rising') && (u.orientation === 'vertical' || u.orientation === 'horizontal')) {
+      out.orientation = u.orientation
+    }
+    return out
   }
   if (u.kind !== 'camera') return null
   if (u.mode === 'mask') {

@@ -38,4 +38,24 @@ describe('Ivories presets (spec §4)', () => {
     ref.current!.seek(0.5)
     expect(ref.current!.clock.now()).toBe(0.5)
   })
+
+  it('view="rising" with no score: RisingKeys with its orientation, and the transport offers BPM', async () => {
+    const { container } = render(<Ivories view="rising" orientation="horizontal" engine={fakeEngine()} bpm={110} />)
+    await waitFor(() => expect(container.querySelector('.ivories-rising')).not.toBeNull())
+    expect(container.querySelector('.ivories-rising')!.getAttribute('data-orientation')).toBe('horizontal')
+    expect((container.querySelector('.ivories-bpm-input') as HTMLInputElement).value).toBe('110')
+  })
+
+  it('orientation applies to the falling main view; a loaded score hides the BPM field', async () => {
+    const { container } = render(<Ivories view="falling" orientation="horizontal" midi={bytes()} engine={fakeEngine()} />)
+    await waitFor(() => expect(container.querySelector('.ivories-falling')?.getAttribute('data-orientation')).toBe('horizontal'))
+    await waitFor(() => expect(container.querySelector('.ivories-time')!.textContent).not.toMatch(/\/ 0:00$/))
+    expect(container.querySelector('.ivories-bpm')).toBeNull()
+  })
+
+  it('chrome="minimal" hides the BPM field', async () => {
+    const { container } = render(<Ivories view="rising" chrome="minimal" engine={fakeEngine()} />)
+    await waitFor(() => expect(container.querySelector('.ivories-btn-play')).not.toBeNull())
+    expect(container.querySelector('.ivories-bpm')).toBeNull()
+  })
 })
