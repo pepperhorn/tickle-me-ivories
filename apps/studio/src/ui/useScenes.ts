@@ -63,8 +63,8 @@ const SHARE_PATH_RE = /^\/s\/[^/]+\/?$/
 
 /** How long a `/s/<code>` link waits for a plugin to claim it before the hint shows. */
 export const SHARE_PROVIDER_WAIT_MS = 4000
-export const SHARING_UNAVAILABLE_MESSAGE = "Sharing isn't available right now."
-const UNOPENABLE_MESSAGE = "This link couldn't be opened."
+export const SHARING_UNAVAILABLE_MESSAGE = 'Sharing isn’t available right now.'
+const UNOPENABLE_MESSAGE = 'This link couldn’t be opened.'
 
 /** Removes a share link from the address without a navigation (F19a): a
     `#share=…` hash, and a `/s/<code>` path, which becomes `/`. */
@@ -89,10 +89,11 @@ function decodeResolved(r: ResolvedShare): Preview {
 }
 
 /** Finds and resolves a share link in the current location: the installed
-    provider first, then the default one (F12). Null when the URL is not a
-    share link at all; throws (a user-facing message) when it is one that
-    cannot be opened. */
-async function resolveShareFromLocation(): Promise<Preview | null> {
+    provider first, then the default one (F12). `onMatched` runs as soon as a
+    provider claims the URL (before its resolve settles). Null when the URL
+    is not a share link at all; throws (a user-facing message) when it is one
+    that cannot be opened. */
+async function resolveShareFromLocation(onMatched: () => void = () => {}): Promise<Preview | null> {
   const loc = { pathname: location.pathname, hash: location.hash }
   const providers: ShareProvider[] = [getPlatform().share]
   const fallback = getDefaults().share
@@ -102,6 +103,7 @@ async function resolveShareFromLocation(): Promise<Preview | null> {
   for (const p of providers) {
     const code = p.match(loc)
     if (!code) continue
+    if (!matched) onMatched()
     matched = true
     let resolved: ResolvedShare | null = null
     try {
@@ -179,16 +181,16 @@ export function useScenes(host: ScenesHost) {
     const run = () => {
       if (settledRef.current) return
       const id = ++latest
-      resolveShareFromLocation().then(
+      // Claimed means some provider matched the path, even if its resolve is
+      // still in flight: only an unclaimed path earns the hint.
+      resolveShareFromLocation(() => { claimed = true }).then(
         (p) => {
           if (!alive || id !== latest || settledRef.current || !p) return
-          claimed = true
           setShareError(null)
           setPreview(p)
         },
         (e: Error) => {
           if (!alive || id !== latest || settledRef.current) return
-          claimed = true
           setShareError(e.message)
         },
       )

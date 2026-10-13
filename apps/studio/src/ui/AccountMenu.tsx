@@ -1,7 +1,7 @@
 // The account corner (spec §2 AuthProvider; runbook §3.3). Shown only when an
 // installed plugin supplies auth. Device management appears when the
 // provider implements it (Task 1's optional AuthProvider members).
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { AuthProvider, PlatformDevice } from 'ivories/core'
 import { isPlatformError } from 'ivories/core'
 import { useAuthState } from './useAuthState'
@@ -19,13 +19,31 @@ export function AccountMenu(props: { auth: AuthProvider | null }) {
   const [open, setOpen] = useState(false)
   const [devices, setDevices] = useState<PlatformDevice[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  // Focus goes back to the account trigger when the sign-in dialog closes.
+  const panelId = useId()
+  // Focus goes back to the account trigger when the sign-in dialog closes,
+  // and to the new "Sign in" trigger after signing out.
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const wasOpen = useRef(false)
+  const prevStatus = useRef(state?.status)
+  const status = state?.status
   useEffect(() => {
-    if (wasOpen.current && !dialog) triggerRef.current?.focus()
+    const signedOut = prevStatus.current === 'signed-in' && status === 'signed-out'
+    if ((wasOpen.current && !dialog) || signedOut) triggerRef.current?.focus()
     wasOpen.current = dialog
-  }, [dialog, state?.status])
+    prevStatus.current = status
+  }, [dialog, status])
+  // Escape closes the panel (the dialog handles its own Escape).
+  useEffect(() => {
+    if (!open || dialog) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      setOpen(false)
+      setDevices(null)
+      triggerRef.current?.focus()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, dialog])
   if (!auth || !state) return null
 
   const run = async (fn: () => Promise<void>, fallback: string) => {
@@ -56,13 +74,15 @@ export function AccountMenu(props: { auth: AuthProvider | null }) {
             ref={triggerRef}
             type="button"
             aria-expanded={open}
+            aria-haspopup="true"
+            aria-controls={panelId}
             className={`account-menu-trigger account-menu-trigger--signed-in ${TRIGGER}`}
             onClick={() => { setOpen((v) => !v); setError(null) }}
           >
             @{state.user.handle}
           </button>
           {open && (
-            <div className="account-menu-panel flex w-80 flex-col gap-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3 text-xs shadow-2xl">
+            <div id={panelId} className="account-menu-panel flex w-80 flex-col gap-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3 text-xs shadow-2xl">
               <p className="account-menu-identity text-[var(--ink-dim)]">
                 Signed in as <span className="account-menu-handle font-semibold text-[var(--ink)]">@{state.user.handle}</span>
                 {state.user.displayName ? ` (${state.user.displayName})` : ''}
@@ -80,15 +100,15 @@ export function AccountMenu(props: { auth: AuthProvider | null }) {
                         {deviceName(d)}
                         {d.current && <span className="account-device-current ml-1 text-[var(--accent)]">(this device)</span>}
                       </span>
-                      {revokeDevice && (
+                      {/* The current device signs out with "Sign out" below, not here. */}
+                      {revokeDevice && !d.current && (
                         <button
                           type="button"
                           aria-label={`Sign out ${deviceName(d)}`}
                           className={`btn-revoke-device ${ITEM} shrink-0 whitespace-nowrap`}
                           onClick={() => void run(async () => {
                             await revokeDevice(d.id)
-                            if (d.current) close()
-                            else if (listDevices) setDevices(await listDevices())
+                            if (listDevices) setDevices(await listDevices())
                           }, 'Could not sign that device out.')}
                         >
                           Sign out

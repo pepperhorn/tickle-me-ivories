@@ -1,6 +1,7 @@
 // Email one-time-code sign-in (spec §2 AuthProvider). Backend-neutral: it only
 // knows the AuthProvider it is given. The code length comes from the provider.
 import { useEffect, useRef, useState } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type { AuthProvider } from 'ivories/core'
 import { isPlatformError } from 'ivories/core'
 
@@ -21,6 +22,10 @@ export function SignInDialog(props: { auth: AuthProvider; initialEmail?: string;
   const [sentAt, setSentAt] = useState<number | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const inputs = useRef<(HTMLInputElement | null)[]>([])
+  const dialogRef = useRef<HTMLDivElement | null>(null)
+  // Set after a wrong code; digit 1 is focused once busy is off (a disabled
+  // input cannot take focus, so this must run after that commit).
+  const [refocus, setRefocus] = useState(0)
   const resendIn = sentAt === null ? 0 : Math.max(0, Math.ceil((sentAt + RESEND_COOLDOWN_SEC * 1000 - now) / 1000))
   const cooling = resendIn > 0
 
@@ -35,6 +40,24 @@ export function SignInDialog(props: { auth: AuthProvider; initialEmail?: string;
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+
+  useEffect(() => {
+    if (refocus > 0 && !busy) inputs.current[0]?.focus()
+  }, [refocus, busy])
+
+  /** Keeps Tab and Shift+Tab inside the dialog. */
+  const trapTab = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Tab' || !dialogRef.current) return
+    const focusables = [...dialogRef.current.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+    )]
+    if (focusables.length === 0) return
+    const first = focusables[0]!
+    const last = focusables[focusables.length - 1]!
+    const active = document.activeElement
+    if (e.shiftKey && (active === first || !dialogRef.current.contains(active))) { e.preventDefault(); last.focus() }
+    else if (!e.shiftKey && (active === last || !dialogRef.current.contains(active))) { e.preventDefault(); first.focus() }
+  }
 
   const sendCode = async () => {
     setBusy(true)
@@ -62,7 +85,7 @@ export function SignInDialog(props: { auth: AuthProvider; initialEmail?: string;
     } catch (e) {
       setError(errorText(e, 'Could not sign in. Try again.'))
       setDigits(blank())
-      queueMicrotask(() => inputs.current[0]?.focus())
+      setRefocus((r) => r + 1)
     } finally {
       setBusy(false)
     }
@@ -85,8 +108,10 @@ export function SignInDialog(props: { auth: AuthProvider; initialEmail?: string;
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
+        onKeyDown={trapTab}
         aria-labelledby="sign-in-title"
         className="sign-in-dialog flex w-96 max-w-[92vw] flex-col gap-4 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-6 text-[var(--ink)] shadow-2xl"
       >

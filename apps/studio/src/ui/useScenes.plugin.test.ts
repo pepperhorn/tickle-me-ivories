@@ -6,6 +6,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { buildProfile, DEFAULT_SETTINGS, PlatformError, sceneFromState } from 'ivories/core'
 import type { AuthProvider, AuthState, Layout, ResolvedShare, ShareProvider, StorageProvider } from 'ivories/core'
 import type { ScenesHost } from './useScenes'
+import { SHARE_PROVIDER_WAIT_MS } from './useScenes'
 
 const SHA = 'a'.repeat(64)
 const CODE = 'AbCdEfGhJk'
@@ -187,7 +188,7 @@ describe('share resolve robustness (Task 15 review carry)', () => {
       id: 'p', name: 'P', version: '1',
       share: remoteShare({ resolve: vi.fn(async () => { throw new TypeError('boom') }) }),
     }))
-    await waitFor(() => expect(result.current.shareError).toBe("This link couldn't be opened."))
+    await waitFor(() => expect(result.current.shareError).toBe('This link couldn’t be opened.'))
     expect(err).toHaveBeenCalled()
     err.mockRestore()
   })
@@ -200,8 +201,8 @@ describe('share resolve robustness (Task 15 review carry)', () => {
       const { result } = renderHook(() => useScenes(host()))
       await act(async () => {})
       expect(result.current.shareError).toBeNull()
-      await act(async () => { vi.advanceTimersByTime(4000) })
-      expect(result.current.shareError).toBe("Sharing isn't available right now.")
+      await act(async () => { vi.advanceTimersByTime(SHARE_PROVIDER_WAIT_MS) })
+      expect(result.current.shareError).toBe('Sharing isn’t available right now.')
       act(() => registry.installPlugin({ id: 'p', name: 'P', version: '1', share: remoteShare() }))
       await act(async () => {})
       await act(async () => {})
@@ -221,8 +222,25 @@ describe('share resolve robustness (Task 15 review carry)', () => {
       act(() => registry.installPlugin({ id: 'p', name: 'P', version: '1', share: remoteShare() }))
       await act(async () => {})
       await act(async () => {})
-      await act(async () => { vi.advanceTimersByTime(5000) })
+      await act(async () => { vi.advanceTimersByTime(SHARE_PROVIDER_WAIT_MS + 1000) })
       expect(result.current.preview).not.toBeNull()
+      expect(result.current.shareError).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('no hint while a claimed resolve is still in flight', async () => {
+    vi.useFakeTimers()
+    try {
+      const { registry, useScenes } = await fresh()
+      history.replaceState(null, '', `/s/${CODE}`)
+      const slow = remoteShare({ resolve: vi.fn(() => new Promise<ResolvedShare | null>(() => {})) })
+      const { result } = renderHook(() => useScenes(host()))
+      act(() => registry.installPlugin({ id: 'p', name: 'P', version: '1', share: slow }))
+      await act(async () => {})
+      await act(async () => { vi.advanceTimersByTime(SHARE_PROVIDER_WAIT_MS + 1000) })
+      expect(slow.resolve).toHaveBeenCalled()
       expect(result.current.shareError).toBeNull()
     } finally {
       vi.useRealTimers()

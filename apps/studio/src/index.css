@@ -40,6 +40,11 @@ html.ivories-transparent .stage-wrap {
   background: transparent !important;
 }
 
+/* Chrome that must never show in a transparent (OBS) capture. */
+html.ivories-transparent .account-menu {
+  display: none;
+}
+
 /* The count-in number (ui/CountIn.tsx). House note-text treatment -- white
    Poppins 600 over a dark stroke painted underneath -- so it reads on every
    theme and over composited footage. Its animation-duration is set inline to

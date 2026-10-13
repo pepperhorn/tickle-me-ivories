@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { AccountMenu } from './AccountMenu'
 import { fakeAuth } from './testing/fakeAuth'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 async function signIn(code = '12345678') {
   fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
@@ -74,5 +77,61 @@ describe('AccountMenu', () => {
     fireEvent.click(trigger)
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(document.activeElement).toBe(trigger)
+  })
+
+  it('traps Tab inside the dialog: Tab from Cancel wraps to the first focusable, Shift+Tab back', () => {
+    render(<AccountMenu auth={fakeAuth()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    const email = screen.getByLabelText('Email')
+    const cancel = screen.getByRole('button', { name: 'Cancel' })
+    cancel.focus()
+    fireEvent.keyDown(cancel, { key: 'Tab' })
+    expect(document.activeElement).toBe(email)
+    fireEvent.keyDown(email, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(cancel)
+  })
+
+  it('re-focuses digit 1 after a wrong code', async () => {
+    render(<AccountMenu auth={fakeAuth()} />)
+    await signIn('00000000')
+    await screen.findByRole('alert')
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Digit 1 of 8')))
+  })
+
+  it('has no revoke button on the current device row', async () => {
+    render(<AccountMenu auth={fakeAuth()} />)
+    await signIn()
+    fireEvent.click(await screen.findByRole('button', { name: '@ana' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Devices' }))
+    const rows = await screen.findAllByRole('listitem')
+    const current = rows.find((r) => r.textContent?.includes('(this device)'))!
+    expect(current.querySelector('.btn-revoke-device')).toBeNull()
+    expect(rows.find((r) => r !== current)!.querySelector('.btn-revoke-device')).not.toBeNull()
+  })
+
+  it('Escape closes the panel; the trigger announces its popup', async () => {
+    render(<AccountMenu auth={fakeAuth()} />)
+    await signIn()
+    const trigger = await screen.findByRole('button', { name: '@ana' })
+    fireEvent.click(trigger)
+    expect(trigger.getAttribute('aria-haspopup')).toBe('true')
+    const panel = document.getElementById(trigger.getAttribute('aria-controls')!)
+    expect(panel?.classList.contains('account-menu-panel')).toBe(true)
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(document.querySelector('.account-menu-panel')).toBeNull()
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  it('focuses the Sign in trigger after signing out from the panel', async () => {
+    render(<AccountMenu auth={fakeAuth()} />)
+    await signIn()
+    fireEvent.click(await screen.findByRole('button', { name: '@ana' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Sign out' })) })
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Sign in' })))
+  })
+
+  it('is hidden in transparent (OBS) mode', () => {
+    const studioCss = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'index.css'), 'utf8')
+    expect(studioCss).toMatch(/html\.ivories-transparent \.account-menu\s*\{\s*display:\s*none/)
   })
 })
