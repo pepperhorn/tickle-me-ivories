@@ -5,7 +5,7 @@
 //   back to the default HashShareProvider (preflight F12), resolved and
 //   decoded through decodeScene/decodeLook before anything is shown. It is
 //   never applied silently (spec §7): only Apply applies. Apply, Save a copy
-//   and Dismiss clear the `#share=` hash (F19a) so a reload does not re-show
+//   and Dismiss clear the `#share=` hash or `/s/<code>` path (F19a) so a reload does not re-show
 //   the banner.
 // - the §8.3 "drop the file to continue" flow (preflight F2): opening a scene
 //   whose songKey is the loaded score's id applies it directly; a `local` ref
@@ -19,10 +19,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { LookV1, ResolvedShare, SceneV2, ShareProvider } from 'ivories/core'
-import { getDefaults, getPlatform } from '../platform/registry'
+import { activeStorage, getDefaults, getPlatform, subscribePlatform } from '../platform/registry'
 import { decodeScene, songKey } from 'ivories/core'
 import { decodeLook } from 'ivories/core'
 import { isPayloadVersionError } from 'ivories/core'
+import { isPlatformError } from 'ivories/core'
 import { hashFile } from 'ivories/core'
 import type { AudioSettings } from 'ivories/core'
 import { saveErrorMessage } from './saveErrors'
@@ -58,10 +59,19 @@ export interface PendingScene {
   mismatch: File | null
 }
 
-/** Removes `#share=…` from the address without a navigation (F19a). */
-export function clearShareHash(): void {
-  if (!location.hash) return
-  history.replaceState(history.state, '', location.pathname + location.search)
+const SHARE_PATH_RE = /^\/s\/[^/]+\/?$/
+
+/** How long a `/s/<code>` link waits for a plugin to claim it before the hint shows. */
+export const SHARE_PROVIDER_WAIT_MS = 4000
+export const SHARING_UNAVAILABLE_MESSAGE = 'Sharing isn’t available right now.'
+const UNOPENABLE_MESSAGE = 'This link couldn’t be opened.'
+
+/** Removes a share link from the address without a navigation (F19a): a
+    `#share=…` hash, and a `/s/<code>` path, which becomes `/`. */
+export function clearShareLocation(): void {
+  const onSharePath = SHARE_PATH_RE.test(location.pathname)
+  if (!location.hash && !onSharePath) return
+  history.replaceState(history.state, '', (onSharePath ? '/' : location.pathname) + location.search)
 }
 
 function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
@@ -79,10 +89,11 @@ function decodeResolved(r: ResolvedShare): Preview {
 }
 
 /** Finds and resolves a share link in the current location: the installed
-    provider first, then the default one (F12). Null when the URL is not a
-    share link at all; throws (a user-facing message) when it is one that
-    cannot be opened. */
-async function resolveShareFromLocation(): Promise<Preview | null> {
+    provider first, then the default one (F12). `onMatched` runs as soon as a
+    provider claims the URL (before its resolve settles). Null when the URL
+    is not a share link at all; throws (a user-facing message) when it is one
+    that cannot be opened. */
+async function resolveShareFromLocation(onMatched: () => void = () => {}): Promise<Preview | null> {
   const loc = { pathname: location.pathname, hash: location.hash }
   const providers: ShareProvider[] = [getPlatform().share]
   const fallback = getDefaults().share
@@ -92,9 +103,22 @@ async function resolveShareFromLocation(): Promise<Preview | null> {
   for (const p of providers) {
     const code = p.match(loc)
     if (!code) continue
+    if (!matched) onMatched()
     matched = true
     let resolved: ResolvedShare | null = null
-    try { resolved = await p.resolve(code) } catch { resolved = null }
+    try {
+      resolved = await p.resolve(code)
+    } catch (e) {
+      // A provider's own error (offline, rate limited, a newer version, an
+      // invalid payload) is already written for the user: show it as it is.
+      if (isPayloadVersionError(e) || (isPlatformError(e) && e.code !== 'not_found')) throw new Error(e.message)
+      // Anything else is a provider bug, not a removed share: say so neutrally.
+      if (!isPlatformError(e)) {
+        console.error('[share] provider resolve failed', e)
+        throw new Error(UNOPENABLE_MESSAGE)
+      }
+      resolved = null
+    }
     if (!resolved) continue
     try {
       return decodeResolved(resolved)
@@ -103,7 +127,11 @@ async function resolveShareFromLocation(): Promise<Preview | null> {
       throw new Error(`This shared ${resolved.kind} could not be opened. ${saveErrorMessage(e, 'It is not valid.')}`)
     }
   }
-  if (matched) throw new Error('This share link could not be opened. It may be incomplete or damaged.')
+  if (matched) {
+    throw new Error(SHARE_PATH_RE.test(loc.pathname)
+      ? 'This share was removed, or its owner made it private.'
+      : 'This share link could not be opened. It may be incomplete or damaged.')
+  }
   return null
 }
 
@@ -126,6 +154,8 @@ export function useScenes(host: ScenesHost) {
   // banner back rather than stranding the share with nothing left to open
   // it from. Cleared once the scene actually applies.
   const sharedPreviewBackupRef = useRef<Preview | null>(null)
+  /** Set once the user acts on a share (Apply, Save a copy, Dismiss): it is never re-offered. */
+  const settledRef = useRef(false)
   const runBusy = useCallback(async (fn: () => Promise<void>) => {
     if (busyRef.current) return
     busyRef.current = true
@@ -135,13 +165,46 @@ export function useScenes(host: ScenesHost) {
   /** Bumped whenever a save is written from outside the panel ("Save a copy"). */
   const [savesVersion, setSavesVersion] = useState(0)
 
+  // Resolve on mount, and again whenever the platform changes: a plugin
+  // installs after the first render, and only then can a /s/<code> link
+  // match (Review Focus 1). Once the user has acted on a share (Apply, Save a
+  // copy, Dismiss) it is never re-offered.
+  //
+  // Each run is numbered and only the latest one's outcome is applied, so a
+  // slow resolve from an earlier platform cannot overwrite a newer one. A
+  // `/s/<code>` path no provider has claimed after SHARE_PROVIDER_WAIT_MS
+  // shows a hint; the studio keeps working and a later plugin still resolves.
   useEffect(() => {
     let alive = true
-    resolveShareFromLocation().then(
-      (p) => { if (alive && p) setPreview(p) },
-      (e: Error) => { if (alive) setShareError(e.message) },
-    )
-    return () => { alive = false }
+    let latest = 0
+    let claimed = false
+    const run = () => {
+      if (settledRef.current) return
+      const id = ++latest
+      // Claimed means some provider matched the path, even if its resolve is
+      // still in flight: only an unclaimed path earns the hint.
+      resolveShareFromLocation(() => { claimed = true }).then(
+        (p) => {
+          if (!alive || id !== latest || settledRef.current || !p) return
+          setShareError(null)
+          setPreview(p)
+        },
+        (e: Error) => {
+          if (!alive || id !== latest || settledRef.current) return
+          setShareError(e.message)
+        },
+      )
+    }
+    run()
+    const unsubscribe = subscribePlatform(run)
+    const waiting = SHARE_PATH_RE.test(location.pathname)
+      ? setTimeout(() => {
+          if (alive && !claimed && !settledRef.current && SHARE_PATH_RE.test(location.pathname)) {
+            setShareError(SHARING_UNAVAILABLE_MESSAGE)
+          }
+        }, SHARE_PROVIDER_WAIT_MS)
+      : undefined
+    return () => { alive = false; unsubscribe(); clearTimeout(waiting) }
   }, [])
 
   const applyNow = useCallback((scene: SceneV2, shared: boolean) => {
@@ -224,7 +287,8 @@ export function useScenes(host: ScenesHost) {
   const applyPreview = useCallback(() => {
     const p = preview
     if (!p) return
-    clearShareHash()
+    settledRef.current = true
+    clearShareLocation()
     setPreview(null)
     if (p.kind === 'look') { applyLookNow(p.payload); return }
     // A scene may still need the §8.3 file prompt below -- keep a way back
@@ -242,7 +306,7 @@ export function useScenes(host: ScenesHost) {
     if (!p) return Promise.resolve()
     return runBusy(async () => {
       try {
-        const storage = getPlatform().storage
+        const storage = activeStorage()
         if (p.kind === 'scene') {
           // A later load of this copy is an own scene (shared:false), which
           // applies global.audio -- so the sharer's device audio must not be
@@ -252,7 +316,8 @@ export function useScenes(host: ScenesHost) {
           await storage.save({ kind: 'scene', name: p.payload.song.title || 'Shared scene', payload: copy })
         }
         else await storage.save({ kind: 'look', name: 'Shared look', payload: p.payload })
-        clearShareHash()
+        settledRef.current = true
+        clearShareLocation()
         setPreview({ ...p, saved: true })
         setSavesVersion((n) => n + 1)
         setMessage(null)
@@ -263,7 +328,8 @@ export function useScenes(host: ScenesHost) {
   }, [preview, runBusy])
 
   const dismissPreview = useCallback(() => {
-    clearShareHash()
+    settledRef.current = true
+    clearShareLocation()
     setPreview(null)
     setShareError(null)
   }, [])

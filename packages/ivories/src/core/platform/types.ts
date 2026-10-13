@@ -1,14 +1,9 @@
 // Tickle's provider interfaces (spec §2, "Tickle provider interfaces").
 //
-// package.json exposes this file as the `./platform` export. The PepperHorn
-// plugin (spec §4) type-checks THIS SOURCE FILE directly under its own
-// tsconfig -- `skipLibCheck` does not cover a `.ts` file reached this way,
-// even through `import type` (preflight F4). So this module, and everything
-// it imports, must stay runtime-free: no settings/profile.ts (pulls in
-// zustand via transport/useTransport.ts, and @tonejs/midi/tonal via
-// io/parseMidi.ts), no zustand, no @tonejs/midi. `settings/types.ts` and
-// `model/types.ts` have no runtime imports of their own, so they're the only
-// tickle modules this file may import from.
+// Consumers (the PepperHorn plugin) reach this file as a declaration through
+// `ivories/core` (dist/types/core/platform/types.d.ts), as a TYPE-ONLY import.
+// It must stay runtime-free: it may import only settings/types.ts,
+// model/types.ts, layout/types.ts and ./errors (types.test.ts walks the graph).
 //
 // SceneV1/LookV1/SongRefWithTitle are declared here rather than in
 // src/platform/scene.ts as spec §8.1 shows them, because this task (2.2a)
@@ -37,6 +32,14 @@ export type AuthState =
   | { status: 'unknown' }                    // restoring
   | { status: 'signed-out'; pendingEmail?: string }
   | { status: 'signed-in'; user: PlatformUser }
+/** One signed-in browser or app session, as the account's device list shows it. */
+export interface PlatformDevice {
+  id: string
+  label: string | null
+  userAgent: string | null
+  lastAccessAt: string | null
+  current: boolean
+}
 export interface AuthProvider {
   readonly id: string
   readonly codeLength: number                // 8 on ph-apps (OTP_AUTH_CODE_DIGITS)
@@ -46,6 +49,11 @@ export interface AuthProvider {
   verifyCode(email: string, code: string): Promise<PlatformUser>  // PlatformError('invalid_code')
   signOut(): Promise<void>
   manageAccount?(): void                     // opens the device list (plugin-rendered link/route)
+  /** The account's signed-in devices. Optional: a provider without sessions omits it. */
+  devices?(): Promise<PlatformDevice[]>
+  /** Ends one device's session. Revoking the current device signs this browser out. */
+  revokeDevice?(id: string): Promise<void>
+  signOutEverywhere?(): Promise<void>
 }
 
 // ---- scene / look payloads (spec §8.1) ----
@@ -135,8 +143,14 @@ export interface ContentProvider {
 export interface TickleHost {
   appVersion: string
   origin: string                                    // for share URLs: `${origin}/s/<code>`
-  decodeScene(u: unknown): SceneV2                  // throws; the app's own validators (§9.1)
+  /** Throws; the app's own validators (§9.1). `shared: true` for a payload from
+      someone else's link: camera deviceIds are dropped (they name another
+      browser's devices). Own saves decode without it. */
+  decodeScene(u: unknown, o?: { shared?: boolean }): SceneV2
   decodeLook(u: unknown): LookV1
+  /** What a scene may carry out of this browser (no camera deviceIds). A
+      provider applies it to every scene it uploads for sharing. */
+  sceneForShare(s: SceneV2): SceneV2
 }
 export interface TicklePlugin {
   id: string; name: string; version: string

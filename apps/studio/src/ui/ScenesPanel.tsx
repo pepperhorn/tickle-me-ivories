@@ -7,11 +7,20 @@
 // a save written by a newer version of the app surfaces the §8.5 "made with a
 // newer version" message that LocalStorageProvider.load rethrows.
 
-import { useCallback, useEffect, useState } from 'react'
-import type { LookV1, SaveKind, SaveSummary, SceneV2, StorageProvider } from 'ivories/core'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { sceneForShare } from 'ivories/core'
+import type { LookV1, SaveKind, SaveSummary, SceneV2, ShareResult, StorageProvider } from 'ivories/core'
 import { saveErrorMessage } from './saveErrors'
+import { copyText } from './SharePanel'
 
 const BTN = 'rounded border border-[var(--line)] px-2 py-1 text-[11px] text-[var(--ink-dim)]'
+
+// Only "anyone with the link" in 0.1. link_edit is not offered (there is no
+// edit-a-shared-scene UI yet), and neither is public: stopping a public share
+// would leave the save listed on /public while saying "Sharing stopped".
+type ShareVisibility = 'link_view'
+const VISIBILITY: ShareVisibility = 'link_view'
+const VISIBILITY_LABEL: Record<ShareVisibility, string> = { link_view: 'Anyone with the link' }
 
 export function ScenesPanel(props: {
   storage: StorageProvider
@@ -24,6 +33,10 @@ export function ScenesPanel(props: {
   buildLook: () => LookV1
   onOpenScene: (scene: SceneV2) => void
   onApplyLook: (look: LookV1) => void
+  /** Account saves only: makes a link for a saved scene or look. */
+  onShareSaved?: (row: SaveSummary, visibility: ShareVisibility) => Promise<ShareResult>
+  /** Ends a link made with onShareSaved. */
+  onStopSharing?: (code: string) => Promise<void>
 }) {
   const { storage } = props
   const [scenes, setScenes] = useState<SaveSummary[]>([])
@@ -31,6 +44,16 @@ export function ScenesPanel(props: {
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
+  /** The row whose share area is open. */
+  const [sharing, setSharing] = useState<{ id: string } | null>(null)
+  /** Save id whose Get link is in flight: one link per click, however many clicks. */
+  const [pending, setPending] = useState<string | null>(null)
+  const pendingRef = useRef(false)
+  /** Live links made here, by save id. Kept when the share area closes, so a
+      live link always keeps its Stop sharing. */
+  const [links, setLinks] = useState<Record<string, { result: ShareResult; visibility: ShareVisibility }>>({})
+  /** Save ids whose share would drop this browser's camera choice. */
+  const [dropsCamera, setDropsCamera] = useState<Record<string, boolean>>({})
 
   const refresh = useCallback(async () => {
     try {
@@ -90,6 +113,59 @@ export function ScenesPanel(props: {
     await refresh()
   }
 
+  const openShare = async (row: SaveSummary) => {
+    if (sharing?.id === row.id) { setSharing(null); return }
+    setSharing({ id: row.id })
+    if (row.kind !== 'scene' || row.id in dropsCamera) return
+    try {
+      const scene = await storage.load('scene', row.id)
+      // A shared save loses its camera deviceIds (the provider strips the live save).
+      const drops = !!scene && JSON.stringify(sceneForShare(scene)) !== JSON.stringify(scene)
+      setDropsCamera((prev) => ({ ...prev, [row.id]: drops }))
+    } catch {
+      // Unreadable save: Get link will report it; no camera note.
+    }
+  }
+
+  const getLink = async (row: SaveSummary) => {
+    if (!props.onShareSaved || sharing?.id !== row.id || links[row.id] || pendingRef.current) return
+    pendingRef.current = true
+    setPending(row.id)
+    const visibility = VISIBILITY
+    setError(null)
+    setStatus(null)
+    let result: ShareResult
+    try {
+      result = await props.onShareSaved(row, visibility)
+      setLinks((prev) => ({ ...prev, [row.id]: { result, visibility } }))
+    } catch (e) {
+      setError(saveErrorMessage(e, `Could not share “${row.name}”`))
+      return
+    } finally {
+      pendingRef.current = false
+      setPending(null)
+    }
+    setStatus((await copyText(result.shortUrl ?? result.url)) ? 'Link copied.' : 'Copy the link below.')
+  }
+
+  const stopSharing = async (row: SaveSummary) => {
+    const code = links[row.id]?.result.code
+    if (!code || !props.onStopSharing) return
+    setError(null)
+    setStatus(null)
+    try {
+      await props.onStopSharing(code)
+      setLinks((prev) => {
+        const next = { ...prev }
+        delete next[row.id]
+        return next
+      })
+      setStatus(`Sharing stopped for “${row.name}”. The link no longer opens.`)
+    } catch (e) {
+      setError(saveErrorMessage(e, 'Could not stop sharing'))
+    }
+  }
+
   const list = (kind: SaveKind, rows: SaveSummary[]) => (
     <div className={`saves-list saves-list--${kind} flex flex-col gap-1`}>
       <p className="saves-list-heading text-[11px] font-semibold uppercase tracking-wide text-[var(--ink-dim)]">
@@ -101,31 +177,79 @@ export function ScenesPanel(props: {
       {rows.length > 0 && (
         <ul className="saves-list-rows flex flex-col gap-1">
           {rows.map((row) => (
-            <li key={row.id} className={`scene-row scene-row--${kind} flex items-center justify-between gap-2`}>
-              <span className="scene-row-name min-w-0 truncate text-xs text-[var(--ink)]" title={row.name}>
-                {row.name}
-                {row.songTitle && row.songTitle !== row.name && (
-                  <span className="scene-row-song text-[var(--ink-dim)]"> · {row.songTitle}</span>
-                )}
-              </span>
-              <span className="scene-row-actions flex shrink-0 gap-1">
-                <button
-                  type="button"
-                  aria-label={`Load ${row.name}`}
-                  className={`btn-load-save ${BTN}`}
-                  onClick={() => void load(row)}
-                >
-                  Load
-                </button>
-                <button
-                  type="button"
-                  aria-label={`Delete ${row.name}`}
-                  className={`btn-delete-save ${BTN}`}
-                  onClick={() => void remove(row)}
-                >
-                  Delete
-                </button>
-              </span>
+            <li key={row.id} className={`scene-row scene-row--${kind} flex flex-col gap-1`}>
+              <div className="scene-row-main flex items-center justify-between gap-2">
+                <span className="scene-row-name min-w-0 truncate text-xs text-[var(--ink)]" title={row.name}>
+                  {row.name}
+                  {row.songTitle && row.songTitle !== row.name && (
+                    <span className="scene-row-song text-[var(--ink-dim)]"> · {row.songTitle}</span>
+                  )}
+                </span>
+                <span className="scene-row-actions flex shrink-0 gap-1">
+                  <button
+                    type="button"
+                    aria-label={`Load ${row.name}`}
+                    className={`btn-load-save ${BTN}`}
+                    onClick={() => void load(row)}
+                  >
+                    Load
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Delete ${row.name}`}
+                    className={`btn-delete-save ${BTN}`}
+                    onClick={() => void remove(row)}
+                  >
+                    Delete
+                  </button>
+                  {props.onShareSaved && (
+                    <button
+                      type="button"
+                      aria-label={`Share ${row.name}`}
+                      aria-expanded={sharing?.id === row.id}
+                      className={`btn-share-save ${BTN}`}
+                      onClick={() => void openShare(row)}
+                    >
+                      {links[row.id] ? 'Shared' : 'Share'}
+                    </button>
+                  )}
+                </span>
+              </div>
+              {sharing?.id === row.id && (
+                <div className="scene-row-share flex flex-col gap-1 rounded border border-[var(--line)] p-2">
+                  <div className="scene-row-share-controls flex items-center gap-2">
+                    <span className="share-visibility text-[11px] text-[var(--ink)]">{VISIBILITY_LABEL[links[row.id]?.visibility ?? VISIBILITY]}</span>
+                    {!links[row.id] && (
+                      <button type="button" className={`btn-get-share-link ${BTN}`} disabled={pending !== null} onClick={() => void getLink(row)}>Get link</button>
+                    )}
+                  </div>
+                  {kind === 'scene' && dropsCamera[row.id] && !links[row.id] && (
+                    <p className="share-camera-note text-[11px] text-[var(--ink-dim)]">
+                      Sharing removes this browser’s camera choice from the saved scene. After you load it, pick your camera again.
+                    </p>
+                  )}
+                  {links[row.id] && (
+                    <>
+                      <input
+                        type="text"
+                        readOnly
+                        aria-label="Share link"
+                        className="share-url w-full rounded border border-[var(--line)] bg-transparent px-2 py-1 text-[11px] text-[var(--ink)]"
+                        value={links[row.id].result.shortUrl ?? links[row.id].result.url}
+                        onFocus={(e) => e.currentTarget.select()}
+                      />
+                      <p className="share-live-note text-[11px] text-[var(--ink-dim)]">
+                        Your link stays live until you stop it.
+                      </p>
+                      {props.onStopSharing && (
+                        <button type="button" className={`btn-stop-sharing ${BTN} self-start`} onClick={() => void stopSharing(row)}>
+                          Stop sharing
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
             </li>
           ))}
         </ul>

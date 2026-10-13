@@ -64,6 +64,16 @@ export function getDefaults(): Platform {
   return DEFAULTS
 }
 
+/**
+ * Where named saves go right now (runbook §3.3). A remote StorageProvider
+ * needs a signed-in session, so until the installed auth says signed-in the
+ * browser's own storage is used; a non-remote provider is always used as is.
+ */
+export function activeStorage(p: Platform = current): StorageProvider {
+  if (!p.storage.remote) return p.storage
+  return p.auth?.getState().status === 'signed-in' ? p.storage : DEFAULTS.storage
+}
+
 export function subscribePlatform(listener: () => void): () => void {
   listeners.add(listener)
   return () => { listeners.delete(listener) }

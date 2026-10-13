@@ -16,6 +16,7 @@ const host: TickleHost = {
   origin: 'http://app.example',
   decodeScene: (u) => u as never,
   decodeLook: (u) => u as never,
+  sceneForShare: (s) => s,
 }
 
 function jsonResponse(status: number, body: unknown) {

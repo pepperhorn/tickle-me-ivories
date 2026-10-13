@@ -97,3 +97,38 @@ Branch `feat/ivories-mvp`, plan `docs/superpowers/plans/2026-10-12-ivories-mvp.m
 - Task 9: minor (deferred): GmProbe interval never cleared; #file-input id selector; horizontal specs don't assert low-notes-bottom; gmBuilt WeakSet module-global; each provider loads its own default piano (~800 sample requests each) — note for perf
 - Task 10: minor (deferred): Errors section lacks cross-ref to GM audio console warnings
 - Final fix wave: complete (ae0e2c9..f5cbbab, all addressed). Parked (later): setVoiceVolume doesn't update bus.voice so setSounds reverts it (public API, unreachable today); stranded JSDoc / 'fetched once' comment; seek slider in live mode.
+
+## Platform SDK + plugin plan (2026-10-13) — rulings
+
+- Ruling: adopt every correction in preflight.md, carried per task — cost if wrong: rework visible per task.
+- Ruling: plugin bundle budget raised to 512 KiB (zod v4 ~97KB gz) rather than moving the SDK to zod/mini now — cost if wrong: heavier plugin download; zod/mini later.
+- Ruling: pin ivories' tonal dependency to "~6.4.3" in Task 1 (tonal 6.5.0 ships a missing main; breaks Node/SSR consumers) — cost: none.
+- Ruling: deployment requires OTP_AUTH_TRANSPORT bearer|both on ph-apps (SDK needs token in /verify) — record in gate 0.5 checklist — cost if wrong: sign-in fails.
+- Task 8: review e57f57a — Important (plan-mandated gap): no arrow-key nav; a11y paths untested. Ruling: global a11y constraint outranks brief code — add arrows + tests. Fix round 1 dispatched (FIX_BASE e57f57a) with paste/focus/onDone/clamp bundle.
+- Task 16: review 87d7d92 — Important: no focus trap; current-device revoke duplicate via weaker path; pill visible in transparent captures. Rulings: a11y constraint outranks brief; hide current-device revoke; hide pill in transparent mode (CSS). Fix round 1 dispatched (FIX_BASE 87d7d92).
+- Task 17: review dde956f — Important (plan-mandated): visibility change / re-open drops a live link (unstoppable public link). Ruling: fix despite brief — privacy. Fix round 1 dispatched (FIX_BASE dde956f) incl. conditional camera note, revoke key write/prune/cap, stale closure.
+- Ruling: drop "Public (listed)" visibility in the studio for 0.1 (revoke leaves save on /public; no unlist hook yet) — cost if wrong: users can't list scenes publicly until a later release.
+
+## Platform plan — parked findings and post-publish todos
+
+- Task 1: minor (deferred): trivial runtime typeof assertion; near-tautological ReturnType check
+- Task 2: minor (deferred): check-dist misses dynamic import(); linux-only optional lock entry; README before pack (Task 9); esbuild dev-server advisory is dev-only
+- Task 3: minor (deferred): types.ts comment contains literal ph_uid (reword if a D14 grep guard is added); hand-written SaveRow/ResolvedShare types may drift from schemas; body-read drop classified server; untested Retry-After date / optional-auth paths
+- Task 4: minor (deferred): set() always notifies (re-renders); client code check 4-12 digits vs spec 8 (server enforces)
+- Task 5: minor (deferred): after cancelled restore old token rides optional calls until verifyCode; no encoded-path test; DELETE body through proxy (G7/Task 20)
+- Task 6: minor (deferred): fake reads appSlug from query OR body (prod is method-specific) — CARRY TO TASK 7 cheap fix; non-Fail exceptions swallowed to 500 without logging (add debug) — CARRY TO TASK 7; cursor decoder looser than prod; README missing from tarball (Task 9)
+- Task 7: minor (deferred): missing error/pagination/StrictMode tests; save cast unchecked; CARRY TO TASK 9 — confirm dist/react and dist/ui share one PhProvider context chunk
+- Task 8: minor (deferred): paste not blocked while busy; manual submitCode rejects if onDone throws
+- Task 9: minor (deferred, FIX BEFORE GATED RUN): smoke-saves lacks try/finally cleanup; prints share code in failure msg; no explicit exit; README omits createFakeGateway name
+- Task 10: minor (deferred): schema stricter than ivories on hand-edited payloads (ratio clamp, unknown orientation, long deviceId/voice id, keyOverride) — deliberate; ivories validFill allows 80 chars vs spec 64 (fix ivories side later); CARRY TO FINAL — verify gateway maxBytes measurement == ivories UTF-8 JSON bytes
+- Task 11: minor (deferred): non-PhError → unavailable (network may be better); named() passes third-party PlatformError messages; weak never-leaks assertion; device label untested
+- Task 12: minor (deferred): list summaries lack songTitle; untested pagination/look round-trip/wrong kind; string match on PayloadVersionError name
+- Task 14: minor (deferred): shutdown no re-entry guard (noisy, may cut clean close); watchdog stops detached runs (document; CARRY TO TASK 19: launch mock gateway as a foreground child of the test runner, PORT/PH_BASE_URL 8790); check-bundle doesn't ban react/ivories (add sourcemap check); signed-out activate test asserts fetch too early; partial-write error body; budget string duplicated; zod locales (zod/mini later)
+- Task 15: minor (deferred): Save-a-copy test two scenarios in one it; source-grep test; duplicate import line
+- Task 16: minor (deferred): refocus counter never resets; external sign-out steals focus to Sign in
+- Task 18: minor (deferred): /debug strike-lab blocked by CSP in prod (dev rig; accept or exclude); floating base image tags (pin nginx); untested negative hosting checks; workspaces reformat churn; no server_tokens off / HSTS via Traefik (G7)
+- Task 18: POST-PUBLISH TODO — when pepperscore 0.2 is published, install it in the studio and extend CSP: script-src 'wasm-unsafe-eval', worker-src 'self' blob:, font-src https://cdn.jsdelivr.net (and connect-src already has jsdelivr) — add a check-hosting rule keyed on pepperscore presence
+- Task 18: docker build/run not executed (no docker in WSL) — G7 on Coolify must verify nginx -t, npm ci on alpine, /s/ 200, /tickle.config.json 404 when absent
+- Task 19: minor (deferred): intermittent unit test failure (1/9 runs, unidentified) — CARRY TO FINAL REVIEW
+- Task 19: minor (deferred): stale "rebuild before release" comment in plugin tsup.config
+- Final fix wave: complete (tickle 2c03b26..407bb1d, app-sdk ..525e230, plugin ..6ded716; all addressed). Parked: owned Stop sharing visible after sign-out (error on click); schema.d.ts import check regex narrow.
