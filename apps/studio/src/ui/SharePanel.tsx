@@ -3,6 +3,10 @@
 // navigator.clipboard only exists in a secure context, and a LAN http://
 // dev server (or a browser that refuses the write) is not one (preflight
 // F19c), so the field is the fallback the user can select and copy by hand.
+//
+// An anonymous share may come back with a revokeKey. It is a secret: it is
+// kept in this browser's localStorage only (keyed by share code), never put
+// in a URL, shown, logged or sent anywhere but the provider's revoke().
 
 import { useRef, useState } from 'react'
 import type { LookV1, SaveKind, SceneV2, ShareProvider } from 'ivories/core'
@@ -10,7 +14,7 @@ import { saveErrorMessage } from './saveErrors'
 
 const BTN = 'rounded border border-[var(--line)] px-2 py-1 text-[11px] text-[var(--ink-dim)]'
 
-async function copyText(text: string): Promise<boolean> {
+export async function copyText(text: string): Promise<boolean> {
   const clip = typeof navigator !== 'undefined' ? navigator.clipboard : undefined
   if (!clip || typeof clip.writeText !== 'function') return false
   try {
@@ -21,6 +25,18 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
+const REVOKE_KEY_PREFIX = 'tmi.shareRevoke.'
+
+function storeRevokeKey(code: string, key: string): void {
+  try { localStorage.setItem(REVOKE_KEY_PREFIX + code, key) } catch { /* storage full or blocked: the link just cannot be stopped later */ }
+}
+function readRevokeKey(code: string): string | undefined {
+  try { return localStorage.getItem(REVOKE_KEY_PREFIX + code) ?? undefined } catch { return undefined }
+}
+function forgetRevokeKey(code: string): void {
+  try { localStorage.removeItem(REVOKE_KEY_PREFIX + code) } catch { /* nothing to do */ }
+}
+
 export function SharePanel(props: {
   share: ShareProvider
   canShareScene: boolean
@@ -28,6 +44,8 @@ export function SharePanel(props: {
   buildLook: () => LookV1
 }) {
   const [url, setUrl] = useState<string | null>(null)
+  /** The code of the last link, when this browser holds a key to stop it. */
+  const [revocable, setRevocable] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const urlRef = useRef<HTMLInputElement | null>(null)
@@ -41,8 +59,11 @@ export function SharePanel(props: {
         ? await props.share.share({ kind, payload: props.buildScene() })
         : await props.share.share({ kind, payload: props.buildLook() })
       link = res.shortUrl ?? res.url
+      if (res.revokeKey) storeRevokeKey(res.code, res.revokeKey)
+      setRevocable(res.revokeKey && props.share.revoke ? res.code : null)
     } catch (e) {
       setUrl(null)
+      setRevocable(null)
       setError(saveErrorMessage(e, `Could not make a share link for this ${kind}`))
       return
     }
@@ -54,6 +75,22 @@ export function SharePanel(props: {
     if (!copied) {
       // Pre-select it so one Ctrl/Cmd+C finishes the job.
       queueMicrotask(() => urlRef.current?.select())
+    }
+  }
+
+  const stopSharing = async () => {
+    const code = revocable
+    if (!code || !props.share.revoke) return
+    setError(null)
+    setStatus(null)
+    try {
+      await props.share.revoke(code, readRevokeKey(code))
+      forgetRevokeKey(code)
+      setRevocable(null)
+      setUrl(null)
+      setStatus('Sharing stopped. The link no longer opens.')
+    } catch (e) {
+      setError(saveErrorMessage(e, 'Could not stop sharing'))
     }
   }
 
@@ -86,6 +123,11 @@ export function SharePanel(props: {
           value={url}
           onFocus={(e) => e.currentTarget.select()}
         />
+      )}
+      {url && revocable && (
+        <button type="button" className={`btn-stop-sharing btn-stop-sharing--anonymous ${BTN} self-start`} onClick={() => void stopSharing()}>
+          Stop sharing
+        </button>
       )}
       {status && <p className="share-status text-[11px] text-[var(--ink-dim)]">{status}</p>}
       {error && <p role="alert" className="share-error text-[11px] text-[#ff6b6b]">{error}</p>}
