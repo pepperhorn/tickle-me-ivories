@@ -1,0 +1,90 @@
+import { noteColor } from './colors'
+import { roundRect, strokeRoundRect } from './shapes'
+import { isTransparent } from './theme'
+import type { NoteEvent } from '../model/types'
+import type { RenderState } from './pianoRoll'
+
+const MIDDLE_C = 60
+// Below this whiteW the "C4" label would render as illegible mush -- skip it
+// entirely rather than draw noise at phone scale.
+const MIN_WHITE_W_FOR_LABEL = 14
+
+export function drawKeyboard(
+  ctx: CanvasRenderingContext2D,
+  state: RenderState,
+  held: Map<number, NoteEvent>,
+): void {
+  const { layout, voices, theme } = state
+  const { hitY, keyboardH, blackH } = layout
+  // F32: the Outline preset sets keyWhite/keyBlack to transparent, so a visible
+  // stroke is what keeps the keyboard from disappearing entirely. Skipped by
+  // default (keyOutline is transparent) so themes that don't opt in pay nothing.
+  const outlined = !isTransparent(theme.keyOutline)
+
+  for (const k of layout.keys) {
+    if (k.black) continue
+    const h = held.get(k.pitch)
+    const v = h ? voices.get(h.voiceId) : undefined
+    const lv = state.live?.get(k.pitch)
+    ctx.fillStyle = lv
+      ? noteColor(theme.liveHue, lv.velocity, state.velocity)
+      : h && v ? noteColor(v.hue, h.velocity, state.velocity) : theme.keyWhite
+    const w = Math.max(1, k.w - theme.keyGap)
+    roundRect(ctx, k.x, hitY, w, keyboardH, theme.keyRadius)
+    if (outlined) {
+      ctx.strokeStyle = theme.keyOutline
+      ctx.lineWidth = theme.keyBorderWidth
+      strokeRoundRect(ctx, k.x, hitY, w, keyboardH, theme.keyRadius)
+    }
+
+    // Middle C carries a dark border and a "C4" label so orientation
+    // survives phone scale, where 88 keys means ~16px per white key.
+    if (k.pitch === MIDDLE_C && state.showMiddleC) {
+      ctx.fillStyle = theme.middleCMark
+      ctx.fillRect(k.x, hitY, 1.5, keyboardH)
+      ctx.fillRect(k.x + k.w - 2.5, hitY, 1.5, keyboardH)
+
+      if (layout.whiteW >= MIN_WHITE_W_FOR_LABEL) {
+        ctx.save()
+        ctx.fillStyle = theme.middleCMark
+        ctx.font = `600 ${Math.round(layout.whiteW * 0.42)}px Poppins, sans-serif`
+        ctx.textAlign = 'center'
+        if (state.orientation === 'horizontal') {
+          // The stage is drawn under the horizontal reflection; applying the same
+          // matrix again here cancels it, so the label reads upright (R-H).
+          ctx.translate(k.x + k.w / 2, hitY + keyboardH - layout.whiteW * 0.6)
+          ctx.transform(0, -1, -1, 0, 0, 0)
+          ctx.textBaseline = 'middle'
+          ctx.fillText('C4', 0, 0)
+        } else {
+          ctx.textBaseline = 'alphabetic'
+          ctx.fillText('C4', k.x + k.w / 2, hitY + keyboardH - layout.whiteW * 0.3)
+        }
+        ctx.restore()
+      }
+    }
+  }
+
+  for (const k of layout.keys) {
+    if (!k.black) continue
+    const h = held.get(k.pitch)
+    const v = h ? voices.get(h.voiceId) : undefined
+    const lv = state.live?.get(k.pitch)
+    ctx.fillStyle = lv
+      ? noteColor(theme.liveHue, lv.velocity, state.velocity)
+      : h && v ? noteColor(v.hue, h.velocity, state.velocity) : theme.keyBlack
+    roundRect(ctx, k.x, hitY, k.w, blackH, theme.keyRadius)
+    if (outlined) {
+      ctx.strokeStyle = theme.keyOutline
+      ctx.lineWidth = theme.keyBorderWidth
+      strokeRoundRect(ctx, k.x, hitY, k.w, blackH, theme.keyRadius)
+    }
+    if (h || lv) {
+      ctx.fillStyle = theme.blackKeyTop
+      ctx.fillRect(k.x, hitY, k.w, 2)
+    }
+  }
+
+  ctx.fillStyle = theme.keyBorder
+  ctx.fillRect(0, hitY, layout.stageW, theme.keyBorderWidth)
+}

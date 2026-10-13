@@ -43,7 +43,7 @@ Pre-flight: 46 plan defects (F1–F47) were ruled on before Task 1 — duplicate
 - Task 12: minor (deferred): keyboard.ts reassigns strokeStyle/lineWidth per key in outline loops (hoist)
 - Task 12: minor (deferred): ThemeSettings active/inactive button class ternary duplicated; '#00b140' duplicated vs MATTE_PRESETS[0]
 - Task 14: minor (deferred): font family field fetches a Google font per keystroke (debounce / apply on blur)
-- Task 14: minor (deferred): untrusted font family string with quotes breaks font-family decl (sanitise in validTextStyle/textCss)
+- Task 14: ~~minor (deferred): untrusted font family string with quotes breaks font-family decl (sanitise in validTextStyle/textCss)~~ CLOSED (platform SDK plan task 2.1, 2026-09-26): `isSafeFontFamily`/`FONT_FAMILY_RE` exported from `profile.ts`; `validTextStyle` falls back to `Poppins`; `ensureGoogleFont` refuses an unsafe family; `textCss` emits a quoted `"<family>", Poppins, sans-serif` chain; `TextSettings.tsx` `commitFamily` refuses an unsafe draft at commit.
 - Task 14: minor (deferred): profile weight clamp 100-900 vs slider 300-900
 - Task 14: minor (deferred): no test for App overlay push/skip logic
 - Task 16: minor (deferred): raising tempo moves head back >0.25s -> chordFeed treats as scrub, readout blinks (reset/rebase in changeTempo)

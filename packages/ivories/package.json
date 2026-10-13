@@ -1,0 +1,78 @@
+{
+  "name": "ivories",
+  "version": "0.1.0",
+  "description": "Falling keys, keyboard, notation and stage layouts for React, on one shared clock.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pepperhorn/tickle-me-ivories.git",
+    "directory": "packages/ivories"
+  },
+  "keywords": [
+    "react",
+    "piano",
+    "midi",
+    "musicxml",
+    "falling-notes",
+    "keyboard",
+    "notation",
+    "web-audio"
+  ],
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./core": {
+      "source": "./src/core/index.ts",
+      "types": "./dist/types/core/index.d.ts",
+      "import": "./dist/core.js"
+    },
+    "./style.css": {
+      "source": "./src/style.css",
+      "default": "./dist/style.css"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "vite build && tsc -p tsconfig.build.json && node scripts/copy-css.mjs && node scripts/css-scope.mjs && node scripts/check-dist.mjs",
+    "check": "tsc -p tsconfig.json",
+    "check:css": "node scripts/css-scope.mjs",
+    "prepack": "npm run build"
+  },
+  "peerDependencies": {
+    "react": ">=19",
+    "react-dom": ">=19",
+    "pepperscore": ">=0.2"
+  },
+  "peerDependenciesMeta": {
+    "pepperscore": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.4.0",
+    "@tonejs/midi": "^2.0.28",
+    "fflate": "^0.8.3",
+    "smplr": "^1.0.0",
+    "tonal": "^6.4.3"
+  },
+  "devDependencies": {
+    "postcss": "^8.5.29",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  }
+}

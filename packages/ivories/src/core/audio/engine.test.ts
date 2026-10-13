@@ -1,0 +1,491 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { AudioEngine, LIVE_VOICE_ID, clampToNow, volumeToGain } from './engine'
+import type { InstrumentFactoryFn } from './engine'
+import type { Voice } from '../model/types'
+import type { ScheduledNote } from './scheduler'
+import { resetGmSoundCaches } from './gmSounds'
+
+const voice = (id: string, patch: Partial<Voice> = {}): Voice => ({
+  id, label: id, hue: 200, instrument: 'acoustic_grand_piano',
+  visible: true, audible: true, volume: 1, ...patch,
+})
+
+const sched = (pitch: number, atSec: number, velocity = 100): ScheduledNote => ({
+  atSec,
+  note: {
+    id: pitch, pitch, startTicks: 0, durTicks: 480,
+    startSec: atSec, endSec: atSec + 1, velocity, voiceId: 'v1',
+  },
+})
+
+/** Minimal AudioContext stand-in: jsdom has no Web Audio. */
+function fakeGain() {
+  return { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() }
+}
+function fakeContext() {
+  return {
+    currentTime: 10,
+    state: 'running' as AudioContextState,
+    destination: { id: 'dest' },
+    createGain: vi.fn(fakeGain),
+    resume: vi.fn(async () => {}),
+    close: vi.fn(async () => {}),
+  }
+}
+
+type FakeInstrument = { start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn>; destination: AudioNode; id: string }
+
+function harness() {
+  const ctx = fakeContext()
+  const made: FakeInstrument[] = []
+  const makeInstrument = vi.fn(async (_c: BaseAudioContext, id: string, destination: AudioNode) => {
+    const inst = { id, destination, start: vi.fn(), stop: vi.fn(), dispose: vi.fn() }
+    made.push(inst)
+    return inst as never
+  })
+  const engine = new AudioEngine({
+    makeContext: () => ctx as unknown as AudioContext,
+    makeInstrument,
+  })
+  return { ctx, made, makeInstrument, engine }
+}
+
+describe('volumeToGain', () => {
+  it('maps the ends of the range exactly', () => {
+    expect(volumeToGain(0)).toBe(0)
+    expect(volumeToGain(1)).toBe(1)
+  })
+
+  it('is a perceptual (square) curve, not linear', () => {
+    expect(volumeToGain(0.5)).toBeCloseTo(0.25, 9)
+  })
+
+  it('rises monotonically and clamps out-of-range input', () => {
+    let prev = -1
+    for (let v = 0; v <= 1.0001; v += 0.05) {
+      const g = volumeToGain(v)
+      expect(g).toBeGreaterThanOrEqual(prev)
+      prev = g
+    }
+    expect(volumeToGain(-3)).toBe(0)
+    expect(volumeToGain(9)).toBe(1)
+  })
+})
+
+describe('clampToNow', () => {
+  it('never schedules in the past', () => {
+    expect(clampToNow(5, 10)).toBe(10)
+    expect(clampToNow(12, 10)).toBe(12)
+  })
+})
+
+describe('AudioEngine audioContext / masterNode', () => {
+  it('exposes the same context instance used internally, creating it lazily', () => {
+    const h = harness()
+    expect(h.engine.audioContext).toBe(h.ctx)
+  })
+
+  it('exposes the master gain node so an external voice can route through it', () => {
+    const h = harness()
+    const master = h.engine.masterNode
+    expect(master).toBeTruthy()
+    // Same instance on repeat access -- one master bus for the whole engine.
+    expect(h.engine.masterNode).toBe(master)
+  })
+})
+
+describe('AudioEngine voice bus', () => {
+  let h: ReturnType<typeof harness>
+  beforeEach(() => { h = harness() })
+
+  it('gives two voices on the SAME instrument two instances with different destinations', async () => {
+    await h.engine.loadVoice(voice('v1'))
+    await h.engine.loadVoice(voice('v2'))
+    expect(h.made).toHaveLength(2)
+    expect(h.made[0].destination).not.toBe(h.made[1].destination)
+  })
+
+  it('scales the note time and duration by the clock rate', async () => {
+    await h.engine.loadVoice(voice('v1'))
+    h.engine.play(sched(60, 4), voice('v1'), 100, 2)
+    expect(h.made[0].start).toHaveBeenCalledWith(expect.objectContaining({ time: 102, duration: 0.5 }))
+  })
+
+  it('passes raw velocity to smplr -- volume must NOT fold into it', async () => {
+    await h.engine.loadVoice(voice('v1', { volume: 0.25 }))
+    h.engine.play(sched(60, 0.5, 100), voice('v1', { volume: 0.25 }), 0)
+    expect(h.made[0].start).toHaveBeenCalledWith(
+      expect.objectContaining({ note: 60, velocity: 100 }),
+    )
+  })
+
+  // F4 ruling: load at volume 1 so this test actually exercises setVoiceVolume
+  // -- with loadVoice already applying 0.5, the assertion would pass even if
+  // setVoiceVolume were a no-op.
+  it('applies volume to the voice gain node instead', async () => {
+    await h.engine.loadVoice(voice('v1', { volume: 1 }))
+    h.engine.setVoiceVolume('v1', 0.5)
+    const gain = (h.made[0].destination as unknown as { gain: { value: number } }).gain
+    expect(gain.value).toBeCloseTo(0.25, 9)
+  })
+
+  it('changes one voice volume without touching another', async () => {
+    await h.engine.loadVoice(voice('v1'))
+    await h.engine.loadVoice(voice('v2'))
+    h.engine.setVoiceVolume('v1', 0)
+    const g1 = (h.made[0].destination as unknown as { gain: { value: number } }).gain
+    const g2 = (h.made[1].destination as unknown as { gain: { value: number } }).gain
+    expect(g1.value).toBe(0)
+    expect(g2.value).toBe(1)
+  })
+
+  it('schedules against the voice its own instrument, at the exact clock time', async () => {
+    await h.engine.loadVoice(voice('v1'))
+    await h.engine.loadVoice(voice('v2'))
+    h.engine.play(sched(60, 2), voice('v2'), 20)
+    expect(h.made[0].start).not.toHaveBeenCalled()
+    expect(h.made[1].start).toHaveBeenCalledWith(expect.objectContaining({ time: 22 }))
+  })
+
+  it('disposes the old instance when a voice changes instrument', async () => {
+    await h.engine.loadVoice(voice('v1'))
+    await h.engine.loadVoice(voice('v1', { instrument: 'harpsichord' }))
+    expect(h.made[0].dispose).toHaveBeenCalled()
+    expect(h.made).toHaveLength(2)
+    expect(h.made[1].id).toBe('harpsichord')
+  })
+
+  it('does not rebuild an instance when the instrument is unchanged', async () => {
+    await h.engine.loadVoice(voice('v1'))
+    await h.engine.loadVoice(voice('v1', { volume: 0.3 }))
+    expect(h.made).toHaveLength(1)
+    expect(h.made[0].dispose).not.toHaveBeenCalled()
+  })
+
+  // Fix round 1, issue 1 (F7 follow-up): with a naive "await the one pending
+  // load, then re-check once" guard, 3+ overlapping loadVoice calls for the
+  // SAME voice can each pass a now-stale re-check and each build their own
+  // instrument: the requested instrument ends up built twice (one leaked)
+  // and the pre-existing instrument disposed twice. The fix must instead
+  // keep re-reading the loading map and chain onto whatever load is
+  // CURRENTLY in flight, so a third caller discovers and waits on the second
+  // caller's build instead of starting a competing one.
+  it('re-checks against the latest in-flight load, so 3+ overlapping loadVoice calls never leak or double-build', async () => {
+    const ctx = fakeContext()
+    const made: FakeInstrument[] = []
+    const gates: Array<() => void> = []
+    const makeInstrument: InstrumentFactoryFn = (_c, id, destination) => {
+      return new Promise((resolve) => {
+        gates.push(() => {
+          const inst = { id, destination, start: vi.fn(), stop: vi.fn(), dispose: vi.fn() }
+          made.push(inst)
+          resolve(inst as never)
+        })
+      })
+    }
+    const engine = new AudioEngine({
+      makeContext: () => ctx as unknown as AudioContext,
+      makeInstrument,
+    })
+
+    const p0 = engine.loadVoice(voice('v1', { instrument: 'acoustic_grand_piano' }))
+    const p1 = engine.loadVoice(voice('v1', { instrument: 'harpsichord' }))
+    const p2 = engine.loadVoice(voice('v1', { instrument: 'harpsichord' }))
+
+    expect(gates).toHaveLength(1) // only the piano build has started so far
+    gates[0]()                    // let the piano finish
+    await p0
+
+    // p1 and p2's continuations both run before our `await p0` settles (they
+    // registered on the same promise first) -- p2 must discover p1's build
+    // already in flight and chain onto it rather than starting its own.
+    expect(gates).toHaveLength(2) // exactly ONE harpsichord build started
+    gates[1]()                    // let it finish
+    await Promise.all([p1, p2])
+
+    expect(gates).toHaveLength(2)                          // never a third build
+    expect(made).toHaveLength(2)                           // piano + one harpsichord instance
+    expect(made[0].dispose).toHaveBeenCalledTimes(1)        // piano disposed exactly once
+    expect(made[1].dispose).not.toHaveBeenCalled()          // the live harpsichord instance stays
+  })
+
+  it('retainVoices disposes and disconnects voices no longer in the score', async () => {
+    await h.engine.loadVoice(voice('v1'))
+    await h.engine.loadVoice(voice('v2'))
+    h.engine.retainVoices(['v2'])
+    expect(h.made[0].dispose).toHaveBeenCalled()
+    expect(h.made[1].dispose).not.toHaveBeenCalled()
+    h.engine.play(sched(60, 0), voice('v1'), 0)
+    expect(h.made[0].start).not.toHaveBeenCalled()
+  })
+
+  // Fix round 1, issue 2: retainVoices removes the voice's bus from the map,
+  // but a loadVoice already in flight closed over that SAME bus object and
+  // keeps writing into it regardless. Nothing else can ever reach an
+  // instrument built into an orphaned bus, so it must be disposed the moment
+  // the build notices its bus is no longer live -- otherwise it leaks.
+  it('disposes an instrument built for a voice that was retired (retainVoices) while its load was in flight', async () => {
+    const p = h.engine.loadVoice(voice('v1')) // not yet awaited
+    h.engine.retainVoices([])                 // retire v1 before the load resolves
+    await p
+
+    expect(h.made).toHaveLength(1)
+    expect(h.made[0].dispose).toHaveBeenCalledTimes(1)
+    // And it must not resurrect the bus: v1 is still gone.
+    h.engine.play(sched(60, 0), voice('v1'), 0)
+    expect(h.made[0].start).not.toHaveBeenCalled()
+  })
+
+  it('is a silent no-op for an unloaded or muted voice', async () => {
+    h.engine.play(sched(60, 0), voice('ghost'), 0)      // never loaded
+    await h.engine.loadVoice(voice('v1', { audible: false }))
+    h.engine.play(sched(60, 0), voice('v1', { audible: false }), 0)
+    expect(h.made[0].start).not.toHaveBeenCalled()
+  })
+
+  // F5 ruling: capture the returned fallback instance and assert that its
+  // start() was actually called by play() -- the original test only checked
+  // that stopAll() did not throw, which proves nothing about sounding.
+  it('falls back to the grand piano when an instrument fails twice', async () => {
+    const ctx = fakeContext()
+    let calls = 0
+    let fallback: FakeInstrument | null = null
+    const engine = new AudioEngine({
+      makeContext: () => ctx as unknown as AudioContext,
+      makeInstrument: async (_c, id, destination) => {
+        calls++
+        if (id !== 'acoustic_grand_piano') throw new Error('404')
+        fallback = { id, destination, start: vi.fn(), stop: vi.fn(), dispose: vi.fn() }
+        return fallback as never
+      },
+    })
+    await engine.loadVoice(voice('v1', { instrument: 'broken_instrument' }))
+    // two attempts at the requested instrument, then one at the fallback
+    expect(calls).toBe(3)
+    engine.play(sched(60, 0), voice('v1', { instrument: 'broken_instrument' }), 0)
+    // it sounds -- a missing soundfont must never block playback
+    expect(fallback).not.toBeNull()
+    expect(fallback!.start).toHaveBeenCalledWith(
+      expect.objectContaining({ note: 60 }),
+    )
+    expect(() => engine.stopAll()).not.toThrow()
+  })
+})
+
+describe('AudioEngine.resume / running', () => {
+  it('calls ctx.resume() synchronously, so a click handler that does not await still counts as the gesture', () => {
+    const { ctx, engine } = harness()
+    ctx.state = 'suspended'
+    void engine.resume()
+    expect(ctx.resume).toHaveBeenCalledTimes(1)
+  })
+
+  it('resumes an iOS "interrupted" context too, not only a suspended one', () => {
+    const { ctx, engine } = harness()
+    ctx.state = 'interrupted' as AudioContextState
+    void engine.resume()
+    expect(ctx.resume).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports whether the context is actually running', () => {
+    const { ctx, engine } = harness()
+    ctx.state = 'suspended'
+    expect(engine.running).toBe(false)
+    ctx.state = 'running'
+    expect(engine.running).toBe(true)
+  })
+})
+
+describe('AudioEngine live voice (spec §4.1)', () => {
+  function liveHarness() {
+    const starts: number[] = []
+    const stops: number[] = []
+    const instStops: string[] = []
+    const engine = new AudioEngine({
+      makeContext: () => fakeContext() as unknown as AudioContext,
+      makeInstrument: async () => ({
+        start: (o: { note: number }) => { starts.push(o.note); return () => { stops.push(o.note) } },
+        stop() { instStops.push('stop') },
+        dispose() {},
+      }) as never,
+    })
+    return { engine, starts, stops, instStops }
+  }
+
+  it('sounds live keys on a dedicated bus that survives retainVoices', async () => {
+    const { engine, starts, stops } = liveHarness()
+    await engine.prepareLive()
+    engine.noteOn(60, 90)
+    engine.retainVoices([])
+    engine.noteOff(60)
+    expect(stops).toEqual([60])
+    engine.noteOn(62, 90)
+    expect(starts).toEqual([60, 62])
+  })
+
+  it('is silent before prepareLive and ignores an unknown noteOff', () => {
+    const { engine, starts } = liveHarness()
+    engine.noteOn(60, 90)
+    expect(() => engine.noteOff(61)).not.toThrow()
+    expect(starts).toEqual([])
+  })
+
+  it('a repeated noteOn retriggers: the old note stops first', async () => {
+    const { engine, stops } = liveHarness()
+    await engine.prepareLive()
+    engine.noteOn(60, 90)
+    engine.noteOn(60, 50)
+    expect(stops).toEqual([60])
+  })
+
+  it('stopAll (seek/pause/rate) leaves the live bus sounding', async () => {
+    const { engine, instStops } = liveHarness()
+    await engine.prepareLive()
+    engine.stopAll()
+    expect(instStops).toEqual([])
+    expect(LIVE_VOICE_ID).toBe('__live')
+  })
+
+  it('dispose stops held live notes', async () => {
+    const { engine, stops } = liveHarness()
+    await engine.prepareLive()
+    engine.noteOn(64, 80)
+    engine.dispose()
+    expect(stops).toEqual([64])
+  })
+})
+
+describe('AudioEngine sounds option (R-G)', () => {
+  it('loads the piano voice and the live keys from the GM pack through the Sampler seam', async () => {
+    resetGmSoundCaches()
+    const ctx = { ...fakeContext(), decodeAudioData: vi.fn(async () => ({}) as AudioBuffer) }
+    const fetchJson = vi.fn(async (url: string) => ({
+      ok: true, status: 200,
+      json: async () => (url.endsWith('pack.json')
+        ? { pack: 'core', fluidr3: ['acoustic_grand_piano'] }
+        : { name: 'acoustic_grand_piano', samples: { 60: btoa('x') } }),
+    }))
+    const sampler = { start: vi.fn(() => () => {}), stop: vi.fn(), dispose: vi.fn(), ready: Promise.resolve() }
+    const makeSampler = vi.fn(() => sampler as never)
+    const engine = new AudioEngine({
+      makeContext: () => ctx as unknown as AudioContext,
+      sounds: { pack: 'core' },
+      soundsDeps: { fetch: fetchJson, makeSampler },
+    })
+    await engine.loadVoice(voice('v1'))
+    await engine.prepareLive()
+    expect(fetchJson).toHaveBeenCalledWith('https://cdn.jsdelivr.net/npm/pepperscore-sounds-core@0.1.0/soundfonts/fluidr3/acoustic_grand_piano.json')
+    expect(makeSampler).toHaveBeenCalledTimes(2)
+    expect(engine.isGmVoice('v1')).toBe(true)
+    expect(engine.isGmVoice(LIVE_VOICE_ID)).toBe(true)
+    engine.noteOn(60, 90)
+    expect(sampler.start).toHaveBeenCalledWith({ note: 60, velocity: 90 })
+  })
+
+  it('an unreachable pack index warns once across the piano voice and the live bus (fix round 1)', async () => {
+    resetGmSoundCaches()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const ctx = { ...fakeContext(), decodeAudioData: vi.fn(async () => ({}) as AudioBuffer) }
+    const fetchJson = vi.fn(async (url: string) => (url.endsWith('pack.json')
+      ? { ok: false, status: 503, json: async () => ({}) }
+      : { ok: true, status: 200, json: async () => ({ name: 'acoustic_grand_piano', samples: { 60: btoa('x') } }) }))
+    const sampler = { start: vi.fn(() => () => {}), stop: vi.fn(), dispose: vi.fn(), ready: Promise.resolve() }
+    const engine = new AudioEngine({
+      makeContext: () => ctx as unknown as AudioContext,
+      sounds: {},
+      soundsDeps: { fetch: fetchJson, makeSampler: () => sampler as never },
+    })
+    await engine.loadVoice(voice('v1'))
+    await engine.prepareLive()
+    expect(fetchJson.mock.calls.filter(([u]) => u.endsWith('pack.json'))).toHaveLength(2)
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn.mock.calls[0][0]).toBe('[ivories] audio: GM sound pack index https://cdn.jsdelivr.net/npm/pepperscore-sounds-core@0.1.0/pack.json is unreachable')
+    warn.mockRestore()
+  })
+
+  it('an explicit makeInstrument still wins over sounds (tests and hosts keep their seam)', async () => {
+    const { made, makeInstrument } = harness()
+    const engine = new AudioEngine({ makeContext: () => fakeContext() as unknown as AudioContext, makeInstrument, sounds: { pack: 'core' } })
+    await engine.loadVoice(voice('v1'))
+    expect(makeInstrument).toHaveBeenCalledTimes(1)
+    expect(made).toHaveLength(1)
+    expect(engine.isGmVoice('v1')).toBe(false)
+  })
+})
+
+describe('AudioEngine.setSounds (final review 2: reload in place)', () => {
+  function gmEngine() {
+    resetGmSoundCaches()
+    const ctx = { ...fakeContext(), decodeAudioData: vi.fn(async () => ({}) as AudioBuffer) }
+    const fetchJson = vi.fn(async (url: string) => ({
+      ok: true, status: 200,
+      json: async () => (url.endsWith('pack.json')
+        ? { pack: 'core', fluidr3: ['acoustic_grand_piano', 'bright_acoustic_piano'] }
+        : { name: 'x', samples: { 60: btoa('x') } }),
+    }))
+    const samplers: { start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> }[] = []
+    const makeSampler = vi.fn(() => {
+      const s = { start: vi.fn(() => () => {}), stop: vi.fn(), dispose: vi.fn(), ready: Promise.resolve() }
+      samplers.push(s)
+      return s as never
+    })
+    const engine = new AudioEngine({
+      makeContext: () => ctx as unknown as AudioContext,
+      sounds: { pack: 'core' },
+      soundsDeps: { fetch: fetchJson, makeSampler },
+    })
+    return { engine, fetchJson, samplers, makeSampler }
+  }
+
+  it('reloads every loaded voice and the live bus with the new sound; later notes use it', async () => {
+    const { engine, fetchJson, samplers } = gmEngine()
+    await engine.loadVoice(voice('v1'))
+    await engine.prepareLive()
+    const [oldVoice, oldLive] = samplers
+    await engine.setSounds({ pack: 'core', instrument: 'bright_acoustic_piano' })
+    expect(fetchJson).toHaveBeenCalledWith('https://cdn.jsdelivr.net/npm/pepperscore-sounds-core@0.1.0/soundfonts/fluidr3/bright_acoustic_piano.json')
+    expect(samplers).toHaveLength(4)
+    expect(oldVoice.dispose).toHaveBeenCalled()
+    expect(oldLive.dispose).toHaveBeenCalled()
+    engine.noteOn(60, 90)
+    expect(oldLive.start).not.toHaveBeenCalled()
+    expect(samplers.slice(2).some((s) => s.start.mock.calls.length === 1)).toBe(true)
+    engine.play(sched(62, 0), voice('v1'), 0)
+    expect(oldVoice.start).not.toHaveBeenCalled()
+  })
+
+  it('the same content is a no-op', async () => {
+    const { engine, makeSampler } = gmEngine()
+    await engine.loadVoice(voice('v1'))
+    await engine.setSounds({ pack: 'core' })
+    expect(makeSampler).toHaveBeenCalledTimes(1)
+  })
+
+  it('an explicit makeInstrument ignores setSounds', async () => {
+    const { makeInstrument, engine } = harness()
+    await engine.loadVoice(voice('v1'))
+    await engine.setSounds({ pack: 'core' })
+    expect(makeInstrument).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('AudioEngine sample loader sharing (final review 6)', () => {
+  it('engines on the same AudioContext share one SampleLoader; another context gets its own', async () => {
+    const ctx = fakeContext()
+    const other = fakeContext()
+    const loaders: unknown[] = []
+    const makeInstrument = vi.fn(async (_c: BaseAudioContext, id: string, destination: AudioNode, loader: unknown) => {
+      loaders.push(loader)
+      return { id, destination, start: vi.fn(), stop: vi.fn(), dispose: vi.fn() } as never
+    })
+    const a = new AudioEngine({ makeContext: () => ctx as unknown as AudioContext, makeInstrument })
+    const b = new AudioEngine({ makeContext: () => ctx as unknown as AudioContext, makeInstrument })
+    const c = new AudioEngine({ makeContext: () => other as unknown as AudioContext, makeInstrument })
+    await a.loadVoice(voice('v1'))
+    await b.loadVoice(voice('v1'))
+    await c.loadVoice(voice('v1'))
+    expect(loaders[0]).toBeTruthy()
+    expect(loaders[1]).toBe(loaders[0])
+    expect(loaders[2]).not.toBe(loaders[0])
+  })
+})

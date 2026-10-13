@@ -1,0 +1,68 @@
+@import "tailwindcss";
+/* The Weight slider (TextSettings) offers 300-900 in steps of 100; every
+ * weight it can select must be bundled here, or StageText's "Poppins is
+ * bundled, never fetched" shortcut (BUNDLED_FAMILY) silently renders the
+ * nearest weight the browser has instead of the one requested. */
+@import "@fontsource/poppins/300.css";
+@import "@fontsource/poppins/400.css";
+@import "@fontsource/poppins/500.css";
+@import "@fontsource/poppins/600.css";
+@import "@fontsource/poppins/700.css";
+@import "@fontsource/poppins/800.css";
+@import "@fontsource/poppins/900.css";
+
+:root {
+  --stage: #000000;
+  --ground: #07070a;
+  --panel: #101119;
+  --line: #22232e;
+  --ink: #e9eaf2;
+  --ink-dim: #9698ad;
+  --accent: #ff9c1a;
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: 'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* §13.1: the canvas is created with alpha, but the page behind it is not
+   transparent by default. Without this the host page paints its own ground and
+   an OBS browser source composites nothing but black. */
+html.ivories-transparent,
+html.ivories-transparent body,
+html.ivories-transparent #root,
+html.ivories-transparent .app-shell,
+html.ivories-transparent .stage-wrap {
+  background: transparent !important;
+}
+
+/* The count-in number (ui/CountIn.tsx). House note-text treatment -- white
+   Poppins 600 over a dark stroke painted underneath -- so it reads on every
+   theme and over composited footage. Its animation-duration is set inline to
+   one beat, and it is keyed on the beat, so each number pops in afresh. */
+.count-in-number {
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-weight: 600;
+  color: #ffffff;
+  -webkit-text-stroke: 0.06em rgba(0, 0, 0, 0.35);
+  paint-order: stroke fill;
+  text-shadow: 0 0.04em 0.12em rgba(0, 0, 0, 0.45);
+  animation-name: count-in-pop;
+  animation-timing-function: cubic-bezier(0.2, 0.9, 0.3, 1);
+  animation-fill-mode: both;
+}
+
+@keyframes count-in-pop {
+  0% { opacity: 0; transform: scale(1.6); }
+  18% { opacity: 1; transform: scale(1); }
+  70% { opacity: 1; transform: scale(0.96); }
+  100% { opacity: 0; transform: scale(0.9); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .count-in-number { animation-name: none; }
+}
