@@ -61,6 +61,11 @@ export interface PendingScene {
 
 const SHARE_PATH_RE = /^\/s\/[^/]+\/?$/
 
+/** How long a `/s/<code>` link waits for a plugin to claim it before the hint shows. */
+export const SHARE_PROVIDER_WAIT_MS = 4000
+export const SHARING_UNAVAILABLE_MESSAGE = "Sharing isn't available right now."
+const UNOPENABLE_MESSAGE = "This link couldn't be opened."
+
 /** Removes a share link from the address without a navigation (F19a): a
     `#share=…` hash, and a `/s/<code>` path, which becomes `/`. */
 export function clearShareLocation(): void {
@@ -105,6 +110,11 @@ async function resolveShareFromLocation(): Promise<Preview | null> {
       // A provider's own error (offline, rate limited, a newer version, an
       // invalid payload) is already written for the user: show it as it is.
       if (isPayloadVersionError(e) || (isPlatformError(e) && e.code !== 'not_found')) throw new Error(e.message)
+      // Anything else is a provider bug, not a removed share: say so neutrally.
+      if (!isPlatformError(e)) {
+        console.error('[share] provider resolve failed', e)
+        throw new Error(UNOPENABLE_MESSAGE)
+      }
       resolved = null
     }
     if (!resolved) continue
@@ -157,18 +167,42 @@ export function useScenes(host: ScenesHost) {
   // installs after the first render, and only then can a /s/<code> link
   // match (Review Focus 1). Once the user has acted on a share (Apply, Save a
   // copy, Dismiss) it is never re-offered.
+  //
+  // Each run is numbered and only the latest one's outcome is applied, so a
+  // slow resolve from an earlier platform cannot overwrite a newer one. A
+  // `/s/<code>` path no provider has claimed after SHARE_PROVIDER_WAIT_MS
+  // shows a hint; the studio keeps working and a later plugin still resolves.
   useEffect(() => {
     let alive = true
+    let latest = 0
+    let claimed = false
     const run = () => {
       if (settledRef.current) return
+      const id = ++latest
       resolveShareFromLocation().then(
-        (p) => { if (alive && p && !settledRef.current) { setShareError(null); setPreview(p) } },
-        (e: Error) => { if (alive && !settledRef.current) setShareError(e.message) },
+        (p) => {
+          if (!alive || id !== latest || settledRef.current || !p) return
+          claimed = true
+          setShareError(null)
+          setPreview(p)
+        },
+        (e: Error) => {
+          if (!alive || id !== latest || settledRef.current) return
+          claimed = true
+          setShareError(e.message)
+        },
       )
     }
     run()
     const unsubscribe = subscribePlatform(run)
-    return () => { alive = false; unsubscribe() }
+    const waiting = SHARE_PATH_RE.test(location.pathname)
+      ? setTimeout(() => {
+          if (alive && !claimed && !settledRef.current && SHARE_PATH_RE.test(location.pathname)) {
+            setShareError(SHARING_UNAVAILABLE_MESSAGE)
+          }
+        }, SHARE_PROVIDER_WAIT_MS)
+      : undefined
+    return () => { alive = false; unsubscribe(); clearTimeout(waiting) }
   }, [])
 
   const applyNow = useCallback((scene: SceneV2, shared: boolean) => {

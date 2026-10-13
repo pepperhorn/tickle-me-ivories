@@ -8,6 +8,7 @@ import { sceneForShare } from 'ivories/core'
 import { bindTransportClock, useTransport } from './transport/useTransport'
 import { useSettings } from './settings/useSettings'
 import { IvoriesProvider, Stage } from 'ivories'
+import { AccountMenu } from './ui/AccountMenu'
 import type { KeyboardLayout, StageSlotViewProps } from 'ivories'
 import type { SlotName } from 'ivories/core'
 import { CountIn } from './ui/CountIn'
@@ -211,6 +212,7 @@ export default function App() {
           />
           {liveMidi.enabled && <RecordControl onRecorded={(s) => { loadAnother(); loader.loadDocument(s) }} />}
         </IvoriesProvider>
+        <AccountMenu auth={platform.auth} />
         {countInHost && countIn ? createPortal(countIn, countInHost) : countIn}
         {!t.score && !liveSession && (
           <div className="stage-empty absolute inset-0 flex flex-col items-center justify-center gap-3 overflow-y-auto p-4">

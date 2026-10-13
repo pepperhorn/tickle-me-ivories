@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { buildProfile, DEFAULT_SETTINGS, PlatformError, sceneFromState } from 'ivories/core'
-import type { AuthProvider, AuthState, Layout, ShareProvider, StorageProvider } from 'ivories/core'
+import type { AuthProvider, AuthState, Layout, ResolvedShare, ShareProvider, StorageProvider } from 'ivories/core'
 import type { ScenesHost } from './useScenes'
 
 const SHA = 'a'.repeat(64)
@@ -151,6 +151,81 @@ describe('Save a copy goes where saves live now (Review Focus 5)', () => {
         expect(storage.save).toHaveBeenCalledTimes(1)
         expect(local).toHaveLength(0)
       }
+    }
+  })
+})
+
+describe('share resolve robustness (Task 15 review carry)', () => {
+  it('ignores a stale resolve that finishes after a newer one (run counter)', async () => {
+    const { registry, useScenes } = await fresh()
+    history.replaceState(null, '', `/s/${CODE}`)
+    let releaseSlow: () => void = () => {}
+    const slow = remoteShare({
+      resolve: vi.fn(() => new Promise<ResolvedShare | null>((res) => {
+        releaseSlow = () => res({
+          code: CODE, kind: 'scene' as const, payload: sceneWithCam(), owner: { handle: 'stale' }, visibility: 'link_view' as const,
+          isOwner: false, canEdit: false, canFork: true,
+        })
+      })),
+    })
+    const { result } = renderHook(() => useScenes(host()))
+    act(() => registry.installPlugin({ id: 'p', name: 'P', version: '1', share: slow }))
+    await waitFor(() => expect(slow.resolve).toHaveBeenCalled())
+    act(() => registry.installPlugin({ id: 'q', name: 'Q', version: '1', share: remoteShare() }))
+    await waitFor(() => expect(result.current.preview?.owner).toBe('ana'))
+    await act(async () => { releaseSlow() })
+    await act(async () => {})
+    expect(result.current.preview?.owner).toBe('ana')
+  })
+
+  it('a non-PlatformError from resolve shows a neutral message and is logged', async () => {
+    const { registry, useScenes } = await fresh()
+    history.replaceState(null, '', `/s/${CODE}`)
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { result } = renderHook(() => useScenes(host()))
+    act(() => registry.installPlugin({
+      id: 'p', name: 'P', version: '1',
+      share: remoteShare({ resolve: vi.fn(async () => { throw new TypeError('boom') }) }),
+    }))
+    await waitFor(() => expect(result.current.shareError).toBe("This link couldn't be opened."))
+    expect(err).toHaveBeenCalled()
+    err.mockRestore()
+  })
+
+  it('a /s/<code> path with no provider shows a hint after a short wait, and a late provider still resolves', async () => {
+    vi.useFakeTimers()
+    try {
+      const { registry, useScenes } = await fresh()
+      history.replaceState(null, '', `/s/${CODE}`)
+      const { result } = renderHook(() => useScenes(host()))
+      await act(async () => {})
+      expect(result.current.shareError).toBeNull()
+      await act(async () => { vi.advanceTimersByTime(4000) })
+      expect(result.current.shareError).toBe("Sharing isn't available right now.")
+      act(() => registry.installPlugin({ id: 'p', name: 'P', version: '1', share: remoteShare() }))
+      await act(async () => {})
+      await act(async () => {})
+      expect(result.current.preview).not.toBeNull()
+      expect(result.current.shareError).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('no hint when the provider matched in time', async () => {
+    vi.useFakeTimers()
+    try {
+      const { registry, useScenes } = await fresh()
+      history.replaceState(null, '', `/s/${CODE}`)
+      const { result } = renderHook(() => useScenes(host()))
+      act(() => registry.installPlugin({ id: 'p', name: 'P', version: '1', share: remoteShare() }))
+      await act(async () => {})
+      await act(async () => {})
+      await act(async () => { vi.advanceTimersByTime(5000) })
+      expect(result.current.preview).not.toBeNull()
+      expect(result.current.shareError).toBeNull()
+    } finally {
+      vi.useRealTimers()
     }
   })
 })
