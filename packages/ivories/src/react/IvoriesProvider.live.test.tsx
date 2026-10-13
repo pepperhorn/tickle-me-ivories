@@ -188,6 +188,19 @@ describe('bpm (R-P, Review Focus 3)', () => {
     await waitFor(() => expect(iv!.bpm).toBe(20))
   })
 
+  it('setBpm with an unchanged (clamped) value does not call onBpmChange (final review 4)', async () => {
+    const onBpmChange = vi.fn()
+    render(<IvoriesProvider engine={fakeEngine()} onBpmChange={onBpmChange}><Grab /></IvoriesProvider>)
+    await waitFor(() => expect(iv).not.toBeNull())
+    act(() => iv!.setBpm(100))
+    act(() => iv!.setBpm(100.2))
+    expect(onBpmChange).not.toHaveBeenCalled()
+    act(() => { iv!.setBpm(300); iv!.setBpm(300) })
+    act(() => iv!.setBpm(450))
+    expect(onBpmChange).toHaveBeenCalledTimes(1)
+    expect(onBpmChange).toHaveBeenLastCalledWith(300)
+  })
+
   it('changing the BPM never re-times the trail', async () => {
     const port = stubMidi()
     render(<IvoriesProvider liveClock engine={fakeEngine()}><Keyboard input="midi" /><Grab /></IvoriesProvider>)

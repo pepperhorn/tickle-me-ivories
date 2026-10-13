@@ -101,7 +101,10 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
     const key = `${e.code}|${e.message}`
     if (!logged.has(key)) {
       logged.add(key)
-      console.warn(`[ivories] ${e.code}: ${e.message}`, e.cause)
+      const msg = `[ivories] ${e.code}: ${e.message}`
+      // No trailing `undefined` in the console when there is no cause.
+      if (e.cause !== undefined) console.warn(msg, e.cause)
+      else console.warn(msg)
     }
     if (e.code !== 'audio-unavailable' && e.code !== 'midi-unavailable') status.set({ loading: false, error: e })
     const onError = latest.current.onError
@@ -203,9 +206,13 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   const [bpm, setBpmState] = useState(() => clampBpm(props.bpm ?? DEFAULT_LIVE_BPM))
   const bpmProp = props.bpm
   useEffect(() => { if (bpmProp !== undefined) setBpmState(clampBpm(bpmProp)) }, [bpmProp])
+  // Also written by setBpm itself, so two calls before a render compare correctly.
+  const bpmRef = useRef(bpm); bpmRef.current = bpm
   const setBpm = useCallback((next: number) => {
     if (!Number.isFinite(next)) return
     const v = clampBpm(next)
+    if (v === bpmRef.current) return
+    bpmRef.current = v
     setBpmState(v)
     const cb = latest.current.onBpmChange
     if (cb) safeCall(cb, v)

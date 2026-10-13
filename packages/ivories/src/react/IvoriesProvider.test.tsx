@@ -446,6 +446,25 @@ describe('errors also reach the console (rising-roll spec §2, R-E)', () => {
     }
   })
 
+  it('omits the cause argument when the error has none (no trailing undefined; final review 3)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      let iv: ReturnType<typeof useIvories> | null = null
+      function Grab() { iv = useIvories(); return null }
+      render(<IvoriesProvider score={scoreDoc()} engine={fakeEngine()} clock={new AudioClock({ currentTime: 0 })}><Grab /></IvoriesProvider>)
+      await waitFor(() => expect(iv).not.toBeNull())
+      const cause = new Error('denied')
+      act(() => {
+        iv!.reportError(new IvoriesError('midi-unavailable', 'no cause'))
+        iv!.reportError(new IvoriesError('midi-unavailable', 'with cause', cause))
+      })
+      const calls = warn.mock.calls.filter(([m]) => String(m).startsWith('[ivories] midi-unavailable'))
+      expect(calls).toEqual([['[ivories] midi-unavailable: no cause'], ['[ivories] midi-unavailable: with cause', cause]])
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
   it('de-duplicates per provider by code and message; onError still sees every report', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
