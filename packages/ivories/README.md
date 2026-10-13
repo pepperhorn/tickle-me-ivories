@@ -38,7 +38,7 @@ Views default to `height: 100%` of their parent, so the box that contains them n
 
 ## Presets
 
-`<Ivories view>`: `falling`, `keyboard`, `keyboard+notation`, `endless+falling`, `endless+keyboard`. `chrome`: `full` (transport with seek, tempo, metronome), `minimal` (play button), `none`.
+`<Ivories view>`: `falling`, `rising`, `keyboard`, `keyboard+notation`, `endless+falling`, `endless+keyboard`. `orientation` (`vertical` | `horizontal`) applies to the falling or rising main view. `chrome`: `full` (transport with seek, tempo, metronome, and the BPM field when there is no score), `minimal` (play button), `none`.
 
 ## Composing views
 
@@ -120,11 +120,43 @@ function RecordButton({ onTake }: { onTake(s: ScoreDocument): void }) {
 }
 ```
 
+## Rising notes
+
+`<RisingKeys>` turns the roll around: a note appears at the keyboard edge when it starts, grows from its key while held, then detaches and drifts away. It takes the same `labels`, `range`, `input`, `theme`, `height`, `className` and `onLayout` props as `<FallingKeys>`, plus `orientation`, `visibleBeats` (beats between the keys and the far edge, default 8), `beatsPerBar` (live grid, default 4) and `beatGrid` (beat and bar lines, default true).
+
+- With a score, notes move on the score's clock. A beat is a quarter note on its tempo map, and grid lines follow its time signatures (stronger on each bar).
+- Live notes (`input="midi"`) are stamped in the provider's clock time and drawn in the live colour, next to the score's notes when there is one.
+- With no score and no `clock` prop, the provider runs a free-running live clock that starts on the first key (`autoStart` starts it at mount; `liveClock` turns it on without a `<RisingKeys>`). `bpm` (default 100, 20-300) sets the speed and grid; changing it re-spaces the grid but never moves notes already played. `<Transport>` shows a BPM field in this mode (`controls={{ bpm: false }}` hides it), `useLiveBpm()` returns `{ bpm, setBpm }`, and `onBpmChange(bpm)` reports changes.
+
+```tsx
+<IvoriesProvider bpm={90} liveAudio>
+  <RisingKeys input="midi" />
+  <Transport controls={{ seek: false }} />
+</IvoriesProvider>
+```
+
+## Horizontal piano roll
+
+`orientation="horizontal"` on `<FallingKeys>`, `<RisingKeys>` and `<Ivories>` stands the keyboard on the left edge, low notes at the bottom, with time running across: falling notes arrive from the right, rising notes leave to the right. Key proportions are unchanged. `onLayout` still reports the vertical (canonical) geometry; `toScreen`, `fromScreen` and `pitchAtScreen` from `ivories/core` map between it and the view. In a `<Stage>` layout an ivories slot carries it: `{ kind: 'ivories', view: 'rising', orientation: 'horizontal' }`.
+
+## GM piano sounds
+
+By default the piano is smplr's Splendid Grand Piano. Pass `sounds` to load it from the pepperscore-sounds GM sample packs instead (the same packs and CDN layout pepperscore uses):
+
+```tsx
+// A MIDI keyboard in, piano out:
+<Keyboard input="midi" liveAudio sounds={{ pack: 'core' }} />
+```
+
+`sounds: { pack?: 'core' | 'complete'; assetBaseUrl?: string; instrument?: string }`. Files load from `https://cdn.jsdelivr.net/npm/pepperscore-sounds-<pack>@0.1.0/`, or from `assetBaseUrl` for a self-hosted copy: `pack.json` lists the instruments and `soundfonts/fluidr3/<name>.json` holds the samples. `instrument` picks the GM sound for the piano voice and the live keys (default `acoustic_grand_piano`); other score voices whose instrument is in the pack load from it too. If the pack cannot be reached, that instrument falls back to the default piano, a later load tries again, and a `console.warn('[ivories] audio: ...')` says why (these are not `onError` events). Browsers start audio only after a user gesture on the page; after one, the first live key resumes a suspended context.
+
 ## Errors
 
 Components never throw into the page. `onError(err)` receives `{ code, message, cause }` with `code` one of `score-load`, `score-parse`, `audio-unavailable`, `midi-unavailable`, `camera-unavailable`, `notation-unavailable`, `notation-needs-musicxml`, `render-failed`, and the component shows an inline message in its own box.
 
 The exceptions are `audio-unavailable` and `midi-unavailable`: they are reported through `onError` only, with no inline message, because the views keep working (the score plays silently, or without live keys). Show your own notice if you want one.
+
+Every reported error is also logged once with `console.warn('[ivories] <code>: <message>', cause)` (once per provider for each code and message), so an embed without `onError` still shows why audio or MIDI went quiet.
 
 A callback you pass (`onNoteOn`, `onNoteOff`, `onError`, a live-note subscriber) that throws is logged once with `console.error` and never stops the other callbacks.
 
