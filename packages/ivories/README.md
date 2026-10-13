@@ -126,7 +126,7 @@ function RecordButton({ onTake }: { onTake(s: ScoreDocument): void }) {
 
 - With a score, notes move on the score's clock. A beat is a quarter note on its tempo map, and grid lines follow its time signatures (stronger on each bar).
 - Live notes (`input="midi"`) are stamped in the provider's clock time and drawn in the live colour, next to the score's notes when there is one.
-- With no score and no `clock` prop, the provider runs a free-running live clock that starts on the first key (`autoStart` starts it at mount; `liveClock` turns it on without a `<RisingKeys>`). `bpm` (default 100, 20-300) sets the speed and grid; changing it re-spaces the grid but never moves notes already played. `<Transport>` shows a BPM field in this mode (`controls={{ bpm: false }}` hides it), `useLiveBpm()` returns `{ bpm, setBpm }`, and `onBpmChange(bpm)` reports changes.
+- With no score and no `clock` prop, the provider runs a free-running live clock that starts on the first key (`autoStart` starts it at mount; `liveClock` turns it on without a `<RisingKeys>`). `bpm` (default 100, 20-300) sets the speed and grid; changing it re-spaces the grid but never moves notes already played. `<Transport>` shows a BPM field only while this live clock is the active clock (not while a score is loading, and not on a provider without a live clock; `controls={{ bpm: false }}` hides it), shows the clock time without a duration, and Play/Pause still pauses the live clock; `useLiveBpm()` returns `{ bpm, setBpm }`, and `onBpmChange(bpm)` reports changes.
 
 ```tsx
 <IvoriesProvider bpm={90} liveAudio>
@@ -148,7 +148,9 @@ By default the piano is smplr's Splendid Grand Piano. Pass `sounds` to load it f
 <Keyboard input="midi" liveAudio sounds={{ pack: 'core' }} />
 ```
 
-`sounds: { pack?: 'core' | 'complete'; assetBaseUrl?: string; instrument?: string }`. Files load from `https://cdn.jsdelivr.net/npm/pepperscore-sounds-<pack>@0.1.0/`, or from `assetBaseUrl` for a self-hosted copy: `pack.json` lists the instruments and `soundfonts/fluidr3/<name>.json` holds the samples. `instrument` picks the GM sound for the piano voice and the live keys (default `acoustic_grand_piano`); other score voices whose instrument is in the pack load from it too. If the pack cannot be reached, that instrument falls back to the default piano, a later load tries again, and a `console.warn('[ivories] audio: ...')` says why (these are not `onError` events). Browsers start audio only after a user gesture on the page; after one, the first live key resumes a suspended context.
+`sounds: { pack?: 'core' | 'complete'; assetBaseUrl?: string; instrument?: string }`. Files load from `https://cdn.jsdelivr.net/npm/pepperscore-sounds-<pack>@0.1.0/`, or from `assetBaseUrl` for a self-hosted copy: `pack.json` lists the instruments and `soundfonts/fluidr3/<name>.json` holds the samples. `instrument` picks the GM sound for the piano voice and the live keys (default `acoustic_grand_piano`); other score voices whose instrument is in the pack load from it too. If the pack cannot be reached, that instrument falls back to the default piano, a later load tries again, and a `console.warn('[ivories] audio: ...')` says why (these are not `onError` events). Browsers start audio only after a user gesture on the page; after one, the first live key resumes a suspended context. Changing `sounds` (its content, not just the object) reloads the instrument in place: the provider and its views stay mounted, live MIDI and the live clock keep running, and each voice keeps its old sound until the new one is ready. Several providers on one page share one loader for the default piano samples.
+
+`resetGmSoundCaches`, `isGmInstrument` and `AudioEngine.isGmVoice` (exported from `ivories/core`) are internal test probes, not part of the supported API, and may be removed.
 
 ## Errors
 
