@@ -7,7 +7,7 @@
 // a save written by a newer version of the app surfaces the §8.5 "made with a
 // newer version" message that LocalStorageProvider.load rethrows.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { sceneForShare } from 'ivories/core'
 import type { LookV1, SaveKind, SaveSummary, SceneV2, ShareResult, StorageProvider } from 'ivories/core'
 import { saveErrorMessage } from './saveErrors'
@@ -15,9 +15,12 @@ import { copyText } from './SharePanel'
 
 const BTN = 'rounded border border-[var(--line)] px-2 py-1 text-[11px] text-[var(--ink-dim)]'
 
-// link_edit is deliberately not offered: there is no edit-a-shared-scene UI yet.
-type ShareVisibility = 'link_view' | 'public'
-const VISIBILITY_LABEL: Record<ShareVisibility, string> = { link_view: 'Anyone with the link', public: 'Public (listed)' }
+// Only "anyone with the link" in 0.1. link_edit is not offered (there is no
+// edit-a-shared-scene UI yet), and neither is public: stopping a public share
+// would leave the save listed on /public while saying "Sharing stopped".
+type ShareVisibility = 'link_view'
+const VISIBILITY: ShareVisibility = 'link_view'
+const VISIBILITY_LABEL: Record<ShareVisibility, string> = { link_view: 'Anyone with the link' }
 
 export function ScenesPanel(props: {
   storage: StorageProvider
@@ -41,10 +44,13 @@ export function ScenesPanel(props: {
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
-  /** The row whose share area is open, and the visibility picked for a new link. */
-  const [sharing, setSharing] = useState<{ id: string; visibility: ShareVisibility } | null>(null)
-  /** Live links made here, by save id. Kept when the share area closes or the
-      visibility changes, so a live link always keeps its Stop sharing. */
+  /** The row whose share area is open. */
+  const [sharing, setSharing] = useState<{ id: string } | null>(null)
+  /** Save id whose Get link is in flight: one link per click, however many clicks. */
+  const [pending, setPending] = useState<string | null>(null)
+  const pendingRef = useRef(false)
+  /** Live links made here, by save id. Kept when the share area closes, so a
+      live link always keeps its Stop sharing. */
   const [links, setLinks] = useState<Record<string, { result: ShareResult; visibility: ShareVisibility }>>({})
   /** Save ids whose share would drop this browser's camera choice. */
   const [dropsCamera, setDropsCamera] = useState<Record<string, boolean>>({})
@@ -109,7 +115,7 @@ export function ScenesPanel(props: {
 
   const openShare = async (row: SaveSummary) => {
     if (sharing?.id === row.id) { setSharing(null); return }
-    setSharing({ id: row.id, visibility: links[row.id]?.visibility ?? 'link_view' })
+    setSharing({ id: row.id })
     if (row.kind !== 'scene' || row.id in dropsCamera) return
     try {
       const scene = await storage.load('scene', row.id)
@@ -122,17 +128,24 @@ export function ScenesPanel(props: {
   }
 
   const getLink = async (row: SaveSummary) => {
-    if (!props.onShareSaved || sharing?.id !== row.id || links[row.id]) return
-    const visibility = sharing.visibility
+    if (!props.onShareSaved || sharing?.id !== row.id || links[row.id] || pendingRef.current) return
+    pendingRef.current = true
+    setPending(row.id)
+    const visibility = VISIBILITY
     setError(null)
     setStatus(null)
+    let result: ShareResult
     try {
-      const result = await props.onShareSaved(row, visibility)
+      result = await props.onShareSaved(row, visibility)
       setLinks((prev) => ({ ...prev, [row.id]: { result, visibility } }))
-      setStatus((await copyText(result.shortUrl ?? result.url)) ? 'Link copied.' : 'Copy the link below.')
     } catch (e) {
       setError(saveErrorMessage(e, `Could not share “${row.name}”`))
+      return
+    } finally {
+      pendingRef.current = false
+      setPending(null)
     }
+    setStatus((await copyText(result.shortUrl ?? result.url)) ? 'Link copied.' : 'Copy the link below.')
   }
 
   const stopSharing = async (row: SaveSummary) => {
@@ -205,19 +218,9 @@ export function ScenesPanel(props: {
               {sharing?.id === row.id && (
                 <div className="scene-row-share flex flex-col gap-1 rounded border border-[var(--line)] p-2">
                   <div className="scene-row-share-controls flex items-center gap-2">
-                    <select
-                      aria-label="Who can open the link"
-                      className="share-visibility-select rounded border border-[var(--line)] bg-transparent px-1 py-0.5 text-[11px] text-[var(--ink)]"
-                      value={links[row.id]?.visibility ?? sharing.visibility}
-                      disabled={!!links[row.id]}
-                      onChange={(e) => setSharing({ id: row.id, visibility: e.target.value as ShareVisibility })}
-                    >
-                      {(Object.keys(VISIBILITY_LABEL) as ShareVisibility[]).map((v) => (
-                        <option key={v} value={v}>{VISIBILITY_LABEL[v]}</option>
-                      ))}
-                    </select>
+                    <span className="share-visibility text-[11px] text-[var(--ink)]">{VISIBILITY_LABEL[links[row.id]?.visibility ?? VISIBILITY]}</span>
                     {!links[row.id] && (
-                      <button type="button" className={`btn-get-share-link ${BTN}`} onClick={() => void getLink(row)}>Get link</button>
+                      <button type="button" className={`btn-get-share-link ${BTN}`} disabled={pending !== null} onClick={() => void getLink(row)}>Get link</button>
                     )}
                   </div>
                   {kind === 'scene' && dropsCamera[row.id] && !links[row.id] && (
@@ -236,7 +239,7 @@ export function ScenesPanel(props: {
                         onFocus={(e) => e.currentTarget.select()}
                       />
                       <p className="share-live-note text-[11px] text-[var(--ink-dim)]">
-                        Your existing link stays live. Stop it first to change who can see it.
+                        Your link stays live until you stop it.
                       </p>
                       {props.onStopSharing && (
                         <button type="button" className={`btn-stop-sharing ${BTN} self-start`} onClick={() => void stopSharing(row)}>

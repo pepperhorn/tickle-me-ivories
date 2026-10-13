@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { useEffect } from 'react'
-import { render, waitFor } from '@testing-library/react'
+import { act, render, waitFor } from '@testing-library/react'
 import { IvoriesProvider } from './IvoriesProvider'
 import { useIvories } from './hooks'
 
@@ -20,7 +20,7 @@ describe('provider sounds option (R-G)', () => {
     const n = made.opts.length
     const eng = made.engines.at(-1)!
     rerender(<IvoriesProvider sounds={{ pack: 'complete' }}>{kid}</IvoriesProvider>)
-    await new Promise((r) => setTimeout(r, 20))
+    await act(async () => {})   // flush the rerender's effects and their promises
     expect(made.opts.length).toBe(n)
     // Only ever the same content, which the engine ignores (engine.test: same content is a no-op).
     for (const [o] of eng.setSounds.mock.calls) expect(o).toEqual({ pack: 'complete' })
@@ -43,7 +43,7 @@ describe('provider sounds option (R-G)', () => {
     seen = []
     rerender(<IvoriesProvider sounds={{ pack: 'core', instrument: 'bright_acoustic_piano' }}><Kid /></IvoriesProvider>)
     await waitFor(() => expect(eng.setSounds).toHaveBeenLastCalledWith({ pack: 'core', instrument: 'bright_acoustic_piano' }))
-    await new Promise((r) => setTimeout(r, 20))
+    await act(async () => {})   // flush the rerender's effects and their promises
     expect(made.opts.length).toBe(n)
     expect(eng.dispose).not.toHaveBeenCalled()
     expect(mounts).toBe(1)

@@ -80,7 +80,7 @@ describe('ScenesSection with a remote provider', () => {
     expect(screen.queryByRole('button', { name: /^Share / })).toBeNull()
   })
 
-  it('shares a saved scene with a chosen visibility, shows the short link, and stops sharing', async () => {
+  it('shares a saved scene as anyone-with-the-link (no public listing in 0.1), shows the short link, and stops sharing', async () => {
     const auth = fakeAuth()
     await auth.requestCode('ana@example.test')
     await auth.verifyCode('ana@example.test', '12345678')
@@ -88,26 +88,41 @@ describe('ScenesSection with a remote provider', () => {
     renderSection({ auth, storage: remoteStorage(), share, content: [] })
     fireEvent.click(await screen.findByRole('button', { name: 'Share Cloud scene' }))
     const row = document.querySelector('.scene-row-share') as HTMLElement
-    fireEvent.change(within(row).getByLabelText('Who can open the link'), { target: { value: 'public' } })
+    expect(within(row).getByText('Anyone with the link')).toBeTruthy()
+    expect(within(row).queryByText(/Public/)).toBeNull()
+    expect(within(row).queryByRole('combobox')).toBeNull()
     fireEvent.click(within(row).getByRole('button', { name: 'Get link' }))
     await waitFor(() => expect((within(row).getByLabelText('Share link') as HTMLInputElement).value).toBe('https://phrn.link/Xy12345'))
-    expect(share.shareSaved).toHaveBeenCalledWith('scene', 'r1', 'public')
+    expect(share.shareSaved).toHaveBeenCalledWith('scene', 'r1', 'link_view')
     fireEvent.click(within(row).getByRole('button', { name: 'Stop sharing' }))
     await waitFor(() => expect(share.revoke).toHaveBeenCalledWith('AbCdEfGhJk'))
     expect(await screen.findByText(/Sharing stopped for “Cloud scene”/)).toBeTruthy()
   })
 
-  it('keeps a live link when the visibility is changed: the picker locks and Stop sharing still ends the original link', async () => {
+  it('Get link mints one link on a double-click (in-flight guard)', async () => {
+    const share = remoteShare()
+    let resolve!: (v: { code: string; url: string; shortUrl: string }) => void
+    share.shareSaved = vi.fn(() => new Promise((r) => { resolve = r })) as unknown as ShareProvider['shareSaved']
+    renderSection({ auth: await signedIn(), storage: remoteStorage(), share, content: [] })
+    fireEvent.click(await screen.findByRole('button', { name: 'Share Cloud scene' }))
+    const row = document.querySelector('.scene-row-share') as HTMLElement
+    const get = within(row).getByRole('button', { name: 'Get link' }) as HTMLButtonElement
+    fireEvent.click(get)
+    fireEvent.click(get)
+    expect(get.disabled).toBe(true)
+    resolve({ code: 'AbCdEfGhJk', url: 'https://ivories.test/s/AbCdEfGhJk', shortUrl: 'https://phrn.link/Xy12345' })
+    await waitFor(() => expect((within(row).getByLabelText('Share link') as HTMLInputElement).value).toBe('https://phrn.link/Xy12345'))
+    expect(share.shareSaved).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a live link: no second Get link, and Stop sharing ends the original link', async () => {
     const share = remoteShare()
     renderSection({ auth: await signedIn(), storage: remoteStorage(), share, content: [] })
     fireEvent.click(await screen.findByRole('button', { name: 'Share Cloud scene' }))
     const row = document.querySelector('.scene-row-share') as HTMLElement
     fireEvent.click(within(row).getByRole('button', { name: 'Get link' }))
-    const select = within(row).getByLabelText('Who can open the link') as HTMLSelectElement
-    await waitFor(() => expect(select.disabled).toBe(true))
-    fireEvent.change(select, { target: { value: 'public' } })
-    expect((within(row).getByLabelText('Share link') as HTMLInputElement).value).toBe('https://phrn.link/Xy12345')
-    expect(within(row).getByText(/Your existing link stays live\. Stop it first to change who can see it/)).toBeTruthy()
+    await waitFor(() => expect((within(row).getByLabelText('Share link') as HTMLInputElement).value).toBe('https://phrn.link/Xy12345'))
+    expect(within(row).getByText('Your link stays live until you stop it.')).toBeTruthy()
     expect(within(row).queryByRole('button', { name: 'Get link' })).toBeNull()
     fireEvent.click(within(row).getByRole('button', { name: 'Stop sharing' }))
     await waitFor(() => expect(share.revoke).toHaveBeenCalledWith('AbCdEfGhJk'))
@@ -180,8 +195,8 @@ describe('ScenesSection with a remote provider', () => {
     }
   })
 
-  it('drops stored revoke keys older than 90 days, and prunes the key when the link is already gone', async () => {
-    localStorage.setItem('tmi.shareRevoke.OldOldOld1', JSON.stringify({ key: 'old', at: Date.now() - 91 * 24 * 60 * 60 * 1000 }))
+  it('keeps older stored revoke keys (no age expiry), and prunes the key when the link is already gone', async () => {
+    localStorage.setItem('tmi.shareRevoke.OldOldOld1', JSON.stringify({ key: 'old', at: Date.now() - 365 * 24 * 60 * 60 * 1000 }))
     localStorage.setItem('tmi.shareRevoke.Recent0001', JSON.stringify({ key: 'recent', at: Date.now() - 24 * 60 * 60 * 1000 }))
     const share = remoteShare()
     share.share = vi.fn(async () => ({ code: 'QwErTyUiOp', url: 'https://ivories.test/s/QwErTyUiOp', shortUrl: null, revokeKey: 'k' }))
@@ -189,10 +204,20 @@ describe('ScenesSection with a remote provider', () => {
     renderSection({ auth: fakeAuth(), storage: remoteStorage(), share, content: [] })
     fireEvent.click(screen.getByRole('button', { name: 'Copy share link (look)' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Stop sharing' }))
-    expect(localStorage.getItem('tmi.shareRevoke.OldOldOld1')).toBeNull()
+    expect(localStorage.getItem('tmi.shareRevoke.OldOldOld1')).not.toBeNull()
     expect(localStorage.getItem('tmi.shareRevoke.Recent0001')).not.toBeNull()
     await waitFor(() => expect(localStorage.getItem('tmi.shareRevoke.QwErTyUiOp')).toBeNull())
     expect(await screen.findByText('That link was already gone.')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Stop sharing' })).toBeNull()
+  })
+
+  it('signed in: the copy-link panel offers Stop sharing for an owned link and revokes it as the owner', async () => {
+    const share = remoteShare()
+    share.share = vi.fn(async () => ({ code: 'OwNeDcOdE1', url: 'https://ivories.test/s/OwNeDcOdE1', shortUrl: null }))
+    renderSection({ auth: await signedIn(), storage: remoteStorage(), share, content: [] })
+    fireEvent.click(screen.getByRole('button', { name: 'Copy share link (look)' }))
+    const panel = document.querySelector('.share-panel') as HTMLElement
+    fireEvent.click(await within(panel).findByRole('button', { name: 'Stop sharing' }))
+    await waitFor(() => expect(share.revoke).toHaveBeenCalledWith('OwNeDcOdE1', undefined))
   })
 })

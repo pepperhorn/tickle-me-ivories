@@ -61,7 +61,7 @@ export function ScenesSection(props: {
         onOpenScene={(s) => void scenes.openScene(s, false)}
         onApplyLook={scenes.applyLook}
         {...(useAccount && shareSaved
-          ? { onShareSaved: (row: SaveSummary, v: 'link_view' | 'public') => shareSaved.call(platform.share, row.kind, row.id, v) }
+          ? { onShareSaved: (row: SaveSummary, v: 'link_view') => shareSaved.call(platform.share, row.kind, row.id, v) }
           : {})}
         {...(useAccount && revoke ? { onStopSharing: (code: string) => revoke.call(platform.share, code) } : {})}
       />
@@ -70,6 +70,7 @@ export function ScenesSection(props: {
         canShareScene={props.canSave}
         buildScene={props.buildShareScene}
         buildLook={props.buildLook}
+        signedIn={signedIn}
       />
     </>
   )

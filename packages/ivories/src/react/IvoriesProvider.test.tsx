@@ -13,6 +13,7 @@ import { fakeEngine } from './testEngine.test-helpers'
 import { Keyboard } from './views/Keyboard'
 import type { IvoriesHandle } from './IvoriesProvider'
 import { IvoriesError } from '../core/errors'
+import { RESUME_WAIT_MS } from './startPlayback'
 
 const bytes = () => {
   const m = new Midi(); m.header.setTempo(120)
@@ -203,17 +204,23 @@ describe('IvoriesProvider robustness', () => {
   it('a suspended engine schedules nothing; once running, only notes from the head on are handed over (no burst)', async () => {
     let ms = 0
     const clock = new ManualClock({ nowMs: () => ms })
-    const engine = fakeEngine() as ReturnType<typeof fakeEngine> & { running: boolean }
-    engine.running = false
+    const engine = fakeEngine()
+    // The driver reads engine.running once per playing tick, after collecting
+    // up to the head: counting reads makes "a tick has passed" observable, so
+    // nothing here depends on how many ticks a real-time sleep happens to fit.
+    let running = false
+    let ticks = 0
+    Object.defineProperty(engine, 'running', { configurable: true, get: () => { ticks++; return running } })
     render(<IvoriesProvider score={scoreDoc()} clock={clock} engine={engine} audio><span /></IvoriesProvider>)
     await waitFor(() => expect(document.querySelector('span')).not.toBeNull())
     act(() => clock.play())
-    await new Promise((r) => setTimeout(r, 80))   // the note at 0 passes while suspended
+    await waitFor(() => expect(ticks).toBeGreaterThan(0))   // the note at 0 passed while suspended
     expect(engine.play).not.toHaveBeenCalled()
-    engine.running = true
+    running = true
     ms = 900                                       // the note at 1.0 enters the lookahead
     await waitFor(() => expect(engine.play).toHaveBeenCalled())
-    await new Promise((r) => setTimeout(r, 60))
+    const seen = ticks
+    await waitFor(() => expect(ticks).toBeGreaterThan(seen + 1))   // two more ticks hand nothing else over
     const pitches = engine.play.mock.calls.map((c) => (c[0] as { note: { pitch: number } }).note.pitch)
     expect(pitches).toEqual([64])
   })
@@ -231,57 +238,84 @@ describe('IvoriesProvider robustness', () => {
     }
   })
 
-  it('Play from a suspended context waits for resume(), so the downbeat is handed to the engine', async () => {
-    const clock = new ManualClock()
+  // The resume tests drive resume() by hand (a deferred) and fake only
+  // setTimeout, so RESUME_WAIT_MS passes exactly when advanced; the driver's
+  // setInterval stays real.
+  function suspendedEngine() {
     const engine = fakeEngine() as ReturnType<typeof fakeEngine> & { running: boolean; resume: ReturnType<typeof vi.fn> }
     engine.running = false
-    engine.resume.mockImplementation(() => new Promise<void>((r) => setTimeout(() => { engine.running = true; r() }, 100)))
+    const releases: (() => void)[] = []
+    engine.resume.mockImplementation(() => new Promise<void>((r) => { releases.push(() => { engine.running = true; r() }) }))
+    return { engine, release: () => { for (const r of releases.splice(0)) r() } }
+  }
+  const advance = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms) })
+
+  it('Play from a suspended context waits for resume(), so the downbeat is handed to the engine', async () => {
+    const clock = new ManualClock()
+    const { engine, release } = suspendedEngine()
     const ref = createRef<IvoriesHandle>()
     render(<IvoriesProvider ref={ref} score={scoreDoc()} clock={clock} engine={engine} audio><span /></IvoriesProvider>)
     await waitFor(() => expect(ref.current).not.toBeNull())
-    act(() => ref.current!.play())
-    await new Promise((r) => setTimeout(r, 50))
-    expect(clock.playing).toBe(false)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      act(() => ref.current!.play())
+      await advance(RESUME_WAIT_MS - 1)
+      expect(clock.playing).toBe(false)
+      await act(async () => { release() })
+      expect(clock.playing).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
     await waitFor(() => expect(engine.play).toHaveBeenCalled())
-    expect(clock.playing).toBe(true)
     expect((engine.play.mock.calls[0][0] as { note: { pitch: number } }).note.pitch).toBe(60)
   })
 
   it('pause() during the resume wait cancels the start; a second Play while waiting starts exactly once', async () => {
     const clock = new ManualClock()
     const play = vi.spyOn(clock, 'play')
-    const engine = fakeEngine() as ReturnType<typeof fakeEngine> & { running: boolean; resume: ReturnType<typeof vi.fn> }
-    engine.running = false
-    engine.resume.mockImplementation(() => new Promise<void>((r) => setTimeout(() => { engine.running = true; r() }, 60)))
+    const { engine, release } = suspendedEngine()
     const ref = createRef<IvoriesHandle>()
     render(<IvoriesProvider ref={ref} score={scoreDoc()} clock={clock} engine={engine} audio><span /></IvoriesProvider>)
     await waitFor(() => expect(ref.current).not.toBeNull())
-    act(() => ref.current!.play())
-    act(() => ref.current!.pause())
-    await new Promise((r) => setTimeout(r, 500))
-    expect(play).not.toHaveBeenCalled()
-    expect(clock.playing).toBe(false)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      act(() => ref.current!.play())
+      act(() => ref.current!.pause())
+      await act(async () => { release() })
+      await advance(RESUME_WAIT_MS + 100)
+      expect(play).not.toHaveBeenCalled()
+      expect(clock.playing).toBe(false)
 
-    act(() => ref.current!.play())
-    act(() => ref.current!.play())
-    await waitFor(() => expect(clock.playing).toBe(true))
-    await new Promise((r) => setTimeout(r, 450))
-    expect(play).toHaveBeenCalledTimes(1)
+      engine.running = false
+      act(() => ref.current!.play())
+      act(() => ref.current!.play())
+      await act(async () => { release() })
+      expect(clock.playing).toBe(true)
+      await advance(RESUME_WAIT_MS + 100)
+      expect(play).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('unmounting during the resume wait never plays the clock afterwards', async () => {
     const clock = new ManualClock()
     const play = vi.spyOn(clock, 'play')
-    const engine = fakeEngine() as ReturnType<typeof fakeEngine> & { resume: ReturnType<typeof vi.fn> }
-    engine.resume.mockImplementation(() => new Promise<void>((r) => setTimeout(r, 60)))
+    const { engine, release } = suspendedEngine()
     const ref = createRef<IvoriesHandle>()
     const { unmount } = render(<IvoriesProvider ref={ref} score={scoreDoc()} clock={clock} engine={engine} audio><span /></IvoriesProvider>)
     await waitFor(() => expect(ref.current).not.toBeNull())
     const handle = ref.current!
-    act(() => handle.play())
-    unmount()
-    await new Promise((r) => setTimeout(r, 500))
-    expect(play).not.toHaveBeenCalled()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      act(() => handle.play())
+      unmount()
+      await act(async () => { release() })
+      await advance(RESUME_WAIT_MS + 100)
+      expect(play).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('an instrument-load failure calls onError but leaves status.error unset (the score plays silently)', async () => {
