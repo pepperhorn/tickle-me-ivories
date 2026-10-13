@@ -76,3 +76,24 @@ Branch `feat/ivories-mvp`, plan `docs/superpowers/plans/2026-10-12-ivories-mvp.m
 - Task 3: minor (deferred): seek while playing flickers loadingAudio; stopped seek past end currentTime() unclamped until timeline resolves; clock-embed lacks no-notice + no-steal assertions; only chromium run
 - Task 4: minor (deferred): playhead effect deps omit playhead/clock (removing clock at runtime leaves clock paint); seekPending can stay set and scroll later; new adapter per render rebuilds subscription/rAF each render.
 - Task 5: minor (deferred): reader app pins unpublished 0.2.0; CHANGELOG lacks transpose-with-clock line; README never states negative time = no playhead
+
+## Rising/roll plan (2026-10-13) — rulings
+
+- Ruling: adopt every correction in preflight.md, carried per task — scratch run proves the corrected plan goes green — cost if wrong: rework visible in that task's diff.
+- Task 7: review 70e7abb — Important: GM failures silent vs user console requirement. Ruling: user requirement outranks the brief's "silent" fallback — warn to console (deduped), not onError — cost: none.
+- Ruling: accept CDP setBlockedURLs fixture blocking (Chromium-only config) and the @internal isGmVoice/isGmInstrument probe on the public API (no stripInternal) — makes the GM e2e unable to pass on silent fallback — cost if wrong: two tiny exported members to remove later.
+
+## Rising/roll plan — parked findings
+
+- Task 1: minor (deferred): test finds onError call by index; logged Set unbounded if messages vary
+- Task 2: minor (deferred): horizontal above-keys chord readout may overlap note labels (plan-mandated values); no test for horizontal stage-centre; small per-frame tuple/object allocations; StageView test doesn't assert matrix args
+- Task 3: minor (deferred): per-frame RisingState spread + BeatLine[] (same order as falling path; class doc comment now inaccurate); duplicated bar loops; no score-path beatClockFor cache test; no trail flash test
+- Task 4: minor (deferred): one-commit window pairing outgoing live clock with new score (fix: liveClockActive = wantsLiveClock ? liveClock : null — cheap, fix before merge); setBpm reports unchanged clamped value; host-clock-wins test pre-passing; real 30ms timeout in test
+- Task 5: minor (deferred): fractional BPM draft shows 100.4 until blur (round in parseBpmDraft); useLiveBpm returns fresh object; per-frame rising object (T5-3 accepted); no visibleBeats/beatsPerBar pass-through test
+- Task 6: minor (deferred): no visibleBeats pass-through test in Stage; no orientation-on-notation validator case
+- Task 7: minor (deferred): buffers live for page lifetime per instrument; JSON.stringify key order rebuild; fixed 20ms sleep in test; real browser decode/playback unverified (CARRY TO TASK 9 / play-me)
+- Task 7: minor (deferred): unsafe-name warning says "default piano" for non-piano voices
+- Task 8: minor (deferred): studio BPM draft resynced mid-edit on fractional input; Load a score leaves live clock running behind drop zone; notation-sync e2e cold-load flake (log for final review); session bar ~150px tall
+- Task 9: minor (deferred): GmProbe interval never cleared; #file-input id selector; horizontal specs don't assert low-notes-bottom; gmBuilt WeakSet module-global; each provider loads its own default piano (~800 sample requests each) — note for perf
+- Task 10: minor (deferred): Errors section lacks cross-ref to GM audio console warnings
+- Final fix wave: complete (ae0e2c9..f5cbbab, all addressed). Parked (later): setVoiceVolume doesn't update bus.voice so setSounds reverts it (public API, unreachable today); stranded JSDoc / 'fetched once' comment; seek slider in live mode.
