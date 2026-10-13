@@ -12,13 +12,9 @@ describe('platform/types.ts re-exports errors.ts (preflight F1)', () => {
   })
 })
 
-// preflight F4: package.json's "./platform" export points straight at this
-// source file, and the PepperHorn plugin type-checks it directly under its
-// own tsconfig (skipLibCheck doesn't cover a .ts file reached this way, even
-// through `import type`). So types.ts, and everything it imports, must stay
-// runtime-free: no settings/profile.ts (pulls in zustand via
-// transport/useTransport.ts, and @tonejs/midi/tonal via io/parseMidi.ts), no
-// bare package import at all. This is checked here by statically walking the
+// preflight F4, updated 2026-10-13: the plugin type-checks this file through
+// `ivories/core`'s emitted declarations, so types.ts (and everything it
+// imports) must stay runtime-free. Checked by statically walking the
 // relative-import graph rather than by shelling out to a second tsc build.
 describe('platform/types.ts stays runtime-free (preflight F4)', () => {
   const here = dirname(fileURLToPath(import.meta.url))
