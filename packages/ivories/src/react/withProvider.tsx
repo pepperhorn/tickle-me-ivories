@@ -7,7 +7,7 @@ import type { IvoriesProviderProps } from './IvoriesProvider'
 /** Props a self-contained component hands to the provider it creates (spec §3.2). */
 export const PROVIDER_KEYS = [
   'score', 'scoreUrl', 'file', 'musicXml', 'midi', 'clock', 'engine', 'audio', 'tempo',
-  'theme', 'look', 'settings', 'fallSeconds', 'liveAudio', 'midiDeviceId',
+  'theme', 'look', 'settings', 'fallSeconds', 'liveAudio', 'midiDeviceId', 'sounds',
   'bpm', 'liveClock', 'autoStart',
   'onReady', 'onNoteOn', 'onNoteOff', 'onTimeUpdate', 'onError', 'onBpmChange',
 ] as const

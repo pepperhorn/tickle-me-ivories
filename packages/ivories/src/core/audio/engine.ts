@@ -1,7 +1,10 @@
 import { SampleLoader, Soundfont, SplendidGrandPiano } from 'smplr'
+import type { Sampler } from 'smplr'
 import type { Voice } from '../model/types'
 import type { ScheduledNote } from './scheduler'
 import { MetronomeVoice } from './metronome'
+import { gmInstrumentFactory } from './gmSounds'
+import type { GmSoundDeps, SoundsOption } from './gmSounds'
 
 const GRAND_PIANO_ID = 'acoustic_grand_piano'
 
@@ -11,8 +14,8 @@ const LIVE_VOICE: Voice = {
   id: LIVE_VOICE_ID, label: 'Live', hue: 0, instrument: GRAND_PIANO_ID, visible: true, audible: true, volume: 1,
 }
 
-/** The instance type produced by either smplr instrument factory we use. */
-type Instrument = ReturnType<typeof SplendidGrandPiano> | ReturnType<typeof Soundfont>
+/** The instance type produced by any smplr instrument factory we use (Sampler: the GM pack, R-G). */
+export type Instrument = ReturnType<typeof SplendidGrandPiano> | ReturnType<typeof Soundfont> | Sampler
 
 /** Never schedule in the past -- after a seek, originSec + atSec can be behind the clock. */
 export function clampToNow(when: number, now: number): number {
@@ -40,6 +43,10 @@ export type InstrumentFactoryFn = (
 export interface AudioEngineDeps {
   makeContext?: () => AudioContext
   makeInstrument?: InstrumentFactoryFn
+  /** Load the piano voice (and live keys) from the pepperscore-sounds GM pack (R-G). Ignored when makeInstrument is given. */
+  sounds?: SoundsOption
+  /** Test seam for the GM loader (fetch, Sampler construction). */
+  soundsDeps?: GmSoundDeps
 }
 
 /**
@@ -49,7 +56,7 @@ export interface AudioEngineDeps {
  * load() is cached by resolved URL, so N voices on the grand piano cost one
  * fetch and one decode between them.
  */
-const defaultMakeInstrument: InstrumentFactoryFn = async (ctx, id, destination, loader) => {
+export const defaultMakeInstrument: InstrumentFactoryFn = async (ctx, id, destination, loader) => {
   const opts = { destination, loader } as never
   const inst = id === GRAND_PIANO_ID
     ? SplendidGrandPiano(ctx, opts)
@@ -84,7 +91,8 @@ export class AudioEngine {
 
   constructor(deps: AudioEngineDeps = {}) {
     this.makeContext = deps.makeContext ?? (() => new AudioContext())
-    this.makeInstrument = deps.makeInstrument ?? defaultMakeInstrument
+    this.makeInstrument = deps.makeInstrument
+      ?? (deps.sounds ? gmInstrumentFactory(deps.sounds, defaultMakeInstrument, deps.soundsDeps) : defaultMakeInstrument)
   }
 
   private context(): AudioContext {

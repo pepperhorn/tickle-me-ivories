@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import type { ReactNode, Ref } from 'react'
 import { AudioEngine } from '../core/audio/engine'
+import type { SoundsOption } from '../core/audio/gmSounds'
 import { AudioClock } from '../core/clock/AudioClock'
 import { ManualClock } from '../core/clock/ManualClock'
 import { DEFAULT_LIVE_BPM, clampBpm } from '../core/render/beats'
@@ -55,6 +56,8 @@ export interface IvoriesProviderProps extends ScoreSource, IvoriesEvents {
   clock?: Clock
   /** Advanced/test seam; the provider builds one on the page-wide AudioContext otherwise. */
   engine?: AudioEngine
+  /** Piano samples from the pepperscore-sounds GM pack for the provider's own engine (R-G). Unset: smplr's grand piano. */
+  sounds?: SoundsOption
   /** Schedule audio. Default true with the provider's own clock or an AudioClock; false for a
       ManualClock or MediaClock (the host carries the sound). */
   audio?: boolean
@@ -114,9 +117,12 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   }, [report])
 
   // ---- engine and clock: the host's, or our own ----
+  // Rebuilt only when the sounds option's CONTENT changes (hosts pass object literals).
+  const soundsKey = props.sounds ? JSON.stringify(props.sounds) : ''
+  const soundsRef = useRef(props.sounds); soundsRef.current = props.sounds
   const ownEngine = useDisposable(
-    () => (props.engine ? null : new AudioEngine({ makeContext: sharedAudioContext })),
-    (e) => e.dispose(), [!props.engine],
+    () => (props.engine ? null : new AudioEngine({ makeContext: sharedAudioContext, sounds: soundsRef.current })),
+    (e) => e.dispose(), [!props.engine, soundsKey],
   )
   const engine = props.engine ?? ownEngine
   // Always built (unused while a host clock is given): taking the host clock

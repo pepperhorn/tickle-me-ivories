@@ -3,6 +3,7 @@ import { AudioEngine, LIVE_VOICE_ID, clampToNow, volumeToGain } from './engine'
 import type { InstrumentFactoryFn } from './engine'
 import type { Voice } from '../model/types'
 import type { ScheduledNote } from './scheduler'
+import { resetGmSoundCaches } from './gmSounds'
 
 const voice = (id: string, patch: Partial<Voice> = {}): Voice => ({
   id, label: id, hue: 200, instrument: 'acoustic_grand_piano',
@@ -351,5 +352,39 @@ describe('AudioEngine live voice (spec §4.1)', () => {
     engine.noteOn(64, 80)
     engine.dispose()
     expect(stops).toEqual([64])
+  })
+})
+
+describe('AudioEngine sounds option (R-G)', () => {
+  it('loads the piano voice and the live keys from the GM pack through the Sampler seam', async () => {
+    resetGmSoundCaches()
+    const ctx = { ...fakeContext(), decodeAudioData: vi.fn(async () => ({}) as AudioBuffer) }
+    const fetchJson = vi.fn(async (url: string) => ({
+      ok: true, status: 200,
+      json: async () => (url.endsWith('pack.json')
+        ? { pack: 'core', fluidr3: ['acoustic_grand_piano'] }
+        : { name: 'acoustic_grand_piano', samples: { 60: btoa('x') } }),
+    }))
+    const sampler = { start: vi.fn(() => () => {}), stop: vi.fn(), dispose: vi.fn(), ready: Promise.resolve() }
+    const makeSampler = vi.fn(() => sampler as never)
+    const engine = new AudioEngine({
+      makeContext: () => ctx as unknown as AudioContext,
+      sounds: { pack: 'core' },
+      soundsDeps: { fetch: fetchJson, makeSampler },
+    })
+    await engine.loadVoice(voice('v1'))
+    await engine.prepareLive()
+    expect(fetchJson).toHaveBeenCalledWith('https://cdn.jsdelivr.net/npm/pepperscore-sounds-core@0.1.0/soundfonts/fluidr3/acoustic_grand_piano.json')
+    expect(makeSampler).toHaveBeenCalledTimes(2)
+    engine.noteOn(60, 90)
+    expect(sampler.start).toHaveBeenCalledWith({ note: 60, velocity: 90 })
+  })
+
+  it('an explicit makeInstrument still wins over sounds (tests and hosts keep their seam)', async () => {
+    const { made, makeInstrument } = harness()
+    const engine = new AudioEngine({ makeContext: () => fakeContext() as unknown as AudioContext, makeInstrument, sounds: { pack: 'core' } })
+    await engine.loadVoice(voice('v1'))
+    expect(makeInstrument).toHaveBeenCalledTimes(1)
+    expect(made).toHaveLength(1)
   })
 })
