@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { buildProfile, DEFAULT_SETTINGS, lookFromSettings, sceneFromState } from 'ivories/core'
+import { buildProfile, DEFAULT_SETTINGS, lookFromSettings, PlatformError, sceneFromState } from 'ivories/core'
 import type { ShareProvider, StorageProvider } from 'ivories/core'
 import { ScenesSection } from './ScenesSection'
 import { getDefaults } from '../platform/registry'
@@ -13,6 +13,7 @@ const scene = () => sceneFromState({
   song: { kind: 'local', sha256: SHA, name: 'song.mid', format: 'midi', title: 'Song' },
   profile: buildProfile({ song: { id: SHA, name: 'song.mid', format: 'midi' }, voices: [], tempo: { mode: 'scale', scale: 1 }, mode: 'roll', fallSeconds: 3, settings: DEFAULT_SETTINGS }),
 })
+const webcamScene = () => ({ ...scene(), layout: { kind: 'split' as const, ratio: 0.5, top: { kind: 'ivories' as const, view: 'falling' as const }, bottom: { kind: 'camera' as const, mode: 'webcam' as const, deviceId: 'cam-1', mirror: true, fit: 'cover' as const } } })
 const scenes = { savesVersion: 0, openScene: vi.fn(), applyLook: vi.fn() } as unknown as ReturnType<typeof useScenes>
 
 function remoteStorage(): StorageProvider {
@@ -32,6 +33,13 @@ function remoteShare(): ShareProvider {
     shareSaved: vi.fn(async () => ({ code: 'AbCdEfGhJk', url: 'https://ivories.test/s/AbCdEfGhJk', shortUrl: 'https://phrn.link/Xy12345' })),
     revoke: vi.fn(async () => {}),
   }
+}
+
+async function signedIn() {
+  const auth = fakeAuth()
+  await auth.requestCode('ana@example.test')
+  await auth.verifyCode('ana@example.test', '12345678')
+  return auth
 }
 
 function renderSection(platform: Platform) {
@@ -65,9 +73,11 @@ describe('ScenesSection with a remote provider', () => {
     await auth.verifyCode('ana@example.test', '12345678')
     renderSection({ auth, storage: remoteStorage(), share: remoteShare(), content: [] })
     expect(await screen.findByText('Cloud scene')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Share Cloud scene' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'This browser' }))
     expect(await screen.findByText('Local scene')).toBeTruthy()
     expect(screen.queryByText('Cloud scene')).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Share / })).toBeNull()
   })
 
   it('shares a saved scene with a chosen visibility, shows the short link, and stops sharing', async () => {
@@ -87,14 +97,58 @@ describe('ScenesSection with a remote provider', () => {
     expect(await screen.findByText(/Sharing stopped for “Cloud scene”/)).toBeTruthy()
   })
 
-  it('tells the owner that sharing a saved scene drops its camera choice', async () => {
-    const auth = fakeAuth()
-    await auth.requestCode('ana@example.test')
-    await auth.verifyCode('ana@example.test', '12345678')
-    renderSection({ auth, storage: remoteStorage(), share: remoteShare(), content: [] })
+  it('keeps a live link when the visibility is changed: the picker locks and Stop sharing still ends the original link', async () => {
+    const share = remoteShare()
+    renderSection({ auth: await signedIn(), storage: remoteStorage(), share, content: [] })
     fireEvent.click(await screen.findByRole('button', { name: 'Share Cloud scene' }))
     const row = document.querySelector('.scene-row-share') as HTMLElement
-    expect(within(row).getByText(/pick your camera again/)).toBeTruthy()
+    fireEvent.click(within(row).getByRole('button', { name: 'Get link' }))
+    const select = within(row).getByLabelText('Who can open the link') as HTMLSelectElement
+    await waitFor(() => expect(select.disabled).toBe(true))
+    fireEvent.change(select, { target: { value: 'public' } })
+    expect((within(row).getByLabelText('Share link') as HTMLInputElement).value).toBe('https://phrn.link/Xy12345')
+    expect(within(row).getByText(/Your existing link stays live\. Stop it first to change who can see it/)).toBeTruthy()
+    expect(within(row).queryByRole('button', { name: 'Get link' })).toBeNull()
+    fireEvent.click(within(row).getByRole('button', { name: 'Stop sharing' }))
+    await waitFor(() => expect(share.revoke).toHaveBeenCalledWith('AbCdEfGhJk'))
+    expect(share.shareSaved).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a live link when the share area is closed and reopened', async () => {
+    const share = remoteShare()
+    renderSection({ auth: await signedIn(), storage: remoteStorage(), share, content: [] })
+    const btn = await screen.findByRole('button', { name: 'Share Cloud scene' })
+    fireEvent.click(btn)
+    fireEvent.click(within(document.querySelector('.scene-row-share') as HTMLElement).getByRole('button', { name: 'Get link' }))
+    await waitFor(() => expect(document.querySelector('.share-url')).not.toBeNull())
+    fireEvent.click(btn)
+    expect(document.querySelector('.scene-row-share')).toBeNull()
+    expect(btn.textContent).toBe('Shared')
+    fireEvent.click(btn)
+    const row = document.querySelector('.scene-row-share') as HTMLElement
+    expect((within(row).getByLabelText('Share link') as HTMLInputElement).value).toBe('https://phrn.link/Xy12345')
+    fireEvent.click(within(row).getByRole('button', { name: 'Stop sharing' }))
+    await waitFor(() => expect(share.revoke).toHaveBeenCalledWith('AbCdEfGhJk'))
+  })
+
+  it('tells the owner to re-pick their camera only when sharing would drop one', async () => {
+    const storage = remoteStorage()
+    storage.load = vi.fn(async () => webcamScene()) as unknown as StorageProvider['load']
+    renderSection({ auth: await signedIn(), storage, share: remoteShare(), content: [] })
+    fireEvent.click(await screen.findByRole('button', { name: 'Share Cloud scene' }))
+    const row = document.querySelector('.scene-row-share') as HTMLElement
+    expect(await within(row).findByText(/pick your camera again/)).toBeTruthy()
+    expect(storage.load).toHaveBeenCalledWith('scene', 'r1')
+  })
+
+  it('shows no camera note for a scene without a camera', async () => {
+    const storage = remoteStorage()
+    storage.load = vi.fn(async () => scene()) as unknown as StorageProvider['load']
+    renderSection({ auth: await signedIn(), storage, share: remoteShare(), content: [] })
+    fireEvent.click(await screen.findByRole('button', { name: 'Share Cloud scene' }))
+    await waitFor(() => expect(storage.load).toHaveBeenCalled())
+    await new Promise((r) => setTimeout(r, 0))
+    expect(screen.queryByText(/pick your camera again/)).toBeNull()
   })
 
   it('an anonymous share keeps its revoke key in localStorage only, and sends it only to revoke()', async () => {
@@ -106,9 +160,39 @@ describe('ScenesSection with a remote provider', () => {
     await waitFor(() => expect(url.value).toBe('https://ivories.test/s/QwErTyUiOp'))
     expect(url.value).not.toContain('secret-revoke-key')
     expect(document.body.textContent).not.toContain('secret-revoke-key')
-    expect(localStorage.getItem('tmi.shareRevoke.QwErTyUiOp')).toBe('secret-revoke-key')
-    fireEvent.click(screen.getByRole('button', { name: 'Stop sharing' }))
+    expect(JSON.parse(localStorage.getItem('tmi.shareRevoke.QwErTyUiOp')!).key).toBe('secret-revoke-key')
+    fireEvent.click(await screen.findByRole('button', { name: 'Stop sharing' }))
     await waitFor(() => expect(share.revoke).toHaveBeenCalledWith('QwErTyUiOp', 'secret-revoke-key'))
     await waitFor(() => expect(localStorage.getItem('tmi.shareRevoke.QwErTyUiOp')).toBeNull())
+  })
+
+  it('offers no Stop sharing when the revoke key could not be stored', async () => {
+    const share = remoteShare()
+    share.share = vi.fn(async () => ({ code: 'QwErTyUiOp', url: 'https://ivories.test/s/QwErTyUiOp', shortUrl: null, revokeKey: 'secret-revoke-key' }))
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('QuotaExceededError') })
+    try {
+      renderSection({ auth: fakeAuth(), storage: remoteStorage(), share, content: [] })
+      fireEvent.click(screen.getByRole('button', { name: 'Copy share link (look)' }))
+      await screen.findByLabelText('Share link')
+      expect(screen.queryByRole('button', { name: 'Stop sharing' })).toBeNull()
+    } finally {
+      setItem.mockRestore()
+    }
+  })
+
+  it('drops stored revoke keys older than 90 days, and prunes the key when the link is already gone', async () => {
+    localStorage.setItem('tmi.shareRevoke.OldOldOld1', JSON.stringify({ key: 'old', at: Date.now() - 91 * 24 * 60 * 60 * 1000 }))
+    localStorage.setItem('tmi.shareRevoke.Recent0001', JSON.stringify({ key: 'recent', at: Date.now() - 24 * 60 * 60 * 1000 }))
+    const share = remoteShare()
+    share.share = vi.fn(async () => ({ code: 'QwErTyUiOp', url: 'https://ivories.test/s/QwErTyUiOp', shortUrl: null, revokeKey: 'k' }))
+    share.revoke = vi.fn(async () => { throw new PlatformError('not_found', 'gone') })
+    renderSection({ auth: fakeAuth(), storage: remoteStorage(), share, content: [] })
+    fireEvent.click(screen.getByRole('button', { name: 'Copy share link (look)' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Stop sharing' }))
+    expect(localStorage.getItem('tmi.shareRevoke.OldOldOld1')).toBeNull()
+    expect(localStorage.getItem('tmi.shareRevoke.Recent0001')).not.toBeNull()
+    await waitFor(() => expect(localStorage.getItem('tmi.shareRevoke.QwErTyUiOp')).toBeNull())
+    expect(await screen.findByText('That link was already gone.')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Stop sharing' })).toBeNull()
   })
 })

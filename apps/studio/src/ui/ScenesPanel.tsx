@@ -8,6 +8,7 @@
 // newer version" message that LocalStorageProvider.load rethrows.
 
 import { useCallback, useEffect, useState } from 'react'
+import { sceneForShare } from 'ivories/core'
 import type { LookV1, SaveKind, SaveSummary, SceneV2, ShareResult, StorageProvider } from 'ivories/core'
 import { saveErrorMessage } from './saveErrors'
 import { copyText } from './SharePanel'
@@ -40,7 +41,13 @@ export function ScenesPanel(props: {
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
-  const [sharing, setSharing] = useState<{ id: string; visibility: ShareVisibility; result: ShareResult | null } | null>(null)
+  /** The row whose share area is open, and the visibility picked for a new link. */
+  const [sharing, setSharing] = useState<{ id: string; visibility: ShareVisibility } | null>(null)
+  /** Live links made here, by save id. Kept when the share area closes or the
+      visibility changes, so a live link always keeps its Stop sharing. */
+  const [links, setLinks] = useState<Record<string, { result: ShareResult; visibility: ShareVisibility }>>({})
+  /** Save ids whose share would drop this browser's camera choice. */
+  const [dropsCamera, setDropsCamera] = useState<Record<string, boolean>>({})
 
   const refresh = useCallback(async () => {
     try {
@@ -100,13 +107,28 @@ export function ScenesPanel(props: {
     await refresh()
   }
 
+  const openShare = async (row: SaveSummary) => {
+    if (sharing?.id === row.id) { setSharing(null); return }
+    setSharing({ id: row.id, visibility: links[row.id]?.visibility ?? 'link_view' })
+    if (row.kind !== 'scene' || row.id in dropsCamera) return
+    try {
+      const scene = await storage.load('scene', row.id)
+      // A shared save loses its camera deviceIds (the provider strips the live save).
+      const drops = !!scene && JSON.stringify(sceneForShare(scene)) !== JSON.stringify(scene)
+      setDropsCamera((prev) => ({ ...prev, [row.id]: drops }))
+    } catch {
+      // Unreadable save: Get link will report it; no camera note.
+    }
+  }
+
   const getLink = async (row: SaveSummary) => {
-    if (!props.onShareSaved || !sharing) return
+    if (!props.onShareSaved || sharing?.id !== row.id || links[row.id]) return
+    const visibility = sharing.visibility
     setError(null)
     setStatus(null)
     try {
-      const result = await props.onShareSaved(row, sharing.visibility)
-      setSharing({ ...sharing, result })
+      const result = await props.onShareSaved(row, visibility)
+      setLinks((prev) => ({ ...prev, [row.id]: { result, visibility } }))
       setStatus((await copyText(result.shortUrl ?? result.url)) ? 'Link copied.' : 'Copy the link below.')
     } catch (e) {
       setError(saveErrorMessage(e, `Could not share “${row.name}”`))
@@ -114,12 +136,17 @@ export function ScenesPanel(props: {
   }
 
   const stopSharing = async (row: SaveSummary) => {
-    const code = sharing?.result?.code
+    const code = links[row.id]?.result.code
     if (!code || !props.onStopSharing) return
     setError(null)
+    setStatus(null)
     try {
       await props.onStopSharing(code)
-      setSharing(null)
+      setLinks((prev) => {
+        const next = { ...prev }
+        delete next[row.id]
+        return next
+      })
       setStatus(`Sharing stopped for “${row.name}”. The link no longer opens.`)
     } catch (e) {
       setError(saveErrorMessage(e, 'Could not stop sharing'))
@@ -168,9 +195,9 @@ export function ScenesPanel(props: {
                       aria-label={`Share ${row.name}`}
                       aria-expanded={sharing?.id === row.id}
                       className={`btn-share-save ${BTN}`}
-                      onClick={() => setSharing(sharing?.id === row.id ? null : { id: row.id, visibility: 'link_view', result: null })}
+                      onClick={() => void openShare(row)}
                     >
-                      Share
+                      {links[row.id] ? 'Shared' : 'Share'}
                     </button>
                   )}
                 </span>
@@ -181,30 +208,36 @@ export function ScenesPanel(props: {
                     <select
                       aria-label="Who can open the link"
                       className="share-visibility-select rounded border border-[var(--line)] bg-transparent px-1 py-0.5 text-[11px] text-[var(--ink)]"
-                      value={sharing.visibility}
-                      onChange={(e) => setSharing({ ...sharing, visibility: e.target.value as ShareVisibility, result: null })}
+                      value={links[row.id]?.visibility ?? sharing.visibility}
+                      disabled={!!links[row.id]}
+                      onChange={(e) => setSharing({ id: row.id, visibility: e.target.value as ShareVisibility })}
                     >
                       {(Object.keys(VISIBILITY_LABEL) as ShareVisibility[]).map((v) => (
                         <option key={v} value={v}>{VISIBILITY_LABEL[v]}</option>
                       ))}
                     </select>
-                    <button type="button" className={`btn-get-share-link ${BTN}`} onClick={() => void getLink(row)}>Get link</button>
+                    {!links[row.id] && (
+                      <button type="button" className={`btn-get-share-link ${BTN}`} onClick={() => void getLink(row)}>Get link</button>
+                    )}
                   </div>
-                  {kind === 'scene' && (
+                  {kind === 'scene' && dropsCamera[row.id] && !links[row.id] && (
                     <p className="share-camera-note text-[11px] text-[var(--ink-dim)]">
-                      Sharing removes this browser’s camera choice from the saved scene. If it shows a webcam, pick your camera again after you load it.
+                      Sharing removes this browser’s camera choice from the saved scene. After you load it, pick your camera again.
                     </p>
                   )}
-                  {sharing.result && (
+                  {links[row.id] && (
                     <>
                       <input
                         type="text"
                         readOnly
                         aria-label="Share link"
                         className="share-url w-full rounded border border-[var(--line)] bg-transparent px-2 py-1 text-[11px] text-[var(--ink)]"
-                        value={sharing.result.shortUrl ?? sharing.result.url}
+                        value={links[row.id].result.shortUrl ?? links[row.id].result.url}
                         onFocus={(e) => e.currentTarget.select()}
                       />
+                      <p className="share-live-note text-[11px] text-[var(--ink-dim)]">
+                        Your existing link stays live. Stop it first to change who can see it.
+                      </p>
                       {props.onStopSharing && (
                         <button type="button" className={`btn-stop-sharing ${BTN} self-start`} onClick={() => void stopSharing(row)}>
                           Stop sharing

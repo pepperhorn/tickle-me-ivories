@@ -10,6 +10,7 @@
 
 import { useRef, useState } from 'react'
 import type { LookV1, SaveKind, SceneV2, ShareProvider } from 'ivories/core'
+import { isPlatformError } from 'ivories/core'
 import { saveErrorMessage } from './saveErrors'
 
 const BTN = 'rounded border border-[var(--line)] px-2 py-1 text-[11px] text-[var(--ink-dim)]'
@@ -26,12 +27,37 @@ export async function copyText(text: string): Promise<boolean> {
 }
 
 const REVOKE_KEY_PREFIX = 'tmi.shareRevoke.'
+/** Stored revoke keys older than this are dropped (the cap on what piles up). */
+export const REVOKE_KEY_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000
 
-function storeRevokeKey(code: string, key: string): void {
-  try { localStorage.setItem(REVOKE_KEY_PREFIX + code, key) } catch { /* storage full or blocked: the link just cannot be stopped later */ }
+function pruneRevokeKeys(now: number): void {
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const k = localStorage.key(i)
+    if (!k?.startsWith(REVOKE_KEY_PREFIX)) continue
+    let at = Number.NaN
+    try { at = Number((JSON.parse(localStorage.getItem(k) ?? '') as { at?: unknown }).at) } catch { /* unreadable: drop */ }
+    if (!(now - at <= REVOKE_KEY_MAX_AGE_MS)) localStorage.removeItem(k)
+  }
+}
+
+/** True only when the key was written, so Stop sharing is offered only then. */
+function storeRevokeKey(code: string, key: string): boolean {
+  try {
+    const now = Date.now()
+    pruneRevokeKeys(now)
+    localStorage.setItem(REVOKE_KEY_PREFIX + code, JSON.stringify({ key, at: now }))
+    return true
+  } catch {
+    return false
+  }
 }
 function readRevokeKey(code: string): string | undefined {
-  try { return localStorage.getItem(REVOKE_KEY_PREFIX + code) ?? undefined } catch { return undefined }
+  try {
+    const v = JSON.parse(localStorage.getItem(REVOKE_KEY_PREFIX + code) ?? 'null') as { key?: unknown } | null
+    return typeof v?.key === 'string' ? v.key : undefined
+  } catch {
+    return undefined
+  }
 }
 function forgetRevokeKey(code: string): void {
   try { localStorage.removeItem(REVOKE_KEY_PREFIX + code) } catch { /* nothing to do */ }
@@ -59,8 +85,8 @@ export function SharePanel(props: {
         ? await props.share.share({ kind, payload: props.buildScene() })
         : await props.share.share({ kind, payload: props.buildLook() })
       link = res.shortUrl ?? res.url
-      if (res.revokeKey) storeRevokeKey(res.code, res.revokeKey)
-      setRevocable(res.revokeKey && props.share.revoke ? res.code : null)
+      const stored = !!res.revokeKey && storeRevokeKey(res.code, res.revokeKey)
+      setRevocable(stored && props.share.revoke ? res.code : null)
     } catch (e) {
       setUrl(null)
       setRevocable(null)
@@ -90,6 +116,14 @@ export function SharePanel(props: {
       setUrl(null)
       setStatus('Sharing stopped. The link no longer opens.')
     } catch (e) {
+      if (isPlatformError(e) && e.code === 'not_found') {
+        // Already gone (expired or stopped elsewhere): nothing left to stop.
+        forgetRevokeKey(code)
+        setRevocable(null)
+        setUrl(null)
+        setStatus('That link was already gone.')
+        return
+      }
       setError(saveErrorMessage(e, 'Could not stop sharing'))
     }
   }
