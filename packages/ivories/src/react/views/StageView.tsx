@@ -7,6 +7,7 @@ import { StageText, samePitches } from '../text/StageText'
 import { ChordReadout } from '../text/ChordReadout'
 import { StageRenderer, rangeFromProp } from '../../core/render/stageRenderer'
 import { readTheme } from '../../core/render/theme'
+import { viewOrientation } from '../../core/render/orientation'
 import { ChordFeed } from '../../core/music/chordFeed'
 import { KeyContextCache } from '../../core/music/keyOf'
 import { displayChordSymbol } from '../../core/music/chords'
@@ -114,8 +115,7 @@ export function StageView(p: StageViewProps & StageViewKindProps) {
         showRoll: props.kind !== 'keyboard',
         range: rangeFromProp(props.range),
         live: liveMap,
-        // The keyboard-only view is always vertical (R-H covers the rolls only).
-        orientation: props.kind === 'keyboard' ? undefined : props.orientation,
+        orientation: viewOrientation(props.kind, props.orientation),
         rising: props.kind === 'rising'
           ? {
               bpm: c.bpm,
@@ -189,7 +189,7 @@ export function StageView(p: StageViewProps & StageViewKindProps) {
     return () => { off(); ro?.disconnect() }
   }, [iv.frames, renderer, chordFeed, keys])
 
-  const orientation = p.kind === 'keyboard' ? undefined : p.orientation
+  const orientation = viewOrientation(p.kind, p.orientation)
   const themeName = p.theme ?? iv.settings.theme.name
   const override = iv.settings.theme.stageBgOverride
   const style: CSSProperties = {

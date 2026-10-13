@@ -17,6 +17,12 @@ export function canonicalSize(o: Orientation | undefined, w: number, h: number):
   return o === 'horizontal' ? [h, w] : [w, h]
 }
 
+/** The orientation a view actually draws in: only the falling and rising rolls
+    turn (R-H); the keyboard-only view (and anything else) is always vertical. */
+export function viewOrientation(view: string, o: Orientation | undefined): Orientation | undefined {
+  return view === 'falling' || view === 'rising' ? o : undefined
+}
+
 /** The canonical frame a layout was computed for. */
 export function canonicalExtent(layout: KeyboardLayout): { w: number; h: number } {
   return { w: layout.stageW, h: layout.hitY + layout.keyboardH }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { computeLayout } from './geometry'
-import { applyOrientation, canonicalSize, fromScreen, pitchAtScreen, toScreen } from './orientation'
+import { applyOrientation, canonicalSize, viewOrientation, fromScreen, pitchAtScreen, toScreen } from './orientation'
 import type { KeyRect, KeyboardLayout } from './geometry'
 
 const W = 1220   // screen width
@@ -68,5 +68,14 @@ describe('horizontal orientation (rising-roll spec §2 Orientation, R-H)', () =>
     expect(calls).toEqual([])
     applyOrientation(ctx, 'horizontal', layout)
     expect(calls).toEqual([[0, -1, -1, 0, 1220, 600]])
+  })
+})
+
+describe('viewOrientation', () => {
+  it('rolls keep their orientation; the keyboard-only view is always vertical', () => {
+    expect(viewOrientation('falling', 'horizontal')).toBe('horizontal')
+    expect(viewOrientation('rising', 'horizontal')).toBe('horizontal')
+    expect(viewOrientation('keyboard', 'horizontal')).toBeUndefined()
+    expect(viewOrientation('notation', 'horizontal')).toBeUndefined()
   })
 })

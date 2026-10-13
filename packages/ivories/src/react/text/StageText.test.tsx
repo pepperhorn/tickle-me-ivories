@@ -198,3 +198,21 @@ describe('labelPosition (R-H)', () => {
     expect(Number.parseFloat(String(p.left))).toBeCloseTo(4, 6)
   })
 })
+
+describe('labelPosition with no room above the keys (keyboard-only)', () => {
+  it("'above' falls back onto the key face when hitY is 0", () => {
+    const l = computeLayout(1220, 100, { maxKeyboardFraction: 1 })
+    const k = l.byPitch.get(60)!
+    const size = 0.6 * l.whiteW
+    const top = parseFloat(String(labelPosition(l, k, 'above', size).top))
+    expect(top).toBeGreaterThanOrEqual(0)
+    expect(labelPosition(l, k, 'above', size)).toEqual(labelPosition(l, k, 'below', size))
+  })
+
+  it("'above' is unchanged when the roll leaves room", () => {
+    const l = computeLayout(1220, 600)
+    const k = l.byPitch.get(60)!
+    const size = 0.6 * l.whiteW
+    expect(parseFloat(String(labelPosition(l, k, 'above', size).top))).toBeCloseTo(l.hitY - size * 1.5, 9)
+  })
+})

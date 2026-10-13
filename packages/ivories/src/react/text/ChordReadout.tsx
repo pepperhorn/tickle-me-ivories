@@ -40,8 +40,12 @@ export function chordPosition(
   switch (placement) {
     case 'stage-centre':
       return { left: '50%', top: `${size * 0.6}px`, transform: 'translateX(-50%)' }
-    case 'above-keys':
-      return { left: '50%', top: `${layout.hitY - size * 2.6}px`, transform: 'translateX(-50%)' }
+    case 'above-keys': {
+      // No room above the keys (keyboard-only view filling its stage): sit at
+      // the top of the stage rather than off it.
+      const top = layout.hitY - size * 2.6
+      return { left: '50%', top: `${top >= 0 ? top : size * 0.6}px`, transform: 'translateX(-50%)' }
+    }
     default:
       return { left: `${size * 0.6}px`, top: `${size * 0.6}px` }
   }

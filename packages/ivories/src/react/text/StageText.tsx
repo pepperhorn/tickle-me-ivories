@@ -75,9 +75,11 @@ export function labelPosition(
     return { left: `${p.x}px`, top: `${p.y}px`, transform: 'translateY(-50%)' }
   }
   // Above: just clear of the hit line, in the stage area. Below: over the
-  // key face, clear of the black keys' lower edge.
-  const top = placement === 'above'
-    ? layout.hitY - size * 1.5
+  // key face, clear of the black keys' lower edge. With no room above (a
+  // keyboard-only view filling its stage) 'above' falls back to 'below'.
+  const above = layout.hitY - size * 1.5
+  const top = placement === 'above' && above >= 0
+    ? above
     : layout.hitY + layout.keyboardH - size * 1.6
   return { left: `${cx}px`, top: `${top}px`, transform: 'translateX(-50%)' }
 }

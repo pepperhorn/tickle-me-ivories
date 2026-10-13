@@ -258,6 +258,10 @@ describe('keyboardAspect', () => {
     expect(keyboardAspect([36, 96])).toBeCloseTo(36 / 5.8, 12)
   })
 
+  it('accepts a reversed range', () => {
+    expect(keyboardAspect([96, 36])).toBeCloseTo(36 / 5.8, 12)
+  })
+
   it('widens a range to whole black-key groups like the range prop', () => {
     expect(keyboardAspect([38, 91])).toBeCloseTo(keyboardAspect([36, 95]), 12)
   })

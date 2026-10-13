@@ -97,3 +97,18 @@ describe('chordPosition (R-H)', () => {
     expect(chordPosition('stage-left', layout, 20, 'horizontal')).toEqual({ left: `${layout.keyboardH + 12}px`, top: '12px' })
   })
 })
+
+describe('chordPosition with no room above the keys (keyboard-only)', () => {
+  it("'above-keys' stays in the stage when hitY is 0", () => {
+    const l = computeLayout(1220, 100, { maxKeyboardFraction: 1 })
+    const size = 20
+    const pos = chordPosition('above-keys', l, size)
+    expect(parseFloat(String(pos.top))).toBeGreaterThanOrEqual(0)
+    expect(pos.top).toBe(`${size * 0.6}px`)
+  })
+
+  it("'above-keys' is unchanged when the roll leaves room", () => {
+    const l = computeLayout(1220, 600)
+    expect(chordPosition('above-keys', l, 20).top).toBe(`${l.hitY - 20 * 2.6}px`)
+  })
+})

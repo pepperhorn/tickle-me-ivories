@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from 'react-dom'
 import { AudioClock, AudioEngine } from 'ivories/core'
 import { effectiveBpmAt } from 'ivories/core'
-import { singleLayout, sourceAt } from 'ivories/core'
+import { singleLayout } from 'ivories/core'
 import { NO_LEAD_IN, leadInFor } from 'ivories/core'
 import { sceneForShare } from 'ivories/core'
 import { bindTransportClock, useTransport } from './transport/useTransport'
@@ -27,7 +27,7 @@ import { StudioSettings } from './studio/StudioSettings'
 import { useLiveMidi } from './studio/liveMidi'
 import { RecordControl } from './studio/RecordControl'
 import { useStudioStage } from './studio/stageStore'
-import { primarySlot, withPrimaryMode } from './studio/modeSync'
+import { primaryOrientation, primarySlot, withPrimaryMode } from './studio/modeSync'
 import { LayoutToolbar } from './studio/LayoutToolbar'
 import { LiveSessionBar } from './studio/LiveSessionBar'
 
@@ -83,8 +83,7 @@ export default function App() {
   const viewProps = useMemo<StageSlotViewProps>(() => ({ input: midiInput }), [midiInput])
   // Only the primary keys slot reports geometry to CountIn; with none, it has none.
   const primary = primarySlot(stage.layout)
-  const primarySource = primary ? sourceAt(stage.layout, primary) : null
-  const primaryOrientation = primarySource?.kind === 'ivories' ? primarySource.orientation : undefined
+  const orientation = primaryOrientation(stage.layout)
   const slotViewProps = useMemo<Partial<Record<SlotName, StageSlotViewProps>>>(
     () => (primary ? { [primary]: { onLayout: setKbLayout } } : {}),
     [primary],
@@ -167,7 +166,7 @@ export default function App() {
       gate={gate.startGate}
       onTapToStart={gate.requestStart}
       keyboardH={kbLayout?.keyboardH ?? 0}
-      orientation={primaryOrientation}
+      orientation={orientation}
     />
   )
 

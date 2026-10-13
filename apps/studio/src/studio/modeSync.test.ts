@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { primarySlot, withPrimaryMode } from './modeSync'
+import { primaryOrientation, primarySlot, withPrimaryMode } from './modeSync'
 import type { Layout } from 'ivories/core'
 
 const cam = { kind: 'camera', mode: 'webcam', mirror: true, fit: 'cover' } as const
@@ -29,5 +29,21 @@ describe('display mode <-> layout (R7)', () => {
   it('keyboard -> roll gives a plain falling slot', () => {
     const k: Layout = { kind: 'single', main: { kind: 'ivories', view: 'keyboard' } }
     expect(withPrimaryMode(k, 'roll')).toEqual({ kind: 'single', main: { kind: 'ivories', view: 'falling' } })
+  })
+})
+
+describe('primaryOrientation (CountIn placement)', () => {
+  it('a horizontal roll is horizontal', () => {
+    const r: Layout = { kind: 'single', main: { kind: 'ivories', view: 'rising', orientation: 'horizontal' } }
+    expect(primaryOrientation(r)).toBe('horizontal')
+  })
+
+  it('a keyboard slot with a stored horizontal orientation is vertical (it draws vertical)', () => {
+    const k = { kind: 'single', main: { kind: 'ivories', view: 'keyboard', orientation: 'horizontal' } } as Layout
+    expect(primaryOrientation(k)).toBeUndefined()
+  })
+
+  it('no keys slot: undefined', () => {
+    expect(primaryOrientation({ kind: 'single', main: cam })).toBeUndefined()
   })
 })

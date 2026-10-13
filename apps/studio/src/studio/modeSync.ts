@@ -1,5 +1,5 @@
-import { layoutReducer, slotsOf, sourceAt, viewForMode } from 'ivories/core'
-import type { DisplayMode, IvoriesView, Layout, SlotName } from 'ivories/core'
+import { layoutReducer, slotsOf, sourceAt, viewForMode, viewOrientation } from 'ivories/core'
+import type { DisplayMode, IvoriesView, Layout, Orientation, SlotName } from 'ivories/core'
 
 export function modeForView(v: IvoriesView): DisplayMode | null {
   // A rising slot is a roll too (R-M), so it can be the primary keys slot.
@@ -13,6 +13,14 @@ export function primarySlot(l: Layout): SlotName | null {
     if (s?.kind === 'ivories' && modeForView(s.view)) return name
   }
   return null
+}
+
+/** How the primary keys slot actually draws (CountIn sits beside a horizontal
+    keyboard): a keyboard slot is vertical whatever orientation it stored. */
+export function primaryOrientation(l: Layout): Orientation | undefined {
+  const slot = primarySlot(l)
+  const s = slot ? sourceAt(l, slot) : null
+  return s?.kind === 'ivories' ? viewOrientation(s.view, s.orientation) : undefined
 }
 
 /** The layout with its primary keys slot showing `mode`; the same object when nothing changes. */
