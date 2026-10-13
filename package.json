@@ -14,6 +14,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:notation": "node scripts/e2e-notation.mjs",
+    "test:e2e:plugin": "node scripts/e2e-plugin.mjs",
     "check:imports": "node scripts/check-public-imports.mjs",
     "check": "npm run test:geometry && npm run check:imports && npm run check:hosting && npm run test:scripts && npm run check:css -w packages/ivories",
     "test:geometry": "node tests/geometry-check.mjs",
