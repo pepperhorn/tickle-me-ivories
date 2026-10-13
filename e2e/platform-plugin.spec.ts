@@ -4,7 +4,6 @@
  * Run through `npm run test:e2e:plugin`, never on its own: it builds the plugin
  * against the mock and starts the mock as a Playwright webServer.
  */
-import { mkdirSync } from 'node:fs'
 import { test, expect } from './fixtures'
 import type { Page } from './fixtures'
 
@@ -12,10 +11,7 @@ test.skip(process.env.TICKLE_PLUGIN_E2E !== '1', 'run through npm run test:e2e:p
 
 const CODE = '12345678' // the mock gateway's fixed code
 const GW = `http://localhost:${process.env.E2E_GW_PORT ?? 8790}`
-const SHOTS = '/tmp/plugin-e2e'
 const SHARE_URL = /^http:\/\/localhost:\d+\/s\/([A-Za-z0-9]{10})$/
-
-test.beforeAll(() => { mkdirSync(SHOTS, { recursive: true }) })
 
 /** Signs in with the mock's fixed code; returns the handle the trigger shows. */
 async function signIn(page: Page, email: string): Promise<string> {
@@ -48,6 +44,11 @@ async function saveScene(page: Page, name: string) {
   return row
 }
 
+/** A screenshot in this test's output directory (test-results/...). */
+async function shot(page: Page, name: string) {
+  await page.screenshot({ path: test.info().outputPath(`${name}.png`) })
+}
+
 /** The share as the gateway serves it to anyone holding the link. */
 async function resolveShare(page: Page, code: string) {
   const res = await page.request.get(`${GW}/ph/v1/shares/${code}?appSlug=tickle-me-ivories`)
@@ -72,7 +73,7 @@ test('sign in, save to the account, share it, a guest previews and saves a copy,
   await row.locator('.btn-get-share-link').click()
   const url = await row.locator('.share-url').inputValue()
   expect(url).toMatch(SHARE_URL)
-  await page.screenshot({ path: `${SHOTS}/owned-share-link.png` })
+  await shot(page, 'owned-share-link')
 
   const guestContext = await browser.newContext()
   const guest = await guestContext.newPage()
@@ -81,14 +82,14 @@ test('sign in, save to the account, share it, a guest previews and saves a copy,
   const banner = guest.locator('.shared-preview-banner')
   await expect(banner).toContainText('Shared scene')
   await expect(banner).toContainText(handle)
-  await guest.screenshot({ path: `${SHOTS}/guest-preview.png` })
+  await shot(guest, 'guest-preview')
   await banner.locator('.btn-save-copy').click()
   await expect(banner.locator('.btn-save-copy')).toHaveText('Saved')
   await expect(banner.locator('.btn-save-copy')).toBeDisabled()
   // Signed out, the copy lands in the guest's browser saves.
   await guest.locator('.btn-open-scenes').click()
   await expect(guest.locator('.scenes-empty-card .scene-row--scene')).toHaveCount(1)
-  await guest.screenshot({ path: `${SHOTS}/guest-saved-copy.png` })
+  await shot(guest, 'guest-saved-copy')
 
   await guestContext.close()
 
@@ -99,7 +100,7 @@ test('sign in, save to the account, share it, a guest previews and saves a copy,
   const late = await lateContext.newPage()
   await late.goto(new URL(url).pathname)
   await expect(late.locator('.shared-preview-banner--error')).toContainText('removed')
-  await late.screenshot({ path: `${SHOTS}/link-after-stop.png` })
+  await shot(late, 'link-after-stop')
   await lateContext.close()
 })
 
@@ -123,7 +124,7 @@ test('signed out, a look share is an anonymous link; Stop sharing uses the store
   await guest.goto(`/s/${code}`)
   await expect(guest.locator('.shared-preview-banner')).toContainText('Shared look')
 
-  await page.screenshot({ path: `${SHOTS}/anonymous-share.png` })
+  await shot(page, 'anonymous-share')
   await page.locator('.btn-stop-sharing--anonymous').click()
   await expect(page.locator('.share-panel .share-status')).toContainText('Sharing stopped')
   await expect(field).toHaveCount(0)
@@ -151,11 +152,15 @@ test('a webcam scene keeps its camera in the account but the shared link drops i
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState), { timeout: 10_000 }).toBeGreaterThanOrEqual(2)
 
   await openScenes(page)
-  // The account save keeps the deviceId: the note below appears only when sharing would strip one.
   const row = await saveScene(page, 'Cam scene')
+  // Opening Share reads the save back from the gateway: the account copy keeps the camera.
+  const savedRead = page.waitForResponse((r) => r.request().method() === 'GET' && /\/ph\/v1\/saves\/scene\//.test(r.url()))
   await row.getByRole('button', { name: 'Share Cam scene' }).click()
+  const saved = await savedRead
+  expect(saved.status()).toBe(200)
+  expect(await saved.text()).toContain(`"deviceId":${JSON.stringify(deviceId)}`)
   await expect(row.locator('.share-camera-note')).toContainText('removes this browser’s camera choice')
-  await page.screenshot({ path: `${SHOTS}/webcam-camera-note.png` })
+  await shot(page, 'webcam-camera-note')
   await row.locator('.btn-get-share-link').click()
   const code = SHARE_URL.exec(await row.locator('.share-url').inputValue())![1]
   await expect(row.locator('.share-camera-note')).toHaveCount(0)
@@ -178,7 +183,7 @@ test('a second sign-in shows two devices, and one can be signed out', async ({ p
   await page.locator('.account-menu-trigger--signed-in').click()
   await page.locator('.btn-show-devices').click()
   await expect(page.locator('.account-device')).toHaveCount(2)
-  await page.screenshot({ path: `${SHOTS}/devices.png` })
+  await shot(page, 'devices')
   await page.locator('.account-device', { hasNotText: '(this device)' }).locator('.btn-revoke-device').click()
   await expect(page.locator('.account-device')).toHaveCount(1)
   await other.reload()
