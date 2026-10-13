@@ -5,6 +5,7 @@ import './index.css'
 import App from './App.tsx'
 import { DebugRoute } from './debug/DebugRoute'
 import { EmbedFixture } from './embed/EmbedFixture'
+import { startPlatform } from './platform/boot'
 
 const path = window.location.pathname.replace(/\/+$/, '')
 const isDebug = path === '/debug'
@@ -15,3 +16,5 @@ createRoot(document.getElementById('root')!).render(
     {isDebug ? <DebugRoute /> : isFixture ? <EmbedFixture /> : <App />}
   </StrictMode>,
 )
+
+void startPlatform(window.location.pathname)
