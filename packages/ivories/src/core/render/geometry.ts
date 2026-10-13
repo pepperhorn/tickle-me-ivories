@@ -25,6 +25,9 @@ export interface GeometryOpts {
   trueOffsets: boolean    // false reproduces the naive boundary-centred bug
   firstPitch: number      // lowest pitch on the visible keyboard
   lastPitch: number       // highest pitch on the visible keyboard
+  /** Most of the stage height the keyboard may take. 0.55 leaves room for a
+      roll above; keyboard-only views pass 1. The aspect cap always applies. */
+  maxKeyboardFraction: number
 }
 
 export const FIRST_PITCH = 21
@@ -57,6 +60,7 @@ export const DEFAULT_GEOMETRY: GeometryOpts = {
   trueOffsets: true,
   firstPitch: FIRST_PITCH,
   lastPitch: LAST_PITCH,
+  maxKeyboardFraction: 0.55,
 }
 
 export function isBlackKey(pitch: number): boolean {
@@ -126,7 +130,9 @@ export function computeLayout(
   const blackW = Math.max(3, whiteW * o.blackWRatio)
   // Height derives from key WIDTH, never from the viewport. Taking it from stage
   // height gave 19.5:1 in phone portrait. The cap only bites on short windows.
-  const keyboardH = Math.min(whiteW * o.aspect, stageH * 0.55)
+  // Keyboard-only views (maxKeyboardFraction 1) may fill the stage; a stage
+  // taller than the natural aspect keeps keys anchored to the bottom.
+  const keyboardH = Math.min(whiteW * o.aspect, stageH * o.maxKeyboardFraction)
   const blackH = keyboardH * o.blackLenRatio
   const hitY = stageH - keyboardH
 
@@ -147,6 +153,19 @@ export function computeLayout(
     whiteW, blackW, keyboardH, blackH, hitY,
     stageW, whiteCount: count,
   }
+}
+
+/**
+ * Width / height of a keyboard drawn at its natural proportion (white keys
+ * 5.8x as long as wide): use as CSS `aspect-ratio` on a keyboard-only embed so
+ * the keys fill the box exactly. `range` is widened to whole black-key groups,
+ * as the views' `range` prop is. 'full' (or absent) is the 88-key piano.
+ */
+export function keyboardAspect(range: 'full' | [number, number] = 'full'): number {
+  const [lo, hi] = range === 'full'
+    ? [FIRST_PITCH, LAST_PITCH]
+    : ensureFullBlackKeyGroups(Math.min(range[0], range[1]), Math.max(range[0], range[1]))
+  return whiteKeyCount(lo, hi) / DEFAULT_GEOMETRY.aspect
 }
 
 /** Hit-test a point. Black keys are tested first because they sit on top. */

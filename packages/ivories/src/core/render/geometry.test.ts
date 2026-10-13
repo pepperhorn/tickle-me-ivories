@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  computeLayout, pitchAt, ensureFullBlackKeyGroups, fitRange, whiteKeyCount,
+  computeLayout, pitchAt, ensureFullBlackKeyGroups, fitRange, whiteKeyCount, keyboardAspect,
   FIRST_PITCH, LAST_PITCH,
 } from './geometry'
 import type { KeyboardLayout } from './geometry'
@@ -217,5 +217,54 @@ describe('computeLayout with a pitch range', () => {
     const gSharp = l.byPitch.get(68)!
     const a = l.byPitch.get(69)!
     expect(gSharp.x + gSharp.w / 2).toBeCloseTo(a.x, 6)
+  })
+})
+
+describe('keyboard-only geometry (maxKeyboardFraction)', () => {
+  it('falling/rising default is unchanged: capped at 55% of a short stage', () => {
+    const l = computeLayout(1220, 200)
+    expect(l.keyboardH).toBeCloseTo(110, 9)
+    expect(l.hitY).toBeCloseTo(90, 9)
+  })
+
+  it('keyboard-only fills a short stage top to bottom', () => {
+    const l = computeLayout(1220, 100, { maxKeyboardFraction: 1 })
+    expect(l.keyboardH).toBeCloseTo(100, 9)
+    expect(l.hitY).toBeCloseTo(0, 9)
+    expect(l.blackH).toBeCloseTo(100 * 0.655, 9)
+  })
+
+  it('keyboard-only never exceeds the natural 5.8 aspect; extra height sits above (anchored to bottom)', () => {
+    const l = computeLayout(1220, 600, { maxKeyboardFraction: 1 })
+    expect(l.keyboardH / l.whiteW).toBeCloseTo(5.8, 9)
+    expect(l.hitY).toBeCloseTo(600 - l.keyboardH, 9)
+  })
+
+  it('keyboard-only key x/w are identical to the default layout', () => {
+    const a = computeLayout(1220, 100)
+    const b = computeLayout(1220, 100, { maxKeyboardFraction: 1 })
+    expect(b.keys.map((k) => [k.x, k.w])).toEqual(a.keys.map((k) => [k.x, k.w]))
+  })
+})
+
+describe('keyboardAspect', () => {
+  it('88 keys: 52 white keys / 5.8', () => {
+    expect(keyboardAspect()).toBeCloseTo(52 / 5.8, 12)
+    expect(keyboardAspect('full')).toBeCloseTo(52 / 5.8, 12)
+  })
+
+  it('[36, 96]: 36 white keys / 5.8', () => {
+    expect(whiteKeyCount(36, 96)).toBe(36)
+    expect(keyboardAspect([36, 96])).toBeCloseTo(36 / 5.8, 12)
+  })
+
+  it('widens a range to whole black-key groups like the range prop', () => {
+    expect(keyboardAspect([38, 91])).toBeCloseTo(keyboardAspect([36, 95]), 12)
+  })
+
+  it('matches the layout a keyboard-only view draws in a box of that aspect', () => {
+    const w = 1000
+    const l = computeLayout(w, w / keyboardAspect([36, 96]), { firstPitch: 36, lastPitch: 96, maxKeyboardFraction: 1 })
+    expect(l.hitY).toBeCloseTo(0, 9)
   })
 })

@@ -114,7 +114,8 @@ export function StageView(p: StageViewProps & StageViewKindProps) {
         showRoll: props.kind !== 'keyboard',
         range: rangeFromProp(props.range),
         live: liveMap,
-        orientation: props.orientation,
+        // The keyboard-only view is always vertical (R-H covers the rolls only).
+        orientation: props.kind === 'keyboard' ? undefined : props.orientation,
         rising: props.kind === 'rising'
           ? {
               bpm: c.bpm,
@@ -188,6 +189,7 @@ export function StageView(p: StageViewProps & StageViewKindProps) {
     return () => { off(); ro?.disconnect() }
   }, [iv.frames, renderer, chordFeed, keys])
 
+  const orientation = p.kind === 'keyboard' ? undefined : p.orientation
   const themeName = p.theme ?? iv.settings.theme.name
   const override = iv.settings.theme.stageBgOverride
   const style: CSSProperties = {
@@ -202,13 +204,13 @@ export function StageView(p: StageViewProps & StageViewKindProps) {
       ref={rootRef}
       className={cx('ivories', 'ivories-view', `ivories-${p.kind}`, `ivories-theme-${themeName}`, p.className)}
       data-ivories-view={p.kind}
-      data-orientation={p.orientation ?? 'vertical'}
+      data-orientation={orientation ?? 'vertical'}
       data-bpm={p.kind === 'rising' ? iv.bpm : undefined}
       style={style}
     >
       <canvas ref={canvasRef} className="ivories-canvas" />
-      <StageText layout={overlay.layout} pitches={overlay.pitches} text={text} keyContext={keyContext} orientation={p.orientation} />
-      <ChordReadout layout={overlay.layout} value={chord} text={text} orientation={p.orientation} />
+      <StageText layout={overlay.layout} pitches={overlay.pitches} text={text} keyContext={keyContext} orientation={orientation} />
+      <ChordReadout layout={overlay.layout} value={chord} text={text} orientation={orientation} />
       {failed && <p className="ivories-message" role="alert">This view stopped working.</p>}
       {!failed && error && <p className="ivories-message" role="alert">{error.message}</p>}
       {status.loading && !iv.score && <p className="ivories-message" role="status">Loading score…</p>}

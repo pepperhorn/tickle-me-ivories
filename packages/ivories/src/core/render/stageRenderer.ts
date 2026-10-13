@@ -1,4 +1,4 @@
-import { computeLayout, ensureFullBlackKeyGroups, fitRange, FIRST_PITCH, LAST_PITCH } from './geometry'
+import { computeLayout, DEFAULT_GEOMETRY, ensureFullBlackKeyGroups, fitRange, FIRST_PITCH, LAST_PITCH } from './geometry'
 import { drawStage } from './pianoRoll'
 import type { KeyboardLayout } from './geometry'
 import type { RenderState } from './pianoRoll'
@@ -58,7 +58,7 @@ export function rangeFromProp(range: 'full' | [number, number] | undefined): [nu
  */
 export class StageRenderer {
   private voices: { score: ScoreDocument | null; map: Map<string, Voice> } = { score: null, map: new Map() }
-  private layoutCache: { w: number; h: number; first: number; last: number; layout: KeyboardLayout } | null = null
+  private layoutCache: { w: number; h: number; first: number; last: number; frac: number; layout: KeyboardLayout } | null = null
   private rangeCache: { score: ScoreDocument | null; zoom: ZoomMode; range: [number, number] } = {
     score: null, zoom: 'full', range: [FIRST_PITCH, LAST_PITCH],
   }
@@ -74,7 +74,8 @@ export class StageRenderer {
     // A hidden container reports 0x0; clamp so geometry never divides by zero.
     // Horizontal views compute the canonical geometry on the swapped box (R-H).
     const [cw, ch] = canonicalSize(input.orientation, Math.max(1, w), Math.max(1, h))
-    const layout = this.layoutFor(cw, ch, first, last)
+    // Keyboard-only (roll hidden) lets the keys use the whole stage height.
+    const layout = this.layoutFor(cw, ch, first, last, input.showRoll ? DEFAULT_GEOMETRY.maxKeyboardFraction : 1)
     const rs: RenderState = {
       notes: input.score?.notes ?? [],
       voices: this.voicesFor(input.score),
@@ -121,12 +122,13 @@ export class StageRenderer {
     return this.voices.map
   }
 
-  // Cached by (w, h, first, last): 88 KeyRects and a Map only on resize or zoom.
-  layoutFor(w: number, h: number, first: number, last: number): KeyboardLayout {
+  // Cached by (w, h, first, last, frac): 88 KeyRects and a Map only on resize or zoom.
+  layoutFor(w: number, h: number, first: number, last: number,
+    frac: number = DEFAULT_GEOMETRY.maxKeyboardFraction): KeyboardLayout {
     const c = this.layoutCache
-    if (!c || c.w !== w || c.h !== h || c.first !== first || c.last !== last) {
-      const layout = computeLayout(w, h, { firstPitch: first, lastPitch: last })
-      this.layoutCache = { w, h, first, last, layout }
+    if (!c || c.w !== w || c.h !== h || c.first !== first || c.last !== last || c.frac !== frac) {
+      const layout = computeLayout(w, h, { firstPitch: first, lastPitch: last, maxKeyboardFraction: frac })
+      this.layoutCache = { w, h, first, last, frac, layout }
       return layout
     }
     return c.layout

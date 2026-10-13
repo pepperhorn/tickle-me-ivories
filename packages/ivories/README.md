@@ -97,6 +97,20 @@ Props shared by every slot go in `viewProps`; `slotViewProps` overrides them for
 />
 ```
 
+## Sizing a keyboard-only view
+
+`<Keyboard>` (and `view="keyboard"`) has no roll, so its keys may use the whole height of the box, up to their natural proportion (white keys 5.8x as long as wide). A box taller than that keeps the keys anchored to the bottom edge with empty stage above; a shorter box gives shorter keys. The keyboard-only view is always vertical; `orientation` applies only to the falling and rising views. Falling and rising views still cap the keyboard at 55% of the stage height to leave room for the roll.
+
+To size the box so the keys fill it exactly, use `keyboardAspect(range?)` from `ivories/core` as the CSS `aspect-ratio`. It returns width / height for `'full'` (the default, 88 keys: 52 / 5.8) or a `[low, high]` range, widened to whole black-key groups as the `range` prop is.
+
+```tsx
+import { keyboardAspect } from 'ivories/core'
+
+<div className="keyboard-embed" style={{ width: '100%', aspectRatio: keyboardAspect([36, 96]) }}>
+  <Keyboard range={[36, 96]} height="100%" />
+</div>
+```
+
 ## Live MIDI
 
 `<Keyboard input="midi" />` lights keys from Web MIDI (sustain pedal included) in a distinct colour and fires `onNoteOn/Off` with `source: 'live'`; `liveAudio` on the provider sounds them.

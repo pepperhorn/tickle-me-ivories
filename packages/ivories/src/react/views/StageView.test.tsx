@@ -116,6 +116,39 @@ describe('Keyboard and FallingKeys (spec §4)', () => {
     expect(onError.mock.calls[0][0].code).toBe('render-failed')
     expect(consoleError).not.toHaveBeenCalled()
   })
+  it('Keyboard (roll hidden) lays out keys over the full stage height; FallingKeys keeps the 55% cap', async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
+      (() => stubCtx().ctx) as unknown as typeof HTMLCanvasElement.prototype.getContext,
+    )
+    vi.spyOn(HTMLCanvasElement.prototype, 'getBoundingClientRect').mockReturnValue(
+      { width: 1220, height: 100, x: 0, y: 0, top: 0, left: 0, right: 1220, bottom: 100, toJSON: () => ({}) } as DOMRect,
+    )
+    const kb = vi.fn<(layout: KeyboardLayout) => void>()
+    const fall = vi.fn<(layout: KeyboardLayout) => void>()
+    render(
+      <IvoriesProvider score={doc()} engine={fakeEngine()} clock={new AudioClock({ currentTime: 0 })}>
+        <Keyboard onLayout={kb} />
+        <FallingKeys onLayout={fall} />
+      </IvoriesProvider>,
+    )
+    await waitFor(() => { expect(kb).toHaveBeenCalled(); expect(fall).toHaveBeenCalled() })
+    expect(kb.mock.calls[0][0].keyboardH).toBeCloseTo(100, 6)
+    expect(kb.mock.calls[0][0].hitY).toBeCloseTo(0, 6)
+    expect(fall.mock.calls[0][0].keyboardH).toBeCloseTo(55, 6)
+  })
+
+  it('Keyboard ignores an orientation prop and stays vertical', async () => {
+    const stub = stubCtx()
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
+      (() => stub.ctx) as unknown as typeof HTMLCanvasElement.prototype.getContext,
+    )
+    const props = { orientation: 'horizontal' } as Record<string, unknown>
+    const { container } = render(<Keyboard score={doc()} engine={fakeEngine()} {...props} />)
+    await waitFor(() => expect(stub.calls.length).toBeGreaterThan(0))
+    expect(stub.calls).not.toContain('transform(6)')
+    expect(container.querySelector('.ivories-keyboard')!.getAttribute('data-orientation')).toBe('vertical')
+  })
+
   it('FallingKeys orientation="horizontal" draws under the reflection and marks its root', async () => {
     const stub = stubCtx()
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
