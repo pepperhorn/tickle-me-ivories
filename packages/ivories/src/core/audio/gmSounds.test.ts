@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { MockInstance } from 'vitest'
 import {
   SOUNDS_VERSION, defaultSoundsBase, gmInstrumentFactory, gmInstrumentName, packIndexUrl,
   resetGmSoundCaches, resolveSoundsBase, sampleUrl,
@@ -42,7 +43,12 @@ function harness(routes: Record<string, Route>, o: SoundsOption = {}) {
   return { fallback, made, makeSampler, fetch, make }
 }
 
-beforeEach(() => { resetGmSoundCaches() })
+let warn: MockInstance<typeof console.warn>
+beforeEach(() => {
+  resetGmSoundCaches()
+  warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+})
+afterEach(() => { warn.mockRestore() })
 
 describe('GM sound URLs (rising-roll spec §2 GM sounds, R-G)', () => {
   it('defaults to the core pack on jsDelivr, pinned like pepperscore', () => {
@@ -133,5 +139,48 @@ describe('gmInstrumentFactory (R-G)', () => {
     }, { assetBaseUrl: 'https://cdn.example.test/gm', instrument: 'bright_acoustic_piano' })
     await h.make(fakeCtx() as never, 'acoustic_grand_piano', dest, null)
     expect(h.makeSampler).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('GM failures go to the console, once per message (fix round 1)', () => {
+  const FAILED = `[ivories] audio: GM sound "acoustic_grand_piano" from ${CORE} failed; using the default piano`
+
+  it('an unreachable pack warns once across the piano voice and live bus builds', async () => {
+    const h = harness({ [`${CORE}pack.json`]: new Error('offline'), [PIANO_URL]: 503 })
+    const ctx = fakeCtx() as never
+    await h.make(ctx, 'acoustic_grand_piano', dest, null) // the piano voice
+    await h.make(ctx, 'acoustic_grand_piano', dest, null) // the live bus
+    const msgs = warn.mock.calls.map(([m]) => m)
+    expect(msgs.filter((m) => m === FAILED)).toHaveLength(1)
+    expect(msgs.filter((m) => m === `[ivories] audio: GM sound pack index ${CORE}pack.json is unreachable`)).toHaveLength(1)
+    expect(warn.mock.calls.find(([m]) => m === FAILED)?.[1]).toBeInstanceOf(Error)
+    resetGmSoundCaches()
+    await h.make(ctx, 'acoustic_grand_piano', dest, null)
+    expect(warn.mock.calls.filter(([m]) => m === FAILED)).toHaveLength(2)
+  })
+
+  it('warns on an unsafe name and on an explicit sounds.instrument missing from the pack', async () => {
+    await harness({}, { instrument: '../../evil' }).make(fakeCtx() as never, 'acoustic_grand_piano', dest, null)
+    await harness({ [`${CORE}pack.json`]: INDEX }, { instrument: 'harpsichord' }).make(fakeCtx() as never, 'acoustic_grand_piano', dest, null)
+    const msgs = warn.mock.calls.map(([m]) => m)
+    expect(msgs).toContain('[ivories] audio: GM sound name "../../evil" is not a safe pack name; using the default piano')
+    expect(msgs).toContain(`[ivories] audio: GM sound "harpsichord" is not in the pack at ${CORE}; using the default piano`)
+  })
+
+  it('a non-piano voice missing from the pack keeps the Soundfont path quietly', async () => {
+    await harness({ [`${CORE}pack.json`]: INDEX }).make(fakeCtx() as never, 'violin', dest, null)
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('a Sampler whose ready rejects is disposed before falling back', async () => {
+    const dispose = vi.fn()
+    const fallback = vi.fn(async (_c: BaseAudioContext, id: string) => ({ fallback: id }) as never)
+    const make = gmInstrumentFactory({}, fallback, {
+      fetch: fakeFetch({ [`${CORE}pack.json`]: INDEX, [PIANO_URL]: PIANO }) as unknown as FetchJson,
+      makeSampler: () => ({ dispose, ready: Promise.reject(new Error('decode')) }) as never,
+    })
+    expect(await make(fakeCtx() as never, 'acoustic_grand_piano', dest, null)).toEqual({ fallback: 'acoustic_grand_piano' })
+    expect(dispose).toHaveBeenCalledTimes(1)
+    expect(warn.mock.calls.map(([m]) => m)).toContain(FAILED)
   })
 })

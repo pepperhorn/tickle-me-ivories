@@ -380,6 +380,27 @@ describe('AudioEngine sounds option (R-G)', () => {
     expect(sampler.start).toHaveBeenCalledWith({ note: 60, velocity: 90 })
   })
 
+  it('an unreachable pack index warns once across the piano voice and the live bus (fix round 1)', async () => {
+    resetGmSoundCaches()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const ctx = { ...fakeContext(), decodeAudioData: vi.fn(async () => ({}) as AudioBuffer) }
+    const fetchJson = vi.fn(async (url: string) => (url.endsWith('pack.json')
+      ? { ok: false, status: 503, json: async () => ({}) }
+      : { ok: true, status: 200, json: async () => ({ name: 'acoustic_grand_piano', samples: { 60: btoa('x') } }) }))
+    const sampler = { start: vi.fn(() => () => {}), stop: vi.fn(), dispose: vi.fn(), ready: Promise.resolve() }
+    const engine = new AudioEngine({
+      makeContext: () => ctx as unknown as AudioContext,
+      sounds: {},
+      soundsDeps: { fetch: fetchJson, makeSampler: () => sampler as never },
+    })
+    await engine.loadVoice(voice('v1'))
+    await engine.prepareLive()
+    expect(fetchJson.mock.calls.filter(([u]) => u.endsWith('pack.json'))).toHaveLength(2)
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn.mock.calls[0][0]).toBe('[ivories] audio: GM sound pack index https://cdn.jsdelivr.net/npm/pepperscore-sounds-core@0.1.0/pack.json is unreachable')
+    warn.mockRestore()
+  })
+
   it('an explicit makeInstrument still wins over sounds (tests and hosts keep their seam)', async () => {
     const { made, makeInstrument } = harness()
     const engine = new AudioEngine({ makeContext: () => fakeContext() as unknown as AudioContext, makeInstrument, sounds: { pack: 'core' } })

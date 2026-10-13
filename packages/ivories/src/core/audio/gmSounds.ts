@@ -75,11 +75,25 @@ export function base64ToArrayBuffer(b64: string): ArrayBuffer {
 
 let indexCache = new Map<string, Promise<Set<string>>>()
 let bufferCache = new WeakMap<BaseAudioContext, Map<string, Promise<Record<number, AudioBuffer>>>>()
+/** Console warnings already printed (one per message: N voices and the live bus warn once). */
+let warned = new Set<string>()
 
-/** @internal Test seam: forget every cached index and decoded pack. */
+/** @internal Test seam: forget every cached index, decoded pack and printed warning. */
 export function resetGmSoundCaches(): void {
   indexCache = new Map()
   bufferCache = new WeakMap()
+  warned = new Set()
+}
+
+/**
+ * A GM failure is not an IvoriesError: playback continues on the default
+ * piano, so it never reaches report/onError/status.error. It still goes to
+ * the console (user requirement: audio problems are visible there).
+ */
+function warnOnce(message: string, cause?: unknown): void {
+  if (warned.has(message)) return
+  warned.add(message)
+  if (typeof console !== 'undefined') console.warn(message, cause)
 }
 
 /** The pack's instrument list. An unreachable index resolves empty and is not cached. */
@@ -91,7 +105,8 @@ export function loadPackIndex(base: string, fetchJson: FetchJson): Promise<Set<s
     const res = await fetchJson(packIndexUrl(base))
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     return parsePackIndex(await res.json())
-  })().catch(() => {
+  })().catch((err: unknown) => {
+    warnOnce(`[ivories] audio: GM sound pack index ${packIndexUrl(base)} is unreachable`, err)
     if (cache.get(base) === safe) cache.delete(base)
     return new Set<string>()
   })
@@ -136,20 +151,33 @@ export function loadGmBuffers(ctx: BaseAudioContext, url: string, fetchJson: Fet
 export function gmInstrumentFactory(o: SoundsOption, fallback: InstrumentFactoryFn, deps: GmSoundDeps = {}): InstrumentFactoryFn {
   return async (ctx, id, destination, loader) => {
     const name = gmInstrumentName(id, o)
-    if (!SAFE_NAME.test(name)) return fallback(ctx, id, destination, loader)
+    const base = resolveSoundsBase(o, deps.pageBase)
+    if (!SAFE_NAME.test(name)) {
+      warnOnce(`[ivories] audio: GM sound name "${name}" is not a safe pack name; using the default piano`)
+      return fallback(ctx, id, destination, loader)
+    }
     const fetchJson: FetchJson = deps.fetch ?? ((url) => fetch(url))
     const makeSampler = deps.makeSampler
-      ?? ((c, s) => Sampler(c, { buffers: s.buffers, destination: s.destination } as never) as unknown as Instrument)
+      ?? ((c, s) => Sampler(c, { buffers: s.buffers, destination: s.destination }))
+    let inst: Instrument | null = null
     try {
-      const base = resolveSoundsBase(o, deps.pageBase)
       const index = await loadPackIndex(base, fetchJson)
       // A reachable index without this instrument: today's path. An unreachable one: try the file anyway.
-      if (index.size > 0 && !index.has(name)) return fallback(ctx, id, destination, loader)
+      if (index.size > 0 && !index.has(name)) {
+        // Only the host's explicit sounds.instrument is worth a warning; a voice on
+        // a non-GM-pack instrument quietly keeps today's Soundfont path.
+        if (o.instrument !== undefined && name === o.instrument) {
+          warnOnce(`[ivories] audio: GM sound "${name}" is not in the pack at ${base}; using the default piano`)
+        }
+        return fallback(ctx, id, destination, loader)
+      }
       const buffers = await loadGmBuffers(ctx, sampleUrl(base, name), fetchJson)
-      const inst = makeSampler(ctx, { buffers, destination })
+      inst = makeSampler(ctx, { buffers, destination })
       await inst.ready
       return inst
-    } catch {
+    } catch (err) {
+      try { inst?.dispose() } catch { /* already unusable */ }
+      warnOnce(`[ivories] audio: GM sound "${name}" from ${base} failed; using the default piano`, err)
       return fallback(ctx, id, destination, loader)
     }
   }
