@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { MockInstance } from 'vitest'
 import {
   SOUNDS_VERSION, defaultSoundsBase, gmInstrumentFactory, gmInstrumentName, packIndexUrl,
-  resetGmSoundCaches, resolveSoundsBase, sampleUrl,
+  isGmInstrument, resetGmSoundCaches, resolveSoundsBase, sampleUrl,
 } from './gmSounds'
 import type { FetchJson, SoundsOption } from './gmSounds'
 
@@ -139,6 +139,14 @@ describe('gmInstrumentFactory (R-G)', () => {
     }, { assetBaseUrl: 'https://cdn.example.test/gm', instrument: 'bright_acoustic_piano' })
     await h.make(fakeCtx() as never, 'acoustic_grand_piano', dest, null)
     expect(h.makeSampler).toHaveBeenCalledTimes(1)
+  })
+
+  it('isGmInstrument marks a pack-built Sampler and not a fallback (e2e probe)', async () => {
+    const ok = harness({ [`${CORE}pack.json`]: INDEX, [PIANO_URL]: PIANO })
+    expect(isGmInstrument(await ok.make(fakeCtx() as never, 'acoustic_grand_piano', dest, null))).toBe(true)
+    const none = harness({ [`${CORE}pack.json`]: INDEX }, { instrument: 'not_in_pack' })
+    expect(isGmInstrument(await none.make(fakeCtx() as never, 'acoustic_grand_piano', dest, null))).toBe(false)
+    expect(isGmInstrument(null)).toBe(false)
   })
 })
 

@@ -3,7 +3,7 @@ import type { Sampler } from 'smplr'
 import type { Voice } from '../model/types'
 import type { ScheduledNote } from './scheduler'
 import { MetronomeVoice } from './metronome'
-import { gmInstrumentFactory } from './gmSounds'
+import { gmInstrumentFactory, isGmInstrument } from './gmSounds'
 import type { GmSoundDeps, SoundsOption } from './gmSounds'
 
 const GRAND_PIANO_ID = 'acoustic_grand_piano'
@@ -252,6 +252,11 @@ export class AudioEngine {
     bus.instrument?.dispose()
     bus.gain.disconnect()
     this.buses.delete(id)
+  }
+
+  /** @internal e2e probe: true once a voice's instrument (LIVE_VOICE_ID for live keys) came from a GM pack. */
+  isGmVoice(voiceId: string): boolean {
+    return isGmInstrument(this.buses.get(voiceId)?.instrument)
   }
 
   /** Loads the live piano (spec §4.1 liveAudio). Safe to call repeatedly. */

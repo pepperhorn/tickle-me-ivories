@@ -77,6 +77,13 @@ let indexCache = new Map<string, Promise<Set<string>>>()
 let bufferCache = new WeakMap<BaseAudioContext, Map<string, Promise<Record<number, AudioBuffer>>>>()
 /** Console warnings already printed (one per message: N voices and the live bus warn once). */
 let warned = new Set<string>()
+/** Instruments built from a GM pack (not the fallback); read by AudioEngine.isGmVoice. */
+const gmBuilt = new WeakSet<object>()
+
+/** @internal Test probe: was this instrument built by gmInstrumentFactory from a GM pack? */
+export function isGmInstrument(inst: unknown): boolean {
+  return typeof inst === 'object' && inst !== null && gmBuilt.has(inst)
+}
 
 /** @internal Test seam: forget every cached index, decoded pack and printed warning. */
 export function resetGmSoundCaches(): void {
@@ -174,6 +181,7 @@ export function gmInstrumentFactory(o: SoundsOption, fallback: InstrumentFactory
       const buffers = await loadGmBuffers(ctx, sampleUrl(base, name), fetchJson)
       inst = makeSampler(ctx, { buffers, destination })
       await inst.ready
+      gmBuilt.add(inst)
       return inst
     } catch (err) {
       try { inst?.dispose() } catch { /* already unusable */ }
