@@ -412,3 +412,59 @@ describe('AudioEngine sounds option (R-G)', () => {
     expect(engine.isGmVoice('v1')).toBe(false)
   })
 })
+
+describe('AudioEngine.setSounds (final review 2: reload in place)', () => {
+  function gmEngine() {
+    resetGmSoundCaches()
+    const ctx = { ...fakeContext(), decodeAudioData: vi.fn(async () => ({}) as AudioBuffer) }
+    const fetchJson = vi.fn(async (url: string) => ({
+      ok: true, status: 200,
+      json: async () => (url.endsWith('pack.json')
+        ? { pack: 'core', fluidr3: ['acoustic_grand_piano', 'bright_acoustic_piano'] }
+        : { name: 'x', samples: { 60: btoa('x') } }),
+    }))
+    const samplers: { start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> }[] = []
+    const makeSampler = vi.fn(() => {
+      const s = { start: vi.fn(() => () => {}), stop: vi.fn(), dispose: vi.fn(), ready: Promise.resolve() }
+      samplers.push(s)
+      return s as never
+    })
+    const engine = new AudioEngine({
+      makeContext: () => ctx as unknown as AudioContext,
+      sounds: { pack: 'core' },
+      soundsDeps: { fetch: fetchJson, makeSampler },
+    })
+    return { engine, fetchJson, samplers, makeSampler }
+  }
+
+  it('reloads every loaded voice and the live bus with the new sound; later notes use it', async () => {
+    const { engine, fetchJson, samplers } = gmEngine()
+    await engine.loadVoice(voice('v1'))
+    await engine.prepareLive()
+    const [oldVoice, oldLive] = samplers
+    await engine.setSounds({ pack: 'core', instrument: 'bright_acoustic_piano' })
+    expect(fetchJson).toHaveBeenCalledWith('https://cdn.jsdelivr.net/npm/pepperscore-sounds-core@0.1.0/soundfonts/fluidr3/bright_acoustic_piano.json')
+    expect(samplers).toHaveLength(4)
+    expect(oldVoice.dispose).toHaveBeenCalled()
+    expect(oldLive.dispose).toHaveBeenCalled()
+    engine.noteOn(60, 90)
+    expect(oldLive.start).not.toHaveBeenCalled()
+    expect(samplers.slice(2).some((s) => s.start.mock.calls.length === 1)).toBe(true)
+    engine.play(sched(62, 0), voice('v1'), 0)
+    expect(oldVoice.start).not.toHaveBeenCalled()
+  })
+
+  it('the same content is a no-op', async () => {
+    const { engine, makeSampler } = gmEngine()
+    await engine.loadVoice(voice('v1'))
+    await engine.setSounds({ pack: 'core' })
+    expect(makeSampler).toHaveBeenCalledTimes(1)
+  })
+
+  it('an explicit makeInstrument ignores setSounds', async () => {
+    const { makeInstrument, engine } = harness()
+    await engine.loadVoice(voice('v1'))
+    await engine.setSounds({ pack: 'core' })
+    expect(makeInstrument).toHaveBeenCalledTimes(1)
+  })
+})

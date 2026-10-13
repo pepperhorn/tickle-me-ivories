@@ -117,13 +117,16 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   }, [report])
 
   // ---- engine and clock: the host's, or our own ----
-  // Rebuilt only when the sounds option's CONTENT changes (hosts pass object literals).
+  // Built once; a change of the sounds option's CONTENT (hosts pass object
+  // literals) reloads the instrument in place, so the context never goes null
+  // and the children (MIDI, live clock, trail) stay mounted.
   const soundsKey = props.sounds ? JSON.stringify(props.sounds) : ''
   const soundsRef = useRef(props.sounds); soundsRef.current = props.sounds
   const ownEngine = useDisposable(
     () => (props.engine ? null : new AudioEngine({ makeContext: sharedAudioContext, sounds: soundsRef.current })),
-    (e) => e.dispose(), [!props.engine, soundsKey],
+    (e) => e.dispose(), [!props.engine],
   )
+  useEffect(() => { void ownEngine?.setSounds(soundsRef.current) }, [ownEngine, soundsKey])
   const engine = props.engine ?? ownEngine
   // Always built (unused while a host clock is given): taking the host clock
   // away must never leave a render without a clock, which would unmount the views.
