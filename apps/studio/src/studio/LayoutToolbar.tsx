@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useCameraStream } from 'ivories'
 import { listVideoInputs, slotsOf, sourceAt } from 'ivories/core'
-import type { Aspect, CameraFit, Corner, LayoutAction, LayoutKind, SlotName, SlotSource } from 'ivories/core'
+import type { Aspect, CameraFit, Corner, IvoriesView, LayoutAction, LayoutKind, Orientation, SlotName, SlotSource } from 'ivories/core'
 import { useStudioStage } from './stageStore'
+import { useTransport } from '../transport/useTransport'
+import { LiveBpmField } from './LiveBpmField'
 
 type Webcam = Extract<SlotSource, { mode: 'webcam' }>
 type CameraInfo = { deviceId: string; label: string }
@@ -11,7 +13,7 @@ const SLOT_LABEL: Record<SlotName, string> = { main: 'Main', top: 'Top', bottom:
 // Only transparent or hex fills: validFill refuses named colours.
 const MASKS: Record<string, string> = { 'mask-transparent': 'transparent', 'mask-green': '#00b140', 'mask-blue': '#0047bb' }
 const SOURCE_OPTIONS: [string, string][] = [
-  ['falling', 'Falling keys'], ['keyboard', 'Keyboard'], ['notation', 'Notation'], ['endless', 'Endless notation'],
+  ['falling', 'Falling keys'], ['rising', 'Rising notes'], ['keyboard', 'Keyboard'], ['notation', 'Notation'], ['endless', 'Endless notation'],
   ['webcam', 'Webcam'], ['mask-transparent', 'Mask (transparent)'], ['mask-green', 'Mask (green)'], ['mask-blue', 'Mask (blue)'],
 ]
 const SELECT = 'rounded-md border border-[var(--line)] bg-[var(--panel)] px-2 py-1 text-xs text-[var(--ink)]'
@@ -27,7 +29,10 @@ function sourceFor(value: string, current: SlotSource): SlotSource {
     return current.kind === 'camera' && current.mode === 'webcam' ? current : { kind: 'camera', mode: 'webcam', mirror: true, fit: 'cover' }
   }
   if (value in MASKS) return { kind: 'camera', mode: 'mask', fill: MASKS[value] }
-  return { kind: 'ivories', view: value as 'falling' | 'keyboard' | 'notation' | 'endless' }
+  const view = value as IvoriesView
+  // Switching between the two rolls keeps the slot's orientation (R-M).
+  const orientation = current.kind === 'ivories' ? current.orientation : undefined
+  return orientation && (view === 'falling' || view === 'rising') ? { kind: 'ivories', view, orientation } : { kind: 'ivories', view }
 }
 
 /** The video inputs, re-listed once a stream is granted (labels appear) and on devicechange. */
@@ -75,6 +80,12 @@ function WebcamControls({ slot, label, source, dispatch }: {
 /** Layout kind, swap, PIP corner, aspect and per-slot sources (spec §6). */
 export function LayoutToolbar() {
   const { layout, aspect, dispatch, setAspect } = useStudioStage()
+  // Live BPM matters only for a rising view running on the live clock: no score (R-S).
+  const score = useTransport((s) => s.score)
+  const showBpm = !score && slotsOf(layout).some((slot) => {
+    const s = sourceAt(layout, slot)
+    return s?.kind === 'ivories' && s.view === 'rising'
+  })
 
   // The store re-syncs the display mode from the primary keys slot (R7).
   const setSource = (slot: SlotName, value: string) =>
@@ -112,6 +123,7 @@ export function LayoutToolbar() {
         <option className="layout-aspect-option" value="16:9">16:9</option>
         <option className="layout-aspect-option" value="9:16">9:16</option>
       </select>
+      {showBpm && <LiveBpmField className="layout-bpm" />}
       {slotsOf(layout).map((slot) => {
         const s = sourceAt(layout, slot)!
         const label = SLOT_LABEL[slot]
@@ -121,6 +133,13 @@ export function LayoutToolbar() {
               onChange={(e) => setSource(slot, e.target.value)}>
               {SOURCE_OPTIONS.map(([v, text]) => <option key={v} className="slot-source-option" value={v}>{text}</option>)}
             </select>
+            {s.kind === 'ivories' && (s.view === 'falling' || s.view === 'rising') && (
+              <select aria-label={`${label} orientation`} className={`slot-orientation-select ${SELECT}`} value={s.orientation ?? 'vertical'}
+                onChange={(e) => dispatch({ type: 'setSource', slot, source: { ...s, orientation: e.target.value as Orientation } })}>
+                <option className="slot-orientation-option" value="vertical">Vertical</option>
+                <option className="slot-orientation-option" value="horizontal">Horizontal</option>
+              </select>
+            )}
             {s.kind === 'camera' && s.mode === 'webcam' && (
               <WebcamControls slot={slot} label={label} source={s} dispatch={dispatch} />
             )}

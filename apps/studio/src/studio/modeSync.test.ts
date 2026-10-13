@@ -18,4 +18,16 @@ describe('display mode <-> layout (R7)', () => {
     const f: Layout = { kind: 'single', main: { kind: 'ivories', view: 'falling' } }
     expect(withPrimaryMode(f, 'roll')).toBe(f)
   })
+
+  it('a rising slot is a roll: the roll toggle keeps it, the keyboard toggle replaces it (R-M)', () => {
+    const r: Layout = { kind: 'single', main: { kind: 'ivories', view: 'rising', orientation: 'horizontal' } }
+    expect(primarySlot(r)).toBe('main')
+    expect(withPrimaryMode(r, 'roll')).toBe(r)
+    expect(withPrimaryMode(r, 'keyboard')).toEqual({ kind: 'single', main: { kind: 'ivories', view: 'keyboard' } })
+  })
+
+  it('keyboard -> roll gives a plain falling slot', () => {
+    const k: Layout = { kind: 'single', main: { kind: 'ivories', view: 'keyboard' } }
+    expect(withPrimaryMode(k, 'roll')).toEqual({ kind: 'single', main: { kind: 'ivories', view: 'falling' } })
+  })
 })

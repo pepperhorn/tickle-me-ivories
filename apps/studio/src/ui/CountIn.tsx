@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { countInBeatAt } from 'ivories/core'
-import type { LeadIn } from 'ivories/core'
+import type { LeadIn, Orientation } from 'ivories/core'
 
 /** Why playback is waiting at the top of the count-in, if it is. */
 export type StartGate = 'sound' | 'loading' | null
@@ -29,8 +29,11 @@ export function CountIn(props: {
   onTapToStart: () => void
   /** Height of the keyboard strip; the count centres over the falling notes above it. */
   keyboardH?: number
+  /** The keys slot's orientation: horizontal puts the keyboard on the left edge, so the count sits right of it. */
+  orientation?: Orientation
 }) {
-  const { active, enabled, lead, head, gate, onTapToStart, keyboardH = 0 } = props
+  const { active, enabled, lead, head, gate, onTapToStart, keyboardH = 0, orientation = 'vertical' } = props
+  const horizontal = orientation === 'horizontal'
   const [beat, setBeat] = useState(0)
   const tapRef = useRef<HTMLButtonElement | null>(null)
 
@@ -56,8 +59,8 @@ export function CountIn(props: {
 
   return (
     <div
-      className="count-in-layer pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-center [container-type:size]"
-      style={{ bottom: keyboardH }}
+      className={`count-in-layer ${horizontal ? 'count-in-horizontal' : 'count-in-vertical'} pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-center [container-type:size]`}
+      style={horizontal ? { left: keyboardH, bottom: 0 } : { bottom: keyboardH }}
     >
       <p aria-live="polite" className="count-in-live m-0 flex items-center justify-center">
         {shown > 0 && (

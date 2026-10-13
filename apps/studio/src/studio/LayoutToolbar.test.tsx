@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { LayoutToolbar } from './LayoutToolbar'
 import { useStudioStage } from './stageStore'
 import { singleLayout } from 'ivories/core'
@@ -51,7 +51,7 @@ describe('LayoutToolbar (spec §6)', () => {
   it('mask fills are only transparent or hex colours (validFill refuses names)', () => {
     render(<LayoutToolbar />)
     const values = [...screen.getByLabelText('Main source').querySelectorAll('option')].map((o) => o.value)
-    expect(values).toEqual(['falling', 'keyboard', 'notation', 'endless', 'webcam', 'mask-transparent', 'mask-green', 'mask-blue'])
+    expect(values).toEqual(['falling', 'rising', 'keyboard', 'notation', 'endless', 'webcam', 'mask-transparent', 'mask-green', 'mask-blue'])
     for (const v of ['mask-transparent', 'mask-green', 'mask-blue']) {
       fireEvent.change(screen.getByLabelText('Main source'), { target: { value: v } })
       const main = useStudioStage.getState().layout
@@ -122,6 +122,33 @@ describe('LayoutToolbar (spec §6)', () => {
       await waitFor(() => expect(screen.getByRole('option', { name: 'Desk cam' })).toBeTruthy())
     } finally {
       Reflect.deleteProperty(navigator, 'mediaDevices')
+    }
+  })
+
+  it('offers rising notes and an orientation for roll slots, kept across falling <-> rising (R-M)', () => {
+    render(<LayoutToolbar />)
+    fireEvent.change(screen.getByLabelText('Main source'), { target: { value: 'rising' } })
+    expect(useStudioStage.getState().layout).toEqual({ kind: 'single', main: { kind: 'ivories', view: 'rising' } })
+    fireEvent.change(screen.getByLabelText('Main orientation'), { target: { value: 'horizontal' } })
+    expect(useStudioStage.getState().layout).toEqual({ kind: 'single', main: { kind: 'ivories', view: 'rising', orientation: 'horizontal' } })
+    fireEvent.change(screen.getByLabelText('Main source'), { target: { value: 'falling' } })
+    expect(useStudioStage.getState().layout).toEqual({ kind: 'single', main: { kind: 'ivories', view: 'falling', orientation: 'horizontal' } })
+    fireEvent.change(screen.getByLabelText('Main source'), { target: { value: 'keyboard' } })
+    expect(screen.queryByLabelText('Main orientation')).toBeNull()
+  })
+
+  it('shows the BPM field only with no score and a rising slot (R-S)', () => {
+    const score = useTransport.getState().score
+    try {
+      useTransport.setState({ score: null })
+      render(<LayoutToolbar />)
+      expect(screen.queryByLabelText('BPM')).toBeNull()
+      act(() => { useStudioStage.setState({ layout: singleLayout('rising') }) })
+      expect(screen.getByLabelText('BPM')).toBeTruthy()
+      act(() => { useTransport.setState({ score: { name: 'x' } as never }) })
+      expect(screen.queryByLabelText('BPM')).toBeNull()
+    } finally {
+      useTransport.setState({ score })
     }
   })
 })

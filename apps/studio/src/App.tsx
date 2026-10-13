@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from 'react-dom'
 import { AudioClock, AudioEngine } from 'ivories/core'
 import { effectiveBpmAt } from 'ivories/core'
+import { singleLayout, sourceAt } from 'ivories/core'
 import { NO_LEAD_IN, leadInFor } from 'ivories/core'
 import { sceneForShare } from 'ivories/core'
 import { bindTransportClock, useTransport } from './transport/useTransport'
@@ -28,6 +29,7 @@ import { RecordControl } from './studio/RecordControl'
 import { useStudioStage } from './studio/stageStore'
 import { primarySlot, withPrimaryMode } from './studio/modeSync'
 import { LayoutToolbar } from './studio/LayoutToolbar'
+import { LiveSessionBar } from './studio/LiveSessionBar'
 
 export default function App() {
   const t = useTransport()
@@ -53,6 +55,12 @@ export default function App() {
   const autosave = useAutosave(engine)
   const liveMidi = useLiveMidi()
   const setLiveMidi = liveMidi.set
+  // "Play live" (R-S): no score; the stage shows live input on the provider's live clock.
+  const liveSession = !t.score && liveMidi.session
+  const setLiveBpm = useCallback((bpm: number) => setLiveMidi({ bpm }), [setLiveMidi])
+  // A score arriving (a recorded take, a scene) ends the session, so a later
+  // "Load another file" shows the drop zone, not the live view again.
+  useEffect(() => { if (t.score && liveMidi.session) setLiveMidi({ session: false }) }, [t.score, liveMidi.session, setLiveMidi])
   const loader = useSongLoader({ engine, onScoreReplaced: () => {} })   // the stage view resets its chord on a new score
   const gate = useStartGate({ engine, voicesReady: loader.voicesReady })
   const actions = usePlaybackActions({ engine, onSeek: () => {} })      // ... and on the clock's seek event
@@ -75,6 +83,8 @@ export default function App() {
   const viewProps = useMemo<StageSlotViewProps>(() => ({ input: midiInput }), [midiInput])
   // Only the primary keys slot reports geometry to CountIn; with none, it has none.
   const primary = primarySlot(stage.layout)
+  const primarySource = primary ? sourceAt(stage.layout, primary) : null
+  const primaryOrientation = primarySource?.kind === 'ivories' ? primarySource.orientation : undefined
   const slotViewProps = useMemo<Partial<Record<SlotName, StageSlotViewProps>>>(
     () => (primary ? { [primary]: { onLayout: setKbLayout } } : {}),
     [primary],
@@ -96,7 +106,7 @@ export default function App() {
 
   const { flush: flushAutosave } = autosave
   const { cancelStart } = gate
-  const { clearSong } = loader
+  const { clearSong, unlockAudio } = loader
   const loadAnother = useCallback(() => {
     // Stop and pause before clearing the model, or the previous file keeps
     // sounding after the drop zone reappears.
@@ -111,6 +121,12 @@ export default function App() {
     cancelStart()
     clearSong()
   }, [engine, flushAutosave, cancelStart, clearSong])
+
+  const startLive = useCallback(() => {
+    unlockAudio()   // this click is the gesture that lets live keys sound
+    setLiveMidi({ enabled: true, session: true, error: null })
+    useStudioStage.getState().setLayout(singleLayout('rising'))
+  }, [unlockAudio, setLiveMidi])
 
   const profile = useProfileActions({ engine, changeTempo: actions.changeTempo })
   const sceneApi = useSceneActions({ applyProfileParts: profile.applyProfileParts, loadFile: loader.loadFile, loadAnother })
@@ -151,6 +167,7 @@ export default function App() {
       gate={gate.startGate}
       onTapToStart={gate.requestStart}
       keyboardH={kbLayout?.keyboardH ?? 0}
+      orientation={primaryOrientation}
     />
   )
 
@@ -169,7 +186,12 @@ export default function App() {
       >
         <IvoriesProvider
           score={t.score}
-          clock={clock}
+          // The studio's AudioClock drives the provider only while a score is
+          // loaded; with none, the provider's live clock runs (R-S, R-L).
+          clock={t.score ? clock : undefined}
+          liveClock={liveSession}
+          bpm={liveMidi.bpm}
+          onBpmChange={setLiveBpm}
           engine={engine}
           tempo={t.tempo}
           settings={providerSettings}
@@ -190,7 +212,7 @@ export default function App() {
           {liveMidi.enabled && <RecordControl onRecorded={(s) => { loadAnother(); loader.loadDocument(s) }} />}
         </IvoriesProvider>
         {countInHost && countIn ? createPortal(countIn, countInHost) : countIn}
-        {!t.score && (
+        {!t.score && !liveSession && (
           <div className="stage-empty absolute inset-0 flex flex-col items-center justify-center gap-3 overflow-y-auto p-4">
             {/* While a scene waits for its song (§8.3), a file dropped here is
                 checked against the scene's hash rather than loaded blind. */}
@@ -198,6 +220,13 @@ export default function App() {
               onFile={scenes.pending ? scenes.provideFile : (f) => void loader.loadFile(f)}
               onPick={loader.unlockAudio}
             />
+            <button
+              type="button"
+              className="btn-play-live rounded-md border border-[var(--accent)] px-3 py-1 text-xs text-[var(--ink)]"
+              onClick={startLive}
+            >
+              Play live
+            </button>
             <button
               type="button"
               aria-expanded={emptyScenesOpen}
@@ -260,7 +289,8 @@ export default function App() {
         )}
       </div>
 
-      {t.score && <LayoutToolbar />}
+      {(t.score || liveSession) && <LayoutToolbar />}
+      {liveSession && <LiveSessionBar onLoadScore={() => setLiveMidi({ session: false })} />}
       {t.score && (
         <TransportBar
           playing={t.playing}

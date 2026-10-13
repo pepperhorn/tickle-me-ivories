@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { listMidiDevices } from 'ivories/core'
 import { SettingsRow } from '../ui/SettingsPanel'
 import { useLiveMidi } from './liveMidi'
+import { LiveBpmField } from './LiveBpmField'
 
-export function LiveMidiSettings() {
+export function LiveMidiSettings({ showBpm = true }: { showBpm?: boolean } = {}) {
   const { enabled, deviceId, audio, error, set } = useLiveMidi()
   const [devices, setDevices] = useState<{ id: string; name: string }[] | null>(null)
 
@@ -36,6 +37,11 @@ export function LiveMidiSettings() {
             <option value="">All devices</option>
             {(devices ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
+        </SettingsRow>
+      )}
+      {enabled && showBpm && (
+        <SettingsRow label="Live BPM (no score)" htmlFor="live-bpm">
+          <LiveBpmField id="live-bpm" showLabel={false} />
         </SettingsRow>
       )}
       {status && (

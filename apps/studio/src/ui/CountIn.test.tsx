@@ -69,4 +69,15 @@ describe('CountIn', () => {
     render(<CountIn active={false} enabled lead={LEAD} head={head} gate="sound" onTapToStart={() => {}} />)
     expect(document.activeElement).toBe(screen.getByRole('button', { name: /tap to start sound/i }))
   })
+
+  it('sits above the keys when vertical, and right of them when the keys are on the left (horizontal)', () => {
+    const { rerender } = render(<CountIn active enabled lead={LEAD} head={head} gate={null} onTapToStart={() => {}} keyboardH={80} />)
+    const layer = () => document.querySelector('.count-in-layer') as HTMLElement
+    expect(layer().style.bottom).toBe('80px')
+    expect(layer().style.left).toBe('')
+    rerender(<CountIn active enabled lead={LEAD} head={head} gate={null} onTapToStart={() => {}} keyboardH={80} orientation="horizontal" />)
+    expect(layer().style.left).toBe('80px')
+    expect(layer().style.bottom).toBe('0px')
+    expect(layer().className).toContain('count-in-horizontal')
+  })
 })

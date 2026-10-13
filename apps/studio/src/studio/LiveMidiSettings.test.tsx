@@ -11,7 +11,7 @@ vi.mock('ivories/core', async (orig) => ({
 
 beforeEach(() => {
   devices.list = [{ id: 'k1', name: 'Stage Piano' }]
-  useLiveMidi.setState({ enabled: false, deviceId: null, audio: true, error: null })
+  useLiveMidi.setState({ enabled: false, deviceId: null, audio: true, error: null, bpm: 100, session: false })
 })
 
 describe('Live MIDI settings (spec §6 toolbar: live MIDI device picker)', () => {
@@ -51,5 +51,21 @@ describe('Live MIDI settings (spec §6 toolbar: live MIDI device picker)', () =>
     render(<LiveMidiSettings />)
     fireEvent.click(screen.getByLabelText('Live MIDI input'))
     expect(useLiveMidi.getState().error).toBeNull()
+  })
+
+  it('shows the live BPM when enabled and commits only valid values; showBpm={false} hides it', () => {
+    useLiveMidi.setState({ enabled: true })
+    const { unmount } = render(<LiveMidiSettings />)
+    const field = screen.getByLabelText('BPM') as HTMLInputElement
+    expect(field.value).toBe('100')
+    fireEvent.change(field, { target: { value: '9' } })
+    expect(useLiveMidi.getState().bpm).toBe(100)
+    fireEvent.change(field, { target: { value: '144' } })
+    expect(useLiveMidi.getState().bpm).toBe(144)
+    fireEvent.blur(field)
+    expect(field.value).toBe('144')
+    unmount()
+    render(<LiveMidiSettings showBpm={false} />)
+    expect(screen.queryByLabelText('BPM')).toBeNull()
   })
 })
