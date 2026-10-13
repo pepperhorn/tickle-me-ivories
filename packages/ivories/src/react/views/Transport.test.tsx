@@ -7,6 +7,9 @@ import { AudioClock } from '../../core/clock/AudioClock'
 import { parseMidi } from '../../core/io/parseMidi'
 import { fakeEngine } from '../testEngine.test-helpers'
 import { formatTime } from '../format'
+import { useIvories } from '../hooks'
+import { RisingKeys } from './RisingKeys'
+import { Keyboard } from './Keyboard'
 
 const doc = () => {
   const m = new Midi(); m.header.setTempo(120)
@@ -95,5 +98,51 @@ describe('Transport BPM field (rising-roll spec §2 BPM wiring)', () => {
     render(<IvoriesProvider engine={fakeEngine()} liveClock><Transport controls={{ bpm: false }} /></IvoriesProvider>)
     await screen.findByRole('button', { name: 'Play' })
     expect(screen.queryByLabelText('BPM')).toBeNull()
+  })
+})
+
+describe('Transport BPM field only with the live clock (final review 1)', () => {
+  it('is hidden while a scoreUrl is still loading', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
+    try {
+      render(<IvoriesProvider engine={fakeEngine()} scoreUrl="/never.mid"><Transport /></IvoriesProvider>)
+      await screen.findByRole('button', { name: 'Play' })
+      expect(screen.queryByLabelText('BPM')).toBeNull()
+    } finally { vi.unstubAllGlobals() }
+  })
+
+  it('is hidden with a keyboard-only provider that has no live clock', async () => {
+    render(<IvoriesProvider engine={fakeEngine()}><Keyboard /><Transport /></IvoriesProvider>)
+    await screen.findByRole('button', { name: 'Play' })
+    expect(screen.queryByLabelText('BPM')).toBeNull()
+  })
+
+  it('shows with a live <RisingKeys> (the live clock is the active clock)', async () => {
+    render(<IvoriesProvider engine={fakeEngine()}><RisingKeys /><Transport /></IvoriesProvider>)
+    expect(await screen.findByLabelText('BPM')).toBeTruthy()
+  })
+})
+
+describe('Transport time display in live mode (final review 5)', () => {
+  it('shows no duration without a score', async () => {
+    const { container } = render(<IvoriesProvider engine={fakeEngine()} liveClock><Transport /></IvoriesProvider>)
+    await screen.findByRole('button', { name: 'Play' })
+    expect(container.querySelector('.ivories-time')!.textContent).toBe('0:00')
+  })
+
+  it('keeps "m:ss / m:ss" with a score', async () => {
+    const { container } = render(<IvoriesProvider score={doc()} clock={new AudioClock({ currentTime: 0 })} engine={fakeEngine()}><Transport /></IvoriesProvider>)
+    await screen.findByRole('button', { name: 'Play' })
+    expect(container.querySelector('.ivories-time')!.textContent).toBe('0:00 / 0:04')
+  })
+
+  it('Play/Pause still runs and pauses the live clock', async () => {
+    let iv: ReturnType<typeof useIvories> | null = null
+    function Grab() { iv = useIvories(); return null }
+    render(<IvoriesProvider engine={fakeEngine()} liveClock><Transport /><Grab /></IvoriesProvider>)
+    fireEvent.click(await screen.findByRole('button', { name: 'Play' }))
+    await waitFor(() => expect(iv!.clock.playing).toBe(true))
+    fireEvent.click(await screen.findByRole('button', { name: 'Pause' }))
+    expect(iv!.clock.playing).toBe(false)
   })
 })

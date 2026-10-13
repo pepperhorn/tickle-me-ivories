@@ -36,6 +36,8 @@ export interface IvoriesContextValue {
   setBpm(bpm: number): void
   /** A rising view without a score asks for the free-running live clock; returns the release (R-L). Stable. */
   requestLiveClock(): () => void
+  /** The provider's free-running live clock is the active clock (no score source, no host clock; R-L). BPM only matters then. */
+  liveClockActive: boolean
   /** Live MIDI input (spec §4.1), started only while a view asks for it. */
   live: {
     held: ValueStore<ReadonlyMap<number, LiveNote>>

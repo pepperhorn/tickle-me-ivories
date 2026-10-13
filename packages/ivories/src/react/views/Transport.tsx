@@ -60,8 +60,9 @@ function TransportView({ controls, className }: { controls?: TransportControls; 
           onChange={(e) => clock.seek(Number(e.target.value))}
         />
       )}
-      <span className="ivories-time">{formatTime(t)} / {formatTime(duration)}</span>
-      {c.bpm && !iv.score && <BpmField />}
+      {/* Live mode has no length: only the clock time. */}
+      <span className="ivories-time">{iv.score ? `${formatTime(t)} / ${formatTime(duration)}` : formatTime(t)}</span>
+      {c.bpm && iv.liveClockActive && <BpmField />}
       {c.tempo && (
         <label className="ivories-tempo">
           <span className="ivories-tempo-label">Tempo</span>
