@@ -5,3 +5,8 @@ dist/
 local-fixtures/
 test-results/
 playwright-report/
+
+# Plugin injection is build-time only (Task 18); never commit these.
+apps/studio/public/tickle.config.json
+apps/studio/public/plugins/
+deploy/local-plugin/

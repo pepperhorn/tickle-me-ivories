@@ -3,7 +3,10 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "workspaces": ["packages/*", "apps/*"],
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
     "dev": "npm run dev -w apps/studio --",
     "build": "npm run check:imports && npm run build -w packages/ivories && npm run build -w apps/studio",
@@ -12,10 +15,12 @@
     "test:e2e": "playwright test",
     "test:e2e:notation": "node scripts/e2e-notation.mjs",
     "check:imports": "node scripts/check-public-imports.mjs",
-    "check": "npm run test:geometry && npm run check:imports && npm run check:css -w packages/ivories",
+    "check": "npm run test:geometry && npm run check:imports && npm run check:hosting && npm run test:scripts && npm run check:css -w packages/ivories",
     "test:geometry": "node tests/geometry-check.mjs",
     "lint": "oxlint",
-    "sync:rig": "cp tools/strike-lab.html apps/studio/public/strike-lab.html && diff -q tools/strike-lab.html apps/studio/public/strike-lab.html"
+    "sync:rig": "cp tools/strike-lab.html apps/studio/public/strike-lab.html && diff -q tools/strike-lab.html apps/studio/public/strike-lab.html",
+    "test:scripts": "node --test scripts/inject-plugin.test.mjs scripts/check-hosting.test.mjs",
+    "check:hosting": "node scripts/check-hosting.mjs"
   },
   "devDependencies": {
     "@playwright/test": "~1.62.0",

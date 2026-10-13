@@ -1,0 +1,9 @@
+.git
+node_modules
+**/node_modules
+**/dist
+test-results
+playwright-report
+local-fixtures
+apps/studio/public/tickle.config.json
+apps/studio/public/plugins
