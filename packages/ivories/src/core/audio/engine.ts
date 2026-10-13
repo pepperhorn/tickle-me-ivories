@@ -56,6 +56,18 @@ export interface AudioEngineDeps {
  * load() is cached by resolved URL, so N voices on the grand piano cost one
  * fetch and one decode between them.
  */
+/**
+ * One SampleLoader per AudioContext (module-level, created lazily, never at
+ * import): several providers on the page share the shared context, so the
+ * default piano's samples are fetched and decoded once, not once per provider.
+ */
+const loaders = new WeakMap<BaseAudioContext, unknown>()
+function sharedSampleLoader(ctx: BaseAudioContext): unknown {
+  let l = loaders.get(ctx)
+  if (!l) { l = SampleLoader(ctx); loaders.set(ctx, l) }
+  return l
+}
+
 const soundsKeyOf = (s: SoundsOption | undefined): string => (s ? JSON.stringify(s) : '')
 
 export const defaultMakeInstrument: InstrumentFactoryFn = async (ctx, id, destination, loader) => {
@@ -133,7 +145,7 @@ export class AudioEngine {
       this.master = this.ctx.createGain()
       this.master.gain.value = volumeToGain(this.masterVolume)
       this.master.connect(this.ctx.destination)
-      this.loader = SampleLoader(this.ctx)
+      this.loader = sharedSampleLoader(this.ctx)
     }
     return this.ctx
   }

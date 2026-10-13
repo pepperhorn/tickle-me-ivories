@@ -468,3 +468,24 @@ describe('AudioEngine.setSounds (final review 2: reload in place)', () => {
     expect(makeInstrument).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('AudioEngine sample loader sharing (final review 6)', () => {
+  it('engines on the same AudioContext share one SampleLoader; another context gets its own', async () => {
+    const ctx = fakeContext()
+    const other = fakeContext()
+    const loaders: unknown[] = []
+    const makeInstrument = vi.fn(async (_c: BaseAudioContext, id: string, destination: AudioNode, loader: unknown) => {
+      loaders.push(loader)
+      return { id, destination, start: vi.fn(), stop: vi.fn(), dispose: vi.fn() } as never
+    })
+    const a = new AudioEngine({ makeContext: () => ctx as unknown as AudioContext, makeInstrument })
+    const b = new AudioEngine({ makeContext: () => ctx as unknown as AudioContext, makeInstrument })
+    const c = new AudioEngine({ makeContext: () => other as unknown as AudioContext, makeInstrument })
+    await a.loadVoice(voice('v1'))
+    await b.loadVoice(voice('v1'))
+    await c.loadVoice(voice('v1'))
+    expect(loaders[0]).toBeTruthy()
+    expect(loaders[1]).toBe(loaders[0])
+    expect(loaders[2]).not.toBe(loaders[0])
+  })
+})
