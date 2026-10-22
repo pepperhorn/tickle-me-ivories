@@ -1,4 +1,5 @@
 import { normaliseTimeSignatures } from './timeSignatures'
+import { secToTicks } from './tempoMap'
 import type { ScoreDocument, TempoSetting } from './types'
 
 /**
@@ -64,6 +65,24 @@ export type CountInBars = 0 | 1 | 2
 /** Anything -> a CountInBars; a non-number or out-of-range value is the default (1 bar). */
 export function clampCountIn(v: unknown): CountInBars {
   return v === 0 || v === 1 || v === 2 ? v : 1
+}
+
+/**
+ * The time signature in force at playhead second `sec` (score time at `setting`),
+ * for the Transport's readout. Before the score (the count-in) and over a pickup
+ * it is the counted metre, never the pickup's own short signature.
+ */
+export function metreAt(score: ScoreDocument, sec: number, setting: TempoSetting): { numerator: number; denominator: number } {
+  const sigs = normaliseTimeSignatures(score.timeSignatures)
+  const ticks = sec > 0 ? secToTicks(score.tempoMap, score.ppq, sec, setting) : 0
+  let i = 0
+  while (i + 1 < sigs.length && sigs[i + 1].ticks <= ticks + 1e-6) i++
+  // In the opening signature (a pickup's own short one included) show the counted metre.
+  if (i === 0) {
+    const { numerator, denominator } = countedMetre(score)
+    return { numerator, denominator }
+  }
+  return { numerator: sigs[i].numerator, denominator: sigs[i].denominator }
 }
 
 /** Beats per counted bar (the opening metre, past any pickup), for the "1 2 3 4 1 2 3 4" display. */

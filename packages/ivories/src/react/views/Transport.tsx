@@ -8,10 +8,67 @@ import { cx } from '../cx'
 import { cancelPendingStart, resumeAudio } from '../startPlayback'
 import { MAX_LIVE_BPM, MIN_LIVE_BPM, parseBpmDraft } from '../../core/render/beats'
 import { beatTickPositions } from '../../core/render/transportTicks'
-import { clampCountIn } from '../../core/model/countIn'
+import { clampCountIn, metreAt } from '../../core/model/countIn'
+import { effectiveBpmAt } from '../../core/model/tempoMap'
+import { METRONOME_VOICE_NAMES, validMetronomeVoice } from '../../core/audio/metronome'
+import type { MetronomeVoiceName } from '../../core/settings/types'
+import type { Clock } from '../../core/clock/types'
 import type { ScoreDocument, TempoSetting } from '../../core/model/types'
 
-export interface TransportControls { play?: boolean; seek?: boolean; tempo?: boolean; metronome?: boolean; bpm?: boolean; countIn?: boolean }
+/** `meter`: the time signature readout. The metronome voice select follows `metronome`. */
+export interface TransportControls { play?: boolean; seek?: boolean; tempo?: boolean; metronome?: boolean; bpm?: boolean; countIn?: boolean; meter?: boolean }
+
+/** The clock rate's bounds: the tempo control scales the score's tempo map between these. */
+export const MIN_TEMPO_RATE = 0.25
+export const MAX_TEMPO_RATE = 2
+
+const METRONOME_VOICE_LABELS: Record<MetronomeVoiceName, string> = { woodblock: 'Woodblock', 'drum-machine': 'Drum machine', click: 'Click' }
+
+/**
+ * Tempo in BPM: the tempo map's BPM at the playhead times the clock rate ("♩ = 96"). The
+ * slider and the field set a BPM, which becomes a rate against the BPM at the playhead, so
+ * the whole tempo map scales (a ritardando stays a ritardando) and the readout follows it.
+ */
+function TempoField({ score, tempo, t, rate, clock }: { score: ScoreDocument; tempo: TempoSetting; t: number; rate: number; clock: Clock }) {
+  const base = effectiveBpmAt(score.tempoMap, Math.max(0, t), tempo)
+  const bpm = Math.round(base * rate)
+  const min = Math.max(1, Math.ceil(base * MIN_TEMPO_RATE))
+  const max = Math.floor(base * MAX_TEMPO_RATE)
+  const setBpm = (v: number) => {
+    if (!Number.isFinite(v) || base <= 0) return
+    const next = Math.min(MAX_TEMPO_RATE, Math.max(MIN_TEMPO_RATE, v / base))
+    if (Math.abs(next - rate) > 1e-9) clock.setRate(next)
+  }
+  const [draft, setDraft] = useState(String(bpm))
+  const editing = useRef(false)
+  useEffect(() => { if (!editing.current) setDraft(String(bpm)) }, [bpm])
+  return (
+    <span className="ivories-tempo ivories-transport-field" data-bpm={bpm}>
+      <span className="ivories-tempo-label ivories-transport-label">Tempo</span>
+      <input
+        type="range" aria-label="Tempo" aria-valuetext={`${bpm} BPM`} className="ivories-tempo-input ivories-transport-range ivories-transport-tempo"
+        min={min} max={max} step={1} value={Math.min(max, Math.max(min, bpm))}
+        style={progress(bpm, min, max)}
+        onChange={(e) => setBpm(Number(e.target.value))}
+      />
+      <span className="ivories-tempo-value ivories-transport-value">
+        <span className="ivories-tempo-note" aria-hidden="true">{'\u2669 ='}</span>
+        <input
+          type="number" aria-label="Tempo in BPM" className="ivories-bpm-input ivories-tempo-bpm"
+          min={min} max={max} step={1} value={draft}
+          onFocus={() => { editing.current = true }}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            const n = Number(e.target.value)
+            if (e.target.value.trim() !== '' && Number.isFinite(n) && n >= min && n <= max) setBpm(n)
+          }}
+          onBlur={() => { editing.current = false; setDraft(String(bpm)) }}
+        />
+      </span>
+    </span>
+  )
+}
+
 
 /** Half the seek thumb (14px): the thumb's centre runs from here to width - this. */
 const THUMB_HALF_PX = 7
@@ -96,8 +153,9 @@ function TransportView({ controls, className }: { controls?: TransportControls; 
   const iv = useIvories()
   const { clock, playing, rate } = useClock()
   const t = useClockTime(10)
-  const c = { play: true, seek: true, tempo: true, metronome: true, bpm: true, countIn: true, ...controls }
+  const c = { play: true, seek: true, tempo: true, metronome: true, bpm: true, countIn: true, meter: true, ...controls }
   const duration = iv.score?.durationSec ?? 0
+  const meter = iv.score ? metreAt(iv.score, t, iv.tempo) : null
   const toggle = () => {
     if (playing) { cancelPendingStart(clock); clock.pause(); return }
     iv.play()
@@ -131,18 +189,13 @@ function TransportView({ controls, className }: { controls?: TransportControls; 
       {/* Live mode has no length: only the clock time. */}
       <span className="ivories-time ivories-transport-time">{iv.score ? `${formatTime(t)} / ${formatTime(duration)}` : formatTime(t)}</span>
       {c.bpm && iv.liveClockActive && <BpmField />}
-      {c.tempo && (
-        <label className="ivories-tempo ivories-transport-field">
-          <span className="ivories-tempo-label ivories-transport-label">Tempo</span>
-          <input
-            type="range" aria-label="Tempo" className="ivories-tempo-input ivories-transport-range ivories-transport-tempo"
-            min={0.25} max={2} step={0.05} value={rate}
-            style={progress(rate, 0.25, 2)}
-            onChange={(e) => clock.setRate(Number(e.target.value))}
-          />
-          <span className="ivories-tempo-value ivories-transport-value">{Math.round(rate * 100)}%</span>
-        </label>
+      {c.meter && meter && (
+        <span className="ivories-meter ivories-transport-meter" role="img" aria-label={`Time signature ${meter.numerator}/${meter.denominator}`} data-meter={`${meter.numerator}/${meter.denominator}`}>
+          <span className="ivories-meter-label ivories-transport-label" aria-hidden="true">Time</span>
+          <span className="ivories-meter-value" aria-hidden="true">{meter.numerator}/{meter.denominator}</span>
+        </span>
       )}
+      {c.tempo && iv.score && <TempoField score={iv.score} tempo={iv.tempo} t={t} rate={rate} clock={clock} />}
       {c.countIn && iv.score && (
         <label className="ivories-count-in-field ivories-transport-field">
           <span className="ivories-count-in-label ivories-transport-label">Count-in</span>
@@ -168,6 +221,15 @@ function TransportView({ controls, className }: { controls?: TransportControls; 
           />
         </label>
       )}
+      {c.metronome && (
+        <select
+          aria-label="Metronome sound" className="ivories-metronome-voice ivories-transport-select"
+          value={validMetronomeVoice(iv.settings.audio.metronomeVoice)}
+          onChange={(e) => iv.setAudio({ metronomeVoice: validMetronomeVoice(e.target.value) })}
+        >
+          {METRONOME_VOICE_NAMES.map((v) => <option key={v} className="ivories-metronome-voice-option" value={v}>{METRONOME_VOICE_LABELS[v]}</option>)}
+        </select>
+      )}
       {needsTap && (
         <button type="button" className="ivories-btn ivories-btn-enable-sound ivories-transport-enable-sound" onClick={() => resumeAudio(iv)}>
           Tap to enable sound
@@ -177,7 +239,7 @@ function TransportView({ controls, className }: { controls?: TransportControls; 
   )
 }
 
-/** Play/pause, seek bar (broken at every beat), tempo (clock rate), count-in, metronome toggle, and the live BPM with no score. */
+/** Play/pause, seek bar (broken at every beat), time signature, tempo in BPM (scales the tempo map), count-in, metronome toggle and sound, and the live BPM with no score. */
 export const Transport = withProvider(
   (p: { controls?: TransportControls; className?: string }) => <Guarded><TransportView {...p} /></Guarded>,
   'Transport',

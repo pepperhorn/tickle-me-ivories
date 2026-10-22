@@ -44,7 +44,7 @@ export interface IvoriesProps extends IvoriesProviderProps {
   beatsPerBar?: number
 }
 
-const MINIMAL: TransportControls = { seek: false, tempo: false, metronome: false, bpm: false, countIn: false }
+const MINIMAL: TransportControls = { seek: false, tempo: false, metronome: false, bpm: false, countIn: false, meter: false }
 const slug = (v: string) => v.replace(/\+/g, '-')
 
 /** One-line preset combos (spec §4). Always its own provider; `ref` is the provider handle. */

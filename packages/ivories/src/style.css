@@ -313,7 +313,30 @@
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
-  .ivories .ivories-tempo-value { min-width: 2.5rem; }
+  .ivories .ivories-tempo-value { min-width: 2.5rem; display: inline-flex; align-items: baseline; gap: 0.3rem; }
+  .ivories .ivories-tempo-note { font-size: 0.875rem; font-weight: 600; color: var(--ivories-transport-ink, var(--ivories-ink)); }
+  .ivories .ivories-tempo-bpm { width: 2.5rem; }
+  /* Time signature at the playhead: a stacked-looking chip in the row's rhythm. */
+  .ivories .ivories-meter {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: var(--ivories-transport-control-h, 2rem);
+    color: var(--ivories-transport-ink-dim, var(--ivories-ink-dim));
+  }
+  .ivories .ivories-meter-value {
+    min-width: 2.25rem;
+    padding: 0.125rem 0.5rem;
+    border: 1px solid var(--ivories-transport-border, var(--ivories-line));
+    border-radius: var(--ivories-transport-radius, 10px);
+    color: var(--ivories-transport-ink, var(--ivories-ink));
+    font-size: 0.875rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    line-height: 1.4;
+  }
+  .ivories .ivories-metronome-voice { min-width: 0; }
   .ivories .ivories-transport-field {
     display: inline-flex;
     align-items: center;

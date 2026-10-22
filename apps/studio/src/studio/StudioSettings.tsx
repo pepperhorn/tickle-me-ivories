@@ -7,6 +7,7 @@ import { TextSettings } from '../ui/TextSettings'
 import { ThemeSettings } from '../ui/ThemeSettings'
 import { VelocityEditor } from '../ui/VelocityEditor'
 import { VoicePanel } from '../ui/VoicePanel'
+import { validMetronomeVoice } from 'ivories/core'
 import { LiveMidiSettings } from './LiveMidiSettings'
 import { useTransport } from '../transport/useTransport'
 import { useSettings } from '../settings/useSettings'
@@ -83,6 +84,18 @@ export function StudioSettings(props: {
               checked={settings.audio.metronome}
               onChange={(e) => settings.setAudio({ metronome: e.target.checked })}
             />
+          </SettingsRow>
+          <SettingsRow label="Metronome sound" htmlFor="metronome-voice">
+            <select
+              id="metronome-voice" aria-label="Metronome sound"
+              className="metronome-voice-select rounded border border-[var(--line)] bg-[var(--panel)] px-1.5 py-0.5 text-xs text-[var(--ink)]"
+              value={validMetronomeVoice(settings.audio.metronomeVoice)}
+              onChange={(e) => settings.setAudio({ metronomeVoice: validMetronomeVoice(e.target.value) })}
+            >
+              <option className="metronome-voice-option" value="woodblock">Woodblock</option>
+              <option className="metronome-voice-option" value="drum-machine">Drum machine</option>
+              <option className="metronome-voice-option" value="click">Click</option>
+            </select>
           </SettingsRow>
           <SettingsRow label="Count-in">
             <input

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { clampCountIn, countInBeatAt, countInBeatsPerBar, countInLabelAt, leadInFor, playLeadIn } from './countIn'
+import { clampCountIn, countInBeatAt, countInBeatsPerBar, countInLabelAt, leadInFor, metreAt, playLeadIn } from './countIn'
 import { buildTempoMap } from './tempoMap'
 import type { ScoreDocument } from './types'
 
@@ -135,5 +135,27 @@ describe('count-in bars (user ruling 2026-10-22)', () => {
 
   it('clampCountIn keeps 0, 1, 2 and defaults anything else to 1', () => {
     expect([0, 1, 2, 3, -1, Number.NaN, '2', undefined].map(clampCountIn)).toEqual([0, 1, 2, 1, 1, 1, 1, 1])
+  })
+})
+
+describe('metreAt (the Transport time signature readout)', () => {
+  it('is the signature in force at the playhead and follows a change', () => {
+    const s = score({ timeSignatures: [{ ticks: 0, numerator: 3, denominator: 4 }, { ticks: 1440, numerator: 6, denominator: 8 }] })
+    expect(metreAt(s, 0, SCALE_1)).toEqual({ numerator: 3, denominator: 4 })
+    expect(metreAt(s, 1.49, SCALE_1)).toEqual({ numerator: 3, denominator: 4 })
+    expect(metreAt(s, 1.5, SCALE_1)).toEqual({ numerator: 6, denominator: 8 })
+  })
+
+  it('shows the counted metre during the count-in and over a pickup, never the pickup\'s own short signature', () => {
+    const s = score({ timeSignatures: [{ ticks: 0, numerator: 1, denominator: 4 }, { ticks: 480, numerator: 4, denominator: 4 }] })
+    expect(metreAt(s, -1, SCALE_1)).toEqual({ numerator: 4, denominator: 4 })
+    expect(metreAt(s, 0.1, SCALE_1)).toEqual({ numerator: 4, denominator: 4 })
+    expect(metreAt(s, 1, SCALE_1)).toEqual({ numerator: 4, denominator: 4 })
+  })
+
+  it('follows the tempo setting (a slower scale reaches a change later)', () => {
+    const s = score({ timeSignatures: [{ ticks: 0, numerator: 4, denominator: 4 }, { ticks: 1920, numerator: 3, denominator: 4 }] })
+    expect(metreAt(s, 2.5, SCALE_1)).toEqual({ numerator: 3, denominator: 4 })
+    expect(metreAt(s, 2.5, { mode: 'scale', scale: 0.5 })).toEqual({ numerator: 4, denominator: 4 })
   })
 })
