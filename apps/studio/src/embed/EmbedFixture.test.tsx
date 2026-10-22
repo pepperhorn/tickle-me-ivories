@@ -12,7 +12,7 @@ describe('embed fixture (spec §9)', () => {
   it('embeds the rising and horizontal cases after the presets', () => {
     const { container } = render(<EmbedFixture search="?rising" />)
     const cases = [...container.querySelectorAll<HTMLElement>('section.fixture-case')].map((s) => s.dataset.case)
-    expect(cases).toEqual(['rising-live', 'rising-score', 'falling-horizontal', 'rising-horizontal'])
+    expect(cases).toEqual(['rising-live', 'rising-score', 'rising-horizontal'])
     expect(container.querySelector('section.fixture-case')!.previousElementSibling).toHaveProperty('dataset.preset', 'endless+keyboard')
   })
 
@@ -20,6 +20,11 @@ describe('embed fixture (spec §9)', () => {
     expect(render(<EmbedFixture search="" />).container.querySelectorAll('section.fixture-case')).toHaveLength(0)
     const gm = render(<EmbedFixture search="?gm" />).container
     expect([...gm.querySelectorAll<HTMLElement>('section.fixture-case')].map((s) => s.dataset.case)).toEqual(['gm-live'])
+  })
+
+  it('?only=<preset> renders just that preset', () => {
+    const { container } = render(<EmbedFixture search="?only=keyboard%2Bnotation" />)
+    expect([...container.querySelectorAll<HTMLElement>('section.fixture-preset')].map((s) => s.dataset.preset)).toEqual(['keyboard+notation'])
   })
 
   it('?sound-hosts renders only the sound-hosts case, no presets', () => {

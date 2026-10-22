@@ -18,8 +18,8 @@ export const FIXTURE_PRESETS: { view: IvoriesPreset; src: string }[] = [
 export const FIXTURE_CASES: { id: string; title: string; props: IvoriesProps }[] = [
   { id: 'rising-live', title: 'rising (live MIDI, no score)', props: { view: 'rising', input: 'midi' } },
   { id: 'rising-score', title: 'rising (score)', props: { view: 'rising', scoreUrl: '/fixtures/demo.mid' } },
-  { id: 'falling-horizontal', title: 'falling, horizontal', props: { view: 'falling', orientation: 'horizontal', scoreUrl: '/fixtures/demo.mid' } },
-  { id: 'rising-horizontal', title: 'rising, horizontal', props: { view: 'rising', orientation: 'horizontal', scoreUrl: '/fixtures/demo.mid' } },
+  // Falling is vertical only (horizontal is deprecated and draws vertical); the horizontal roll is rising's.
+  { id: 'rising-horizontal', title: 'rising, horizontal (tiles emanate from the keys)', props: { view: 'rising', orientation: 'horizontal', scoreUrl: '/fixtures/demo.mid' } },
 ]
 
 interface FixtureRegistry {
@@ -48,15 +48,18 @@ function GmProbe() {
  * live keyboard whose piano loads from the pepperscore-sounds GM pack (network).
  * `?notation-themes` adds keyboard+notation with notationTheme="ink-on-dark" (the presets show the default paper card).
  * `?sound-hosts` renders only a live keyboard with fallbackSoundfontUrl set (no presets, so the request log stays clean).
+ * `?only=<preset>` renders that one preset (screenshots; five pianos loading at once can starve a page of connections).
  */
 export function EmbedFixture({ search = typeof location === 'undefined' ? '' : location.search }: { search?: string }) {
   const flags = new URLSearchParams(search)
   const soundHostsOnly = flags.has('sound-hosts')
+  const only = flags.get('only')
+  const presets = only ? FIXTURE_PRESETS.filter((p) => p.view === only) : FIXTURE_PRESETS
   useEffect(() => { window.__ivoriesFixture = registry }, [])
   return (
     <main className="embed-fixture flex h-full flex-col gap-8 overflow-y-auto bg-[var(--ground)] p-6">
       <h1 className="embed-fixture-title text-lg font-semibold text-[var(--ink)]">ivories embed fixture</h1>
-      {!soundHostsOnly && FIXTURE_PRESETS.map((p) => (
+      {!soundHostsOnly && presets.map((p) => (
         <section key={p.view} className="fixture-preset flex flex-col gap-2" data-preset={p.view}>
           <h2 className="fixture-preset-title text-sm text-[var(--ink-dim)]">{p.view}</h2>
           <div className="fixture-preset-frame h-[360px] overflow-hidden rounded-lg border border-[var(--line)]">

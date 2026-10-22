@@ -7,8 +7,11 @@ import { test, expect } from './fixtures'
 import type { Page } from './fixtures'
 import type { Locator } from '@playwright/test'
 import { installFakeMidi, midiBound, noteOff, noteOn } from './fakeMidi'
+import { join } from 'node:path'
 
 const SHOTS = '/tmp/ivories-e2e'
+/** Review screenshots (gitignored). */
+const SUPER_SHOTS = join(import.meta.dirname, '..', '.superpowers', 'shots')
 const FIXTURE = '/embed-fixture?rising'
 // Nine providers share this page: it can be unresponsive for several seconds after load,
 // so the first waits get the cold-load budget the fixture already uses (preflight T9-1).
@@ -84,7 +87,8 @@ test('rising with a score runs on the score clock and has no BPM field', async (
   await section.screenshot({ path: `${SHOTS}/rising-score.png` })
 })
 
-for (const id of ['falling-horizontal', 'rising-horizontal']) {
+// Falling is vertical only (horizontal is deprecated): the horizontal roll is rising's.
+for (const id of ['rising-horizontal']) {
   test(`${id}: the keyboard stands on the left edge`, async ({ page }) => {
     await page.goto(FIXTURE)
     const section = caseOf(page, id)
@@ -97,3 +101,23 @@ for (const id of ['falling-horizontal', 'rising-horizontal']) {
     await section.screenshot({ path: `${SHOTS}/${id}.png` })
   })
 }
+
+test('rising, horizontal, mid-play: tiles emanate from the keys after the count-in', async ({ page }) => {
+  await page.goto(FIXTURE)
+  const section = caseOf(page, 'rising-horizontal')
+  const view = section.locator('.ivories-rising')
+  await expect(view).toHaveAttribute('data-orientation', 'horizontal', COLD)
+  await expect(section.locator('.ivories-time')).not.toHaveText(/\/ 0:00$/, COLD)
+  await section.locator('.ivories-btn-play').click()
+  // Play from the top runs the count-in first: the clock is negative and the count shows.
+  await expect.poll(() => drawnT(view), { timeout: 10_000 }).toBeLessThan(0)
+  await expect(section.locator('.ivories-count-in-overlay')).toHaveAttribute('data-count', /[1-4]/, { timeout: 10_000 })
+  await expect.poll(() => drawnT(view), { timeout: 15_000 }).toBeGreaterThan(2)
+  const canvas = view.locator('canvas.ivories-canvas')
+  // Tiles have left the keyboard (left edge) and travelled right: the right half is drawn on.
+  const before = await signature(canvas)
+  await page.waitForTimeout(250)
+  expect(await signature(canvas)).not.toBe(before)
+  await section.screenshot({ path: `${SHOTS}/rising-horizontal-playing.png` })
+  await section.screenshot({ path: `${SUPER_SHOTS}/rising-horizontal-playing.png` })
+})
