@@ -105,12 +105,21 @@
     margin: 0;
     max-width: calc(100% - 2rem);
     padding: 0.5rem 0.75rem;
-    border-radius: 0.375rem;
-    background: rgba(0, 0, 0, 0.7);
-    color: #ff6b6b;
-    font-size: 0.875rem;
+    border: 1px solid var(--ivories-message-border, var(--ivories-line));
+    border-radius: 8px;
+    background: var(--ivories-message-bg, var(--ivories-panel));
+    color: var(--ivories-message-ink, var(--ivories-ink));
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.4;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
   }
-  .ivories .ivories-message[role='status'] { color: var(--ivories-ink); }
+  /* Errors in pepperscore's terracotta (#9a482d), lifted for the dark stage. */
+  .ivories .ivories-message[role='alert'] {
+    border-color: var(--ivories-message-alert-border, rgba(196, 104, 72, 0.6));
+    background: var(--ivories-message-alert-bg, #2a1a14);
+    color: var(--ivories-message-alert-ink, #f3c2b1);
+  }
   .ivories.ivories-boundary { position: relative; display: block; min-height: 3rem; }
 
   /* Transport (pepperscore's chrome language: a green pill play button with an
