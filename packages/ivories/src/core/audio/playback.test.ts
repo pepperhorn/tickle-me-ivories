@@ -113,6 +113,42 @@ describe('PlaybackDriver (spec §3.1: the scheduler consumes a Clock)', () => {
     expect(off.clicks.length).toBe(0)
   })
 
+  it("countInClicks 'always': the count-in clicks with the metronome off, the bar's beats do not", () => {
+    const src = { currentTime: 10 }
+    const clicks: { t: number; accent: boolean }[] = []
+    const engine = {
+      get currentTime() { return src.currentTime },
+      play: vi.fn(), stopAll: vi.fn(),
+      metronome: () => ({ click: (t: number, accent: boolean) => { clicks.push({ t, accent }) }, stop: vi.fn() }),
+    }
+    const clock = new AudioClock(src)
+    const s = score()
+    const audio = { ...DEFAULT_SETTINGS.audio, metronome: false, countIn: true }
+    const driver = new PlaybackDriver({ clock, engine, getScore: () => s, getAudio: () => audio, audioEnabled: () => true, countInClicks: 'always' })
+    driver.setScore(s, { mode: 'scale', scale: 1 }, { sec: 2, beats: 4, beatSec: 0.5 })
+    clock.seek(-2)
+    clock.play()
+    for (let i = 0; i < 120; i++) { src.currentTime += 0.025; driver.tick() }
+    // Four count-in clicks, accent on 1, at -2, -1.5, -1, -0.5 (engine time 8 + 2 = origin 12).
+    expect(clicks.map((c) => c.accent)).toEqual([true, false, false, false])
+    expect(clicks.map((c) => c.t - 12)).toEqual([-2, -1.5, -1, -0.5])
+    // The count-in setting off silences them too.
+    const quiet = { ...audio, countIn: false }
+    const c2: number[] = []
+    const d2 = new PlaybackDriver({ clock: new AudioClock(src), engine: { ...engine, metronome: () => ({ click: (t: number) => { c2.push(t) }, stop: vi.fn() }) }, getScore: () => s, getAudio: () => quiet, audioEnabled: () => true, countInClicks: 'always' })
+    d2.setScore(s, { mode: 'scale', scale: 1 }, { sec: 2, beats: 4, beatSec: 0.5 })
+    expect(c2).toEqual([])
+  })
+
+  it('setScore with two bars of lead-in clicks eight count-in beats', () => {
+    const r = rig({ ...DEFAULT_SETTINGS.audio, metronome: true, countIn: true })
+    r.driver.setScore(r.s, { mode: 'scale', scale: 1 }, { sec: 4, beats: 8, beatSec: 0.5 })
+    r.clock.seek(-4)
+    r.clock.play()
+    for (let i = 0; i < 170; i++) { r.src.currentTime += 0.025; r.driver.tick() }
+    expect(r.clicks.filter((t) => t < 14 - 1e-9).length).toBe(8)
+  })
+
   it('keeps cursors level but hands nothing to the engine while audio is disabled', () => {
     const r = rig()
     let on = false

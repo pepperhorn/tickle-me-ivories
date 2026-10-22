@@ -75,6 +75,13 @@ function attrNum(el: Element | null, name: string): number | null {
 
 const STEP: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }
 
+/** "F" + 1 -> "F#", "B" + -1 -> "Bb"; undefined for a quarter-tone or an alter beyond a double. */
+function spellingOf(step: string, alter: number): string | undefined {
+  const s = step.toUpperCase()
+  if (!(s in STEP) || !Number.isInteger(alter) || Math.abs(alter) > 2) return undefined
+  return s + (alter > 0 ? '#'.repeat(alter) : 'b'.repeat(-alter))
+}
+
 function midiOf(step: string, octave: number | null, alter: number): number | null {
   const s = STEP[step.toUpperCase()]
   if (s === undefined || octave === null) return null
@@ -135,6 +142,8 @@ interface RawNote {
   velocity: number
   tieStart: boolean
   tieStop: boolean
+  /** Written pitch class ("F#", "Bb"), untransposed parts only. */
+  spelling?: string
 }
 interface Timed { measure: number; off: number }
 interface RawTempo extends Timed { bpm: number; rank: number }  // rank: <sound> 0, <metronome> 1
@@ -267,11 +276,16 @@ export function parseMusicXml(
             const staff = Math.max(1, Math.floor(num(kid(el, 'staff')) ?? 1))
             const voice = text(kid(el, 'voice')) || '1'
             let pitch: number | null = null
+            let spelling: string | undefined
             const p = kid(el, 'pitch')
             const u = kid(el, 'unpitched')
             if (p) {
-              const written = midiOf(text(kid(p, 'step')), num(kid(p, 'octave')), num(kid(p, 'alter')) ?? 0)
-              if (written !== null) pitch = written + (transpose.get(staff) ?? transpose.get(0) ?? 0)
+              const alter = num(kid(p, 'alter')) ?? 0
+              const written = midiOf(text(kid(p, 'step')), num(kid(p, 'octave')), alter)
+              const shift = transpose.get(staff) ?? transpose.get(0) ?? 0
+              if (written !== null) pitch = written + shift
+              // The written name is only the sounding name in an untransposed part.
+              if (written !== null && shift === 0) spelling = spellingOf(text(kid(p, 'step')), alter)
             } else if (u) {
               percussion = true
               // A GM drum key from the note's instrument (or the part's only
@@ -286,7 +300,7 @@ export function parseMusicXml(
             const ties = kids(el, 'tie').map((t) => t.getAttribute('type'))
             const noteDyn = attrNum(el, 'dynamics')
             notes.push({
-              measure: mi, off: start, dur, pitch, staff, voice,
+              measure: mi, off: start, dur, pitch, staff, voice, spelling,
               velocity: noteDyn !== null && noteDyn >= 0 ? clampVel(noteDyn) : velocity,
               tieStart: ties.includes('start'), tieStop: ties.includes('stop'),
             })
@@ -366,6 +380,7 @@ export function parseMusicXml(
           id: nextId++, pitch: n.pitch,
           startTicks: n.start, durTicks: Math.max(1, Math.round(n.end) - n.start),
           startSec: 0, endSec: 0, velocity: n.velocity, voiceId: id,
+          ...(n.spelling ? { spelling: n.spelling } : {}),
         })
       }
     }

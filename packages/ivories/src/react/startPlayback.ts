@@ -24,9 +24,12 @@ export function startPlayback(iv: {
   engine: Pick<AudioEngine, 'resume'>
   audio: boolean
   reportError(e: IvoriesError): void
+  /** Runs immediately before clock.play() (the count-in seek), never if the start is cancelled. */
+  prepare?: () => void
 }): void {
   const { clock } = iv
-  if (!iv.audio) { clock.play(); return }
+  const run = () => { iv.prepare?.(); clock.play() }
+  if (!iv.audio) { run(); return }
   if (waiting.has(clock)) return
   let done = false
   const finish = () => {
@@ -37,7 +40,7 @@ export function startPlayback(iv: {
     return true
   }
   const cancel = () => { finish() }
-  const start = () => { if (finish()) clock.play() }
+  const start = () => { if (finish()) run() }
   waiting.set(clock, cancel)
   const timer = setTimeout(start, RESUME_WAIT_MS)
   void resumeAudio(iv).then(start)

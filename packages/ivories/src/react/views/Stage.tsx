@@ -17,6 +17,7 @@ import type { StreamRegistry } from '../../core/camera/streams'
 import type { KeyboardLayout } from '../../core/render/geometry'
 import type { IvoriesErrorCode } from '../../core/errors'
 import type { LabelsProp } from './labels'
+import type { NoteBarLabels } from '../../core/render/barLabels'
 
 export interface StageHandle { swapSlots(): void }
 
@@ -29,6 +30,8 @@ export interface StageSlotViewProps {
   input?: 'none' | 'midi'
   zoom?: number
   onLayout?(layout: KeyboardLayout): void
+  /** Names on falling/rising note bars (default 'pitch'). */
+  noteBarLabels?: NoteBarLabels
 }
 
 export interface StageProps {
@@ -81,8 +84,8 @@ function SlotContent({ source, viewProps, registry }: { source: SlotSource; view
   const v = viewProps ?? {}
   switch (source.view) {
     case 'keyboard': return <Keyboard labels={v.labels} range={v.range} input={v.input} onLayout={v.onLayout} />
-    case 'falling': return <FallingKeys labels={v.labels} range={v.range} lookahead={v.lookahead} input={v.input} onLayout={v.onLayout} orientation={source.orientation} />
-    case 'rising': return <RisingKeys labels={v.labels} range={v.range} visibleBeats={v.visibleBeats} input={v.input} onLayout={v.onLayout} orientation={source.orientation} />
+    case 'falling': return <FallingKeys labels={v.labels} range={v.range} lookahead={v.lookahead} input={v.input} onLayout={v.onLayout} orientation={source.orientation} noteBarLabels={v.noteBarLabels} />
+    case 'rising': return <RisingKeys labels={v.labels} range={v.range} visibleBeats={v.visibleBeats} input={v.input} onLayout={v.onLayout} orientation={source.orientation} noteBarLabels={v.noteBarLabels} />
     case 'notation': return <Notation view="vertical" zoom={v.zoom} />
     case 'endless': return <Notation view="endless" zoom={v.zoom} />
   }

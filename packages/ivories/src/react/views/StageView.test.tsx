@@ -149,13 +149,17 @@ describe('Keyboard and FallingKeys (spec §4)', () => {
     expect(container.querySelector('.ivories-keyboard')!.getAttribute('data-orientation')).toBe('vertical')
   })
 
-  it('FallingKeys orientation="horizontal" draws under the reflection and marks its root', async () => {
+  it('FallingKeys orientation="horizontal" is deprecated: it draws vertical and warns once', async () => {
     const stub = stubCtx()
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
       (() => stub.ctx) as unknown as typeof HTMLCanvasElement.prototype.getContext,
     )
-    const { container } = render(<FallingKeys score={doc()} engine={fakeEngine()} orientation="horizontal" />)
-    await waitFor(() => expect(stub.calls).toContain('transform(6)'))
-    expect(container.querySelector('.ivories-falling')!.getAttribute('data-orientation')).toBe('horizontal')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { container } = render(<><FallingKeys score={doc()} engine={fakeEngine()} orientation="horizontal" /><FallingKeys score={doc()} engine={fakeEngine()} orientation="horizontal" /></>)
+    await waitFor(() => expect(stub.calls.length).toBeGreaterThan(0))
+    expect(stub.calls).not.toContain('transform(6)')
+    expect(container.querySelector('.ivories-falling')!.getAttribute('data-orientation')).toBe('vertical')
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes('deprecated'))).toHaveLength(1)
+    warn.mockRestore()
   })
 })

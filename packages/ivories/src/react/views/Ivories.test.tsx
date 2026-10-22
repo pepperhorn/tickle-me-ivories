@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { createRef } from 'react'
 import { render, waitFor } from '@testing-library/react'
 import { Midi } from '@tonejs/midi'
@@ -46,9 +46,11 @@ describe('Ivories presets (spec §4)', () => {
     expect((container.querySelector('.ivories-bpm-input') as HTMLInputElement).value).toBe('110')
   })
 
-  it('orientation applies to the falling main view; a loaded score hides the BPM field', async () => {
+  it('the falling preset ignores the deprecated horizontal orientation; a loaded score hides the BPM field', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { container } = render(<Ivories view="falling" orientation="horizontal" midi={bytes()} engine={fakeEngine()} />)
-    await waitFor(() => expect(container.querySelector('.ivories-falling')?.getAttribute('data-orientation')).toBe('horizontal'))
+    await waitFor(() => expect(container.querySelector('.ivories-falling')?.getAttribute('data-orientation')).toBe('vertical'))
+    warn.mockRestore()
     await waitFor(() => expect(container.querySelector('.ivories-time')!.textContent).not.toMatch(/\/ 0:00$/))
     expect(container.querySelector('.ivories-bpm')).toBeNull()
   })

@@ -1,14 +1,61 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { useClock, useClockTime, useIvories, useLiveBpm } from '../hooks'
 import { withProvider } from '../withProvider'
 import { Guarded } from '../IvoriesBoundary'
 import { formatTime } from '../format'
 import { cx } from '../cx'
-import { cancelPendingStart, resumeAudio, startPlayback } from '../startPlayback'
+import { cancelPendingStart, resumeAudio } from '../startPlayback'
 import { MAX_LIVE_BPM, MIN_LIVE_BPM, parseBpmDraft } from '../../core/render/beats'
+import { beatTickPositions } from '../../core/render/transportTicks'
+import { clampCountIn } from '../../core/model/countIn'
+import type { ScoreDocument, TempoSetting } from '../../core/model/types'
 
-export interface TransportControls { play?: boolean; seek?: boolean; tempo?: boolean; metronome?: boolean; bpm?: boolean }
+export interface TransportControls { play?: boolean; seek?: boolean; tempo?: boolean; metronome?: boolean; bpm?: boolean; countIn?: boolean }
+
+/** Half the seek thumb (14px): the thumb's centre runs from here to width - this. */
+const THUMB_HALF_PX = 7
+
+/**
+ * The seek track, drawn under a transparent native range: the pepperscore-style
+ * 4px track and fill, broken at every beat and marked more strongly at every bar
+ * line (beatTickPositions). Static per score and width; only the fill moves.
+ */
+function SeekTrack({ score, tempo, progress }: { score: ScoreDocument | null; tempo: TempoSetting; progress: number }) {
+  const ref = useRef<SVGSVGElement | null>(null)
+  const [width, setWidth] = useState(0)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const measure = () => setWidth(el.getBoundingClientRect().width)
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const inner = Math.max(0, width - 2 * THUMB_HALF_PX)
+  const ticks = useMemo(() => (score && inner > 0 ? beatTickPositions(score, inner, tempo) : []), [score, inner, tempo])
+  const { beats, bars } = useMemo(() => {
+    let b = '', r = ''
+    for (const t of ticks) {
+      const x = (THUMB_HALF_PX + t.x).toFixed(1)
+      if (t.bar) r += `M${x} 2V14`
+      else b += `M${x} 5V11`
+    }
+    return { beats: b, bars: r }
+  }, [ticks])
+  const fillW = THUMB_HALF_PX + inner * Math.min(1, Math.max(0, progress))
+  return (
+    <svg ref={ref} className="ivories-seek-track" aria-hidden="true" focusable="false" height="16" data-beat-ticks={ticks.length}>
+      <rect className="ivories-seek-track-bg" x="0" y="6" width="100%" height="4" rx="2" />
+      <rect className="ivories-seek-track-fill" x="0" y="6" width={fillW} height="4" rx="2" />
+      {beats && <path className="ivories-seek-beat-gaps" d={beats} />}
+      {bars && <path className="ivories-seek-bar-gaps" d={bars} />}
+      {bars && <path className="ivories-seek-bar-marks" d={bars} />}
+    </svg>
+  )
+}
 
 /** Filled share of a range input, read by the track gradient (WebKit has no ::range-progress). */
 const progress = (value: number, min: number, max: number): CSSProperties =>
@@ -49,11 +96,11 @@ function TransportView({ controls, className }: { controls?: TransportControls; 
   const iv = useIvories()
   const { clock, playing, rate } = useClock()
   const t = useClockTime(10)
-  const c = { play: true, seek: true, tempo: true, metronome: true, bpm: true, ...controls }
+  const c = { play: true, seek: true, tempo: true, metronome: true, bpm: true, countIn: true, ...controls }
   const duration = iv.score?.durationSec ?? 0
   const toggle = () => {
     if (playing) { cancelPendingStart(clock); clock.pause(); return }
-    startPlayback(iv)
+    iv.play()
   }
   // Spec §8: blocked audio -> the clock runs silently and we offer a tap.
   const needsTap = iv.audio && playing && !iv.engine.running
@@ -70,13 +117,16 @@ function TransportView({ controls, className }: { controls?: TransportControls; 
         </button>
       )}
       {c.seek && (
-        <input
-          type="range" aria-label="Seek" className="ivories-seek ivories-transport-range ivories-transport-seek"
-          min={0} max={seekMax} step={0.01}
-          value={seekValue}
-          style={progress(seekValue, 0, seekMax)}
-          onChange={(e) => clock.seek(Number(e.target.value))}
-        />
+        <span className="ivories-seek-wrap" data-count-in={t < 0 ? '' : undefined}>
+          <SeekTrack score={iv.score} tempo={iv.tempo} progress={seekValue / seekMax} />
+          <input
+            type="range" aria-label="Seek" className="ivories-seek ivories-transport-range ivories-transport-seek"
+            min={0} max={seekMax} step={0.01}
+            value={seekValue}
+            style={progress(seekValue, 0, seekMax)}
+            onChange={(e) => clock.seek(Number(e.target.value))}
+          />
+        </span>
       )}
       {/* Live mode has no length: only the clock time. */}
       <span className="ivories-time ivories-transport-time">{iv.score ? `${formatTime(t)} / ${formatTime(duration)}` : formatTime(t)}</span>
@@ -91,6 +141,20 @@ function TransportView({ controls, className }: { controls?: TransportControls; 
             onChange={(e) => clock.setRate(Number(e.target.value))}
           />
           <span className="ivories-tempo-value ivories-transport-value">{Math.round(rate * 100)}%</span>
+        </label>
+      )}
+      {c.countIn && iv.score && (
+        <label className="ivories-count-in-field ivories-transport-field">
+          <span className="ivories-count-in-label ivories-transport-label">Count-in</span>
+          <select
+            aria-label="Count-in" className="ivories-count-in-select ivories-transport-select"
+            value={iv.countIn}
+            onChange={(e) => iv.setCountIn(clampCountIn(Number(e.target.value)))}
+          >
+            <option className="ivories-count-in-option" value={0}>Off</option>
+            <option className="ivories-count-in-option" value={1}>1 bar</option>
+            <option className="ivories-count-in-option" value={2}>2 bars</option>
+          </select>
         </label>
       )}
       {c.metronome && (
@@ -112,7 +176,7 @@ function TransportView({ controls, className }: { controls?: TransportControls; 
   )
 }
 
-/** Play/pause, seek bar, tempo (clock rate), metronome toggle, and the live BPM with no score. */
+/** Play/pause, seek bar (broken at every beat), tempo (clock rate), count-in, metronome toggle, and the live BPM with no score. */
 export const Transport = withProvider(
   (p: { controls?: TransportControls; className?: string }) => <Guarded><TransportView {...p} /></Guarded>,
   'Transport',

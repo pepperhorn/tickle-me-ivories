@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { countInBeatAt, leadInFor } from './countIn'
+import { clampCountIn, countInBeatAt, countInBeatsPerBar, countInLabelAt, leadInFor, playLeadIn } from './countIn'
 import { buildTempoMap } from './tempoMap'
 import type { ScoreDocument } from './types'
 
@@ -86,5 +86,54 @@ describe('countInBeatAt', () => {
 
   it('is 0 with no lead-in', () => {
     expect(countInBeatAt(-1, { sec: 0, beats: 0, beatSec: 0 })).toBe(0)
+  })
+})
+
+describe('count-in bars (user ruling 2026-10-22)', () => {
+  it('two bars of 4/4 double the lead-in; 0 bars is no lead-in', () => {
+    expect(leadInFor(score(), SCALE_1, 2)).toEqual({ sec: 4, beats: 8, beatSec: 0.5 })
+    expect(leadInFor(score(), SCALE_1, 0)).toEqual({ sec: 0, beats: 0, beatSec: 0 })
+  })
+
+  it('3/4: one bar is three beats, two bars six', () => {
+    const s = score({ timeSignatures: sig(3, 4) })
+    expect(leadInFor(s, SCALE_1, 1)).toEqual({ sec: 1.5, beats: 3, beatSec: 0.5 })
+    expect(leadInFor(s, SCALE_1, 2)).toEqual({ sec: 3, beats: 6, beatSec: 0.5 })
+  })
+
+  it('6/8: the bar is six eighths at the opening tempo, two bars twelve', () => {
+    const s = score({ timeSignatures: sig(6, 8) })
+    const one = leadInFor(s, SCALE_1, 1)
+    const two = leadInFor(s, SCALE_1, 2)
+    expect(one.sec).toBeCloseTo(1.5, 9)
+    expect(two.sec).toBeCloseTo(3, 9)
+    expect(two.beats).toBe(12)
+  })
+
+  it('two bars over a 1-beat pickup: a full bar, then "1 2 3"', () => {
+    const timeSignatures = [{ ticks: 0, numerator: 1, denominator: 4 }, { ticks: 480, numerator: 4, denominator: 4 }]
+    const s = score({ timeSignatures })
+    const lead = leadInFor(s, SCALE_1, 2)
+    expect(lead).toEqual({ sec: 3.5, beats: 7, beatSec: 0.5 })
+    const per = countInBeatsPerBar(s)
+    expect(per).toBe(4)
+    expect([-3.5, -3, -2.5, -2, -1.5, -1, -0.5].map((h) => countInLabelAt(h, lead, per))).toEqual([1, 2, 3, 4, 1, 2, 3])
+  })
+
+  it('playLeadIn: with the count-in off a silent beat still runs first (no clicks, no count)', () => {
+    const pre = playLeadIn(score(), SCALE_1, 0)
+    expect(pre).toEqual({ sec: 0.5, beats: 0, beatSec: 0.5 })
+    expect(countInLabelAt(-0.25, pre, 4)).toBe(0)
+    expect(playLeadIn(score(), SCALE_1, 2)).toEqual(leadInFor(score(), SCALE_1, 2))
+  })
+
+  it('countInLabelAt folds two bars into "1 2 3 4 1 2 3 4"', () => {
+    const lead = leadInFor(score(), SCALE_1, 2)
+    expect([-4, -3.5, -3, -2.5, -2, -1.5, -1, -0.5, 0].map((h) => countInLabelAt(h, lead, 4)))
+      .toEqual([1, 2, 3, 4, 1, 2, 3, 4, 0])
+  })
+
+  it('clampCountIn keeps 0, 1, 2 and defaults anything else to 1', () => {
+    expect([0, 1, 2, 3, -1, Number.NaN, '2', undefined].map(clampCountIn)).toEqual([0, 1, 2, 1, 1, 1, 1, 1])
   })
 })

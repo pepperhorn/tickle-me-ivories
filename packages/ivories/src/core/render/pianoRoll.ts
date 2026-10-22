@@ -1,6 +1,7 @@
 import { drawKeyboard } from './keyboard'
 import { FLASH_MS, flashIntensity, noteColor } from './colors'
 import { roundRect } from './shapes'
+import { barLabelPx, drawBarLabel } from './barLabels'
 import { isTransparent } from './theme'
 import { lowerBoundByStart } from '../model/search'
 import type { Theme } from './theme'
@@ -33,6 +34,23 @@ export interface RenderState {
   /** Horizontal views draw this same canonical frame under a reflection (R-H);
       only canvas text needs to know, to stay upright. */
   orientation?: Orientation
+  /** The note-name label for a bar (null: none). Absent: no labels. */
+  barLabel?: (n: NoteEvent) => string | null
+}
+
+/**
+ * A bar's name label, centred on the part of the bar that is on the roll
+ * (between `lo` and `hi` in canonical y), when it fits legibly.
+ */
+export function labelBar(
+  ctx: CanvasRenderingContext2D, state: RenderState, n: NoteEvent, x: number, w: number, top: number, bottom: number, lo: number, hi: number,
+): void {
+  const text = state.barLabel?.(n)
+  if (!text) return
+  const a = Math.max(top, lo)
+  const b = Math.min(bottom, hi)
+  const px = barLabelPx(text, w, b - a, state.orientation)
+  if (px > 0) drawBarLabel(ctx, text, x + w / 2, (a + b) / 2, px, state.orientation)
 }
 
 const FLASH_TAIL = FLASH_MS / 1000
@@ -93,7 +111,10 @@ export function drawRoll(
       g.addColorStop(0, noteColor(v.hue, Math.max(1, n.velocity - 14), state.velocity))
       g.addColorStop(1, noteColor(v.hue, n.velocity, state.velocity))
       ctx.fillStyle = g
-      roundRect(ctx, k.x + (k.black ? 0.5 : 1), top, k.w - (k.black ? 1 : 2), h, theme.barRadius)
+      const x = k.x + (k.black ? 0.5 : 1)
+      const w = k.w - (k.black ? 1 : 2)
+      roundRect(ctx, x, top, w, h, theme.barRadius)
+      labelBar(ctx, state, n, x, w, top, top + h, 0, layout.hitY)
     }
   }
 }

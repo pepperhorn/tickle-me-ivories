@@ -9,6 +9,7 @@ import type { TrailNote } from '../core/midi/trail'
 import type { NoteEvent, ScoreDocument, TempoSetting } from '../core/model/types'
 import type { AudioSettings, Settings } from '../core/settings/types'
 import type { ValueStore } from './ValueStore'
+import type { CountInBars, LeadIn } from '../core/model/countIn'
 
 export interface IvoriesNoteEvent { midi: number; velocity: number; time: number; source: 'score' | 'live' }
 export interface ActiveNotes { score: ReadonlyMap<number, NoteEvent>; live: ReadonlyMap<number, LiveNote> }
@@ -38,6 +39,17 @@ export interface IvoriesContextValue {
   requestLiveClock(): () => void
   /** The provider's free-running live clock is the active clock (no score source, no host clock; R-L). BPM only matters then. */
   liveClockActive: boolean
+  /** Starts playback: from the top it runs the count-in first (see IvoriesProviderProps.countIn). Stable per clock. */
+  play(): void
+  /** Bars of count-in (0, 1, 2) and its setter (the Transport's Count-in select). */
+  countIn: CountInBars
+  setCountIn(bars: CountInBars): void
+  /** The lead-in a Play from the top runs before t = 0 (beats = 0: a silent pre-roll). */
+  lead: LeadIn
+  /** Beats per counted bar, for the on-stage count ("1 2 3 4 1 2 3 4"). */
+  countInPerBar: number
+  /** Views draw the count during the lead-in (provider prop showCountIn). */
+  showCountIn: boolean
   /** Live MIDI input (spec §4.1), started only while a view asks for it. */
   live: {
     held: ValueStore<ReadonlyMap<number, LiveNote>>

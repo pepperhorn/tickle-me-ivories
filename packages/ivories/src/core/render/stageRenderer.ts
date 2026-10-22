@@ -41,6 +41,8 @@ export interface StageInput {
   orientation?: Orientation
   /** Draw the rising roll instead of the falling one. */
   rising?: RisingInput | null
+  /** The note-name label for a roll bar (null: none). Absent: no labels. */
+  barLabel?: (n: NoteEvent) => string | null
 }
 
 export interface StageFrame { layout: KeyboardLayout; held: Map<number, NoteEvent> }
@@ -91,6 +93,7 @@ export class StageRenderer {
       theme: this.themeFor(st.theme.name, st.theme.stageBgOverride, layout),
       live: input.live,
       orientation: input.orientation,
+      barLabel: input.barLabel,
     }
     const dur = input.score?.durationSec ?? 0
     const progress = dur > 0 ? t / dur : 0

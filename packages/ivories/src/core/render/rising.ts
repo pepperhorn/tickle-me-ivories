@@ -1,5 +1,5 @@
 import { drawKeyboard } from './keyboard'
-import { drawBackground, drawImpact, drawProgress, heldNotes } from './pianoRoll'
+import { drawBackground, drawImpact, drawProgress, heldNotes, labelBar } from './pianoRoll'
 import { noteColor } from './colors'
 import { roundRect } from './shapes'
 import { lowerBoundByStart } from '../model/search'
@@ -103,6 +103,7 @@ export function drawRisingStage(
         if (span) {
           drawBar(ctx, k, span, noteColor(v.hue, n.velocity, state.velocity),
             noteColor(v.hue, Math.max(1, n.velocity - 14), state.velocity), theme.barRadius)
+          labelBar(ctx, state, n, k.x + (k.black ? 0.5 : 1), k.w - (k.black ? 1 : 2), span.top, span.bottom, 0, hitY)
         }
       }
       for (const n of state.trail) {

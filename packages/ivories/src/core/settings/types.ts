@@ -49,9 +49,10 @@ export interface AudioSettings {
   masterVolume: number    // 0-1
   metronome: boolean
   metronomeVolume: number // 0-1
-  /** The one-bar count-in (numbers on stage, and clicks when the metronome is
-      on). Optional so settings, profiles and scenes saved before it existed
-      stay valid; absent means on. The lead-in bar itself always plays. */
+  /** The one-bar count-in (numbers on stage, and its clicks -- with the
+      metronome off too since 0.1.1). Optional so settings, profiles and scenes
+      saved before it existed stay valid; absent means on. The lead-in bar
+      itself always plays. */
   countIn?: boolean
 }
 

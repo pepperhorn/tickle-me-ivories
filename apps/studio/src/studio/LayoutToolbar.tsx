@@ -133,7 +133,8 @@ export function LayoutToolbar() {
               onChange={(e) => setSource(slot, e.target.value)}>
               {SOURCE_OPTIONS.map(([v, text]) => <option key={v} className="slot-source-option" value={v}>{text}</option>)}
             </select>
-            {s.kind === 'ivories' && (s.view === 'falling' || s.view === 'rising') && (
+            {/* Falling is vertical only (horizontal is deprecated): the horizontal roll is rising's. */}
+            {s.kind === 'ivories' && s.view === 'rising' && (
               <select aria-label={`${label} orientation`} className={`slot-orientation-select ${SELECT}`} value={s.orientation ?? 'vertical'}
                 onChange={(e) => dispatch({ type: 'setSource', slot, source: { ...s, orientation: e.target.value as Orientation } })}>
                 <option className="slot-orientation-option" value="vertical">Vertical</option>

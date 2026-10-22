@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useIvories } from '../hooks'
 import { cx } from '../cx'
@@ -21,6 +21,10 @@ import type { ThemeName } from '../../core/settings/types'
 import { IvoriesError } from '../../core/errors'
 import type { Orientation } from '../../core/layout/types'
 import { DEFAULT_BEATS_PER_BAR, DEFAULT_VISIBLE_BEATS } from '../../core/render/beats'
+import { NoteBarLabelCache, noteBarLabelsOf } from '../../core/render/barLabels'
+import type { NoteBarLabels } from '../../core/render/barLabels'
+import { countInLabelAt } from '../../core/model/countIn'
+import type { NoteEvent } from '../../core/model/types'
 
 export interface StageViewProps {
   /** 'full' (88 keys) or [lowMidi, highMidi]; absent follows settings.display.zoom. */
@@ -32,6 +36,37 @@ export interface StageViewProps {
   /** Called when the keyboard geometry changes (resize, zoom), never per frame. */
   onLayout?(layout: KeyboardLayout): void
   children?: ReactNode
+  /** Names on the falling/rising note bars: 'pitch' (default: "C", "F♯", "B♭" as spelled
+      in the score, else by key signature), 'pitch-octave' ("F♯4"), or 'none'. */
+  noteBarLabels?: NoteBarLabels
+}
+
+/**
+ * The count-in over the stage: "1 2 3 4" while the playhead is in the lead-in,
+ * a pure function of t like everything else drawn. React hears only when the
+ * number changes (N times per start); the pop is a CSS animation keyed on it.
+ */
+function CountInOverlay({ keyboardPx, horizontal }: { keyboardPx: number; horizontal: boolean }) {
+  const iv = useIvories()
+  const [n, setN] = useState(0)
+  const ref = useRef({ lead: iv.lead, perBar: iv.countInPerBar })
+  ref.current = { lead: iv.lead, perBar: iv.countInPerBar }
+  useEffect(() => {
+    let last = -1
+    return iv.frames.add((t) => {
+      const b = countInLabelAt(t, ref.current.lead, ref.current.perBar)
+      if (b !== last) { last = b; setN(b) }
+    })
+  }, [iv.frames])
+  const style: CSSProperties = {
+    ...(horizontal ? { left: keyboardPx } : { bottom: keyboardPx }),
+    ['--ivories-count-in-beat' as string]: `${iv.lead.beatSec || 0.5}s`,
+  }
+  return (
+    <div className="ivories-count-in-overlay" style={style} aria-live="polite" data-count={n || undefined}>
+      {n > 0 && <span key={n} className="ivories-count-in-number">{n}</span>}
+    </div>
+  )
 }
 
 /** Shared by the labels-off overlay state so it never allocates. */
@@ -60,6 +95,11 @@ export function StageView(p: StageViewProps & StageViewKindProps) {
   const [overlay, setOverlay] = useState<{ layout: KeyboardLayout | null; pitches: number[] }>({ layout: null, pitches: [] })
   const [chord, setChord] = useState<ChordDisplayValue | null>(null)
   const [failed, setFailed] = useState(false)
+  const [labelCache] = useState(() => new NoteBarLabelCache())
+  const labelCtx = useRef({ key: keys.get(iv.score, text.keyOverride), mode: noteBarLabelsOf(p.noteBarLabels) })
+  labelCtx.current = { key: keys.get(iv.score, text.keyOverride), mode: noteBarLabelsOf(p.noteBarLabels) }
+  const barLabel = useCallback((n: NoteEvent) => labelCache.get(n, labelCtx.current.key, labelCtx.current.mode), [labelCache])
+  const barLabelRef = useRef(barLabel); barLabelRef.current = barLabel
 
   // Everything the frame callback reads, without re-subscribing per change.
   const live = useRef({ iv, p, text })
@@ -126,6 +166,7 @@ export function StageView(p: StageViewProps & StageViewKindProps) {
               grid: props.beatGrid ?? true,
             }
           : null,
+        barLabel: labelCtx.current.mode === 'none' ? undefined : barLabelRef.current,
       })
       // The last drawn time, for hosts and e2e sync checks (never read back here).
       const root = rootRef.current
@@ -211,6 +252,9 @@ export function StageView(p: StageViewProps & StageViewKindProps) {
       <canvas ref={canvasRef} className="ivories-canvas" />
       <StageText layout={overlay.layout} pitches={overlay.pitches} text={text} keyContext={keyContext} orientation={orientation} />
       <ChordReadout layout={overlay.layout} value={chord} text={text} orientation={orientation} />
+      {iv.score && iv.showCountIn && iv.lead.beats > 0 && (
+        <CountInOverlay keyboardPx={overlay.layout?.keyboardH ?? 0} horizontal={orientation === 'horizontal'} />
+      )}
       {failed && <p className="ivories-message" role="alert">This view stopped working.</p>}
       {!failed && error && <p className="ivories-message" role="alert">{error.message}</p>}
       {status.loading && !iv.score && <p className="ivories-message" role="status">Loading score…</p>}

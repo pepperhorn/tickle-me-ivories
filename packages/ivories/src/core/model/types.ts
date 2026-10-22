@@ -13,6 +13,10 @@ export interface NoteEvent {
   endSec: number
   velocity: number       // 0-127
   voiceId: string
+  /** MusicXML only: the pitch class as written in the score, in tonal's form
+      ("C", "F#", "Bb", "Cb", "E##"), when the written pitch is the sounding one
+      (no transposition). Note-name labels prefer it to a key-based guess. */
+  spelling?: string
 }
 
 export interface Voice {
