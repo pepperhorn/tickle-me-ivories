@@ -42,7 +42,9 @@ Then drop a `.mid` file onto the page.
 - **MIDI loading with hand detection.** Multi-track files become one voice per
   track; a single-track file splits into left and right hands at middle C.
   Conductor tracks (tempo/meta, no notes) are correctly ignored.
-- **Sampled piano audio** via [smplr](https://github.com/danigb/smplr), scheduled
+- **Sampled audio** through pepperscore's shared engine (`pepperscore/audio`):
+  one AudioContext and one "who is playing" slot with every PepperScore reader on
+  the page, GM sounds per voice from the pepperscore-sounds packs, scheduled
   ahead of time so it stays sample-accurate under load.
 - **Two display modes** — falling roll, or keyboard highlight only.
 - **Transport** — play/pause, scrub, and a keyboard that lights in time.

@@ -3,15 +3,14 @@
 Falling keys, a lit 88-key keyboard, notation and camera layouts for React, all on one shared clock. MIT.
 
 ```bash
-npm install ivories
-# notation views also need the optional peer:
-npm install pepperscore@^0.2
+npm install ivories pepperscore
 ```
 
-Notation views also need pepperscore's stylesheet for the playback cursor and the playing-note highlight: `import 'pepperscore/style.css'`.
+`pepperscore` (0.3 or later) is a required peer: ivories plays through its shared audio engine (`pepperscore/audio`) and engraves notation with it. Import pepperscore's stylesheet too; the notation views need it for the playback cursor and the playing-note highlight:
 
 ```tsx
 import { Ivories } from 'ivories'
+import 'pepperscore/style.css'
 import 'ivories/style.css'
 
 <Ivories view="falling" scoreUrl="/songs/minuet.mid" height={420} />
@@ -28,9 +27,12 @@ Cascade layers rank by the order they are first declared, not by import order of
 ```
 
 ```tsx
-import './index.css'          // first: declares the layer order
+import './index.css'              // first: declares the layer order
+import 'pepperscore/style.css'    // unlayered, scoped to pepperscore's own classes
 import 'ivories/style.css'
 ```
+
+pepperscore's sheet is unlayered, so it outranks every layer. Its rules only target `.pepperscore` and its descendants (plus Poppins' `@font-face` rules from `@fontsource/poppins`), so the order of the two imports does not change the result; keep the layer declaration first.
 
 Load Poppins on the page (the library sets `font-family: Poppins, system-ui, sans-serif` but never fetches fonts).
 
@@ -163,26 +165,46 @@ function RecordButton({ onTake }: { onTake(s: ScoreDocument): void }) {
 
 `orientation="horizontal"` on `<RisingKeys>` and `<Ivories view="rising">` stands the keyboard on the left edge, low notes at the bottom, with time running across: each tile is born at its key when the note sounds and travels away to the right, after the count-in. Falling is vertical only: `orientation="horizontal"` on `<FallingKeys>` / `<Ivories view="falling">` (and a falling `Stage` slot) is deprecated, draws vertical and warns once in development; use the rising roll for a horizontal view. Key proportions are unchanged. `onLayout` still reports the vertical (canonical) geometry; `toScreen`, `fromScreen` and `pitchAtScreen` from `ivories/core` map between it and the view. In a `<Stage>` layout an ivories slot carries it: `{ kind: 'ivories', view: 'rising', orientation: 'horizontal' }`.
 
-## GM piano sounds
+## Audio
 
-By default the piano is smplr's Splendid Grand Piano. Pass `sounds` to load it from the pepperscore-sounds GM sample packs instead (the same packs and CDN layout pepperscore uses):
+ivories has no sound engine of its own: it plays through pepperscore's (`pepperscore/audio`), the one every PepperScore reader on the page uses.
 
-```tsx
-// A MIDI keyboard in, piano out:
-<Keyboard input="midi" liveAudio sounds={{ pack: 'core' }} />
-```
+- **One AudioContext per page** (pepperscore's `getSharedAudio()`), playing through pepperscore's master compressor. Play resumes it inside the click (`resumeAudio`, with a bounded wait, so a device with no output never hangs Play; the Transport then offers "Tap to enable sound").
+- **One player at a time.** Every provider claims pepperscore's playback slot when it starts (`claimPlayback`), so two ivories players, or an ivories player and a PepperScore reader, never play over each other: starting one pauses the other, and its queued notes are cancelled.
+- **Ivories still decides when.** The scheduler keeps ticks as the truth and the playhead a pure function of the clock; it hands each note to its voice's pepperscore instrument (`loadInstrument`) a moment ahead, at an exact context time, as a MIDI note number. Seek, pause and tempo changes cancel what was queued.
+- **A sound per voice.** Each voice loads its part's General MIDI program: `<midi-program>` in MusicXML, the track's program in MIDI, the drum kit for a percussion part or a channel-10 track, the grand piano otherwise. The voice's `instrument` is that GM name (`'violin'`) or `'drums'`; `GM_INSTRUMENT_NAMES` (from `ivories/core`) lists them. A sound that fails to load twice falls back to the piano. Live MIDI keys (`liveAudio`) sound on their own piano bus, with a short release fade.
 
-`sounds: { pack?: 'core' | 'complete'; assetBaseUrl?: string; instrument?: string; fallbackSoundfontUrl?: string }`. Files load from `https://cdn.jsdelivr.net/npm/pepperscore-sounds-<pack>@0.1.0/`, or from `assetBaseUrl` for a self-hosted copy: `pack.json` lists the instruments and `soundfonts/fluidr3/<name>.json` holds the samples. `instrument` picks the GM sound for the piano voice and the live keys (default `acoustic_grand_piano`); other score voices whose instrument is in the pack load from it too. If the pack cannot be reached, that instrument falls back to the default piano, a later load tries again, and a `console.warn('[ivories] audio: ...')` says why (these are not `onError` events). Browsers start audio only after a user gesture on the page; after one, the first live key resumes a suspended context. Changing `sounds` (its content, not just the object) reloads the instrument in place: the provider and its views stay mounted, live MIDI and the live clock keep running, and each voice keeps its old sound until the new one is ready. Several providers on one page share one loader for the default piano samples (not when the soundfont fallback is serving the piano).
-
-Fallback sample host: instruments that are not in the pack load from smplr's Soundfont on `gleitz.github.io`, and a pack that fails to load falls back to the Splendid Grand Piano on `smpldsnds.github.io`. `fallbackSoundfontUrl` names a gleitz-layout base (`<base>/MusyngKite/<instrument>-mp3.js`). When it is set, both cases load from it, including the backup piano (`acoustic_grand_piano`), so a strict CSP needs only the pack host and this one. For example, pinned on jsDelivr:
+### Where the sounds come from
 
 ```tsx
-sounds={{ pack: 'core', fallbackSoundfontUrl: 'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@044fab8e1456bfafc5776e86dfd6bb8697149aef' }}
+<Ivories view="falling" scoreUrl="/minuet.mid" sounds={{ assetBaseUrl: '/pepperscore-sounds/' }} />
 ```
 
-Unset or blank means unchanged behaviour. Without any `sounds` prop, the default piano still comes from smpldsnds.
+`sounds: { assetBaseUrl?: string; soundPack?: 'core' | 'complete'; sources?: SoundSource[]; instrument?: string }` maps straight onto pepperscore's options (0.1.0's `pack` is a deprecated alias of `soundPack`):
 
-`resetGmSoundCaches`, `isGmInstrument` and `AudioEngine.isGmVoice` (exported from `ivories/core`) are internal test probes, not part of the supported API, and may be removed.
+- No `sounds` (or no `assetBaseUrl`): pepperscore's pinned copy of `pepperscore-sounds-<soundPack>` on jsDelivr (`defaultAssetBaseUrl`, today `https://cdn.jsdelivr.net/npm/pepperscore-sounds-core@0.1.0/`). `soundPack` is `'core'` (19 FluidR3 instruments, default) or `'complete'` (all 128).
+- `assetBaseUrl`: a self-hosted copy of a pepperscore-sounds package (a relative URL resolves against the page). Its `pack.json` says which FluidR3 sounds exist; any other program plays from its `soundfonts/TimGM6mb.sf2`, and drums from `soundfonts/perfect-drums/`. Every built-in file comes from this base, so with it set the page talks to no other sound host (a strict CSP needs only that origin in `connect-src`).
+- `sources`: your own sounds per GM program or for the drum kit (pepperscore's `soundSources`).
+- `instrument`: the GM sound for the piano voices and the live keys (default `acoustic_grand_piano`).
+
+Changing `sounds` (its content, not just the object) reloads every voice in place: the provider and its views stay mounted, and each voice keeps its old sound until the new one is ready. Loading failures are pepperscore's console warnings, not `onError` events; the score keeps playing on whatever did load.
+
+### Metronome and count-in
+
+The click is pepperscore's `createMetronome`. The Transport's sound select next to the Metronome switch picks the voice, and the count-in clicks use it too:
+
+| Voice | Beat 1 | Other beats |
+| --- | --- | --- |
+| Woodblock (default) | GM hi wood block | GM low wood block |
+| Drum machine | Kick | Closed hi-hat |
+| Click | Soft high tick | Soft tick (synthesized, loads nothing) |
+
+It is stored in `settings.audio.metronomeVoice` (`'woodblock' | 'drum-machine' | 'click'`, type `MetronomeVoiceName`), next to `metronome` on/off, and saved with them in profiles. The metronome loads lazily: nothing is fetched until the metronome is switched on or a count-in is about to play. The wood blocks come from `TimGM6mb.sf2` (about 6 MB) at the asset base, so the first Play with a count-in waits up to 1.5 s for them; until they arrive (or if they cannot load) pepperscore plays a synthesized knock, so no beat is silent. The count-in clicks every beat of the opening metre, eighths in compound metres (six in 6/8); the metronome itself clicks the dotted-quarter pulse there.
+
+### Transport readouts
+
+- **Tempo in BPM**: "♩ = 96", the quarter-note BPM of the tempo map at the playhead times the playback rate. The slider and the number field set a BPM, which becomes a rate against the BPM at the playhead, so the whole tempo map scales (a ritardando stays a ritardando) and the readout follows tempo changes as the piece plays. The rate runs from 0.25x to 2x.
+- **Time signature**: the one in force at the playhead ("4/4", "6/8"), updating at every change; during the count-in and over a pickup it shows the counted metre. `controls={{ meter: false }}` hides it.
 
 ## Errors
 
