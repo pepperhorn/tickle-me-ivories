@@ -68,7 +68,7 @@ function NotationView({ view = 'vertical', zoom, height, className, notationThem
       (C) => { if (live) setLoaded({ C, error: null }) },
       (e) => {
         if (!live) return
-        const err = new IvoriesError('notation-unavailable', 'The notation view could not load (it needs pepperscore 0.2 or later).', e)
+        const err = new IvoriesError('notation-unavailable', 'The notation view could not load (it needs pepperscore 0.3 or later).', e)
         setLoaded({ C: null, error: err })
         mapRef.current.report(err)
       },

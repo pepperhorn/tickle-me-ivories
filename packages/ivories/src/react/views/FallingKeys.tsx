@@ -31,9 +31,17 @@ function FallingKeysView(props: FallingKeysProps) {
   return <Guarded><StageView {...props} orientation={undefined} kind="falling" /></Guarded>
 }
 
+/**
+ * Spelled as the literal `process.env.NODE_ENV`, the only form host bundlers replace (so a
+ * production build drops the warning). Unbundled in a browser `process` does not exist: the
+ * ReferenceError means development. In Node it is the real environment.
+ */
 function isProduction(): boolean {
-  const env = (globalThis as { process?: { env?: { NODE_ENV?: string } } }).process?.env?.NODE_ENV
-  return env === 'production'
+  try {
+    return process.env.NODE_ENV === 'production'
+  } catch {
+    return false
+  }
 }
 
 /** The falling roll over the keyboard (today's roll mode). */

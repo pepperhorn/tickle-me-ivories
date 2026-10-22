@@ -52,10 +52,12 @@ export interface AudioSettings {
   masterVolume: number    // 0-1
   metronome: boolean
   metronomeVolume: number // 0-1
-  /** The one-bar count-in (numbers on stage, and its clicks -- with the
-      metronome off too since 0.1.1). Optional so settings, profiles and scenes
-      saved before it existed stay valid; absent means on. The lead-in bar
-      itself always plays. */
+  /** Seeds the provider's count-in: true (or absent) is one bar, the default; false
+      is Off (0 bars). The provider's own control (`countIn` prop, the Transport's
+      select, setCountIn) is 0, 1 or 2 bars and wins over this. While on, the count
+      shows on stage and its clicks sound, with the metronome off too. Optional so
+      settings, profiles and scenes saved before it existed stay valid. With Off a
+      silent beat still runs first. */
   countIn?: boolean
   /** The metronome and count-in sound. Optional like countIn (older saves stay valid); absent means 'woodblock'. */
   metronomeVoice?: MetronomeVoiceName

@@ -6,9 +6,9 @@
 
 ### Breaking
 
-- `pepperscore` (`>=0.3.0`) is a **required** peer dependency (it was optional, for notation only). ivories plays through pepperscore's shared audio engine, `pepperscore/audio`: install it with ivories and import `pepperscore/style.css`.
+- `pepperscore` (`^0.3.0`, i.e. 0.3.x) is a **required** peer dependency (it was optional, for notation only). ivories plays through pepperscore's shared audio engine, `pepperscore/audio`: install it with ivories and import `pepperscore/style.css`.
 - `smplr` is no longer a dependency. The Splendid Grand Piano and smplr's Soundfont hosts (`smpldsnds.github.io`, `gleitz.github.io`) are gone: every sound comes from the pepperscore-sounds asset base.
-- `ivories/core` audio: `AudioEngine` builds on pepperscore's shared context by default; `AudioEngineDeps` is `{ makeContext?, makeInstrument?, sounds?, audioApi? }` and `InstrumentFactoryFn` is `(ctx, id, destination) => Promise<Instrument>` (no loader). `Instrument` is pepperscore's (`start({ note, time, duration, velocity })` returns that note's stop). The synthesized `MetronomeVoice` class is replaced by `SharedMetronome`; the `gmSounds` exports (`defaultSoundsBase`, `loadGmBuffers`, `gmInstrumentFactory`, `resetGmSoundCaches`, `isGmInstrument`, ...) and `AudioEngine.isGmVoice` are removed.
+- `ivories/core` audio: `AudioEngine` builds on pepperscore's shared context by default; `AudioEngineDeps` is `{ makeContext?, makeInstrument?, sounds?, audioApi? }` and `InstrumentFactoryFn` is `(ctx, id, destination) => Promise<Instrument>` (no loader). `Instrument` is pepperscore's (`start({ note, time, duration, velocity })` returns that note's stop). The synthesized `MetronomeVoice` class is replaced by `SharedMetronome`; the `gmSounds` exports (`defaultSoundsBase`, `loadGmBuffers`, `gmInstrumentFactory`, `resetGmSoundCaches`, `isGmInstrument`, ...) and `AudioEngine.isGmVoice` are removed, as are `defaultMakeInstrument` (engine) and ivories' own `SOUNDS_VERSION` (use pepperscore/audio's).
 - `claimPlayback` / `releasePlayback` (from `ivories/core`) now use pepperscore's page-wide slot, so a PepperScore reader starting playback pauses an ivories player and the other way round.
 - The Transport's tempo slider is in BPM (it was a 25-200 % rate); its accessible name is still "Tempo".
 
@@ -28,7 +28,7 @@
 ### Changed
 
 - Falling is vertical only: `orientation="horizontal"` on `<FallingKeys>`, `<Ivories view="falling">` and falling `Stage` slots is deprecated (`@deprecated` in the types), ignored (draws vertical) and warns once in development. The horizontal roll is the rising roll, whose tiles emanate from the keys. `viewOrientation('falling', 'horizontal')` is now `undefined`.
-- `PlaybackDriver`: `setScore(score, tempo, lead?)` takes the lead-in; option `countInClicks: 'always'` clicks the count-in with the metronome off (the providers use it).
+- `PlaybackDriver`: `setScore(score, tempo, lead?)` takes the lead-in, and `setLeadIn(score, tempo, lead)` rebuilds only the beat cursor (a Count-in change, also mid-play, never re-hands a note or click); it asks the engine for its metronome on every use; option `countInClicks: 'always'` clicks the count-in with the metronome off (the providers use it).
 - `<Transport>` restyled to match pepperscore's chrome: a green pill play button with a play/pause icon (accessible name still "Play"/"Pause"), styled seek and tempo tracks with a filled part, a switch (`role="switch"`) for Metronome, small caps labels and pepperscore's underlined BPM field. New contextual classes (`ivories-transport-play`, `ivories-transport-seek`, ...); the existing classes stay.
 - The notation presets frame the score on the chrome panel with a little padding.
 - Design pass against pepperscore's reader: the classic theme moves from a pure black stage and navy chrome to pepperscore's green family (stage `#0e1511`, panel `#16211a`, ink `#eef3ec`, sage `#8fb89a` accent, progress strip and key line; was red `#e8384f` and a faint white line). The `contrast` preset keeps black. Transport controls share one height (`--ivories-transport-control-h`, 2rem, 2.5rem on touch pointers), the count-in select is styled (30px, bordered, drawn chevron) instead of the OS control, and the Metronome label now precedes its switch like every other field. Loading and error messages are panel chips (`--ivories-message-*`), errors in terracotta. The paper notation card takes pepperscore's `#e2e9e0` border and a green-black shadow (`--ivories-notation-shadow`).
@@ -39,6 +39,11 @@
 - A note that cannot start no longer takes the rest of the session's audio with it.
 - Idle frame: before Play (and after a seek to 0:00 while paused) the provider's own clock waits at the start of the count-in (`-lead.sec`: `countIn` bars, or the one silent beat with `countIn={0}`) instead of at 0, so the falling roll never idles with a beat-1 note drawn on the keys. The time readout still reads 0:00, the seek thumb sits at the start, no count is shown, and Play from there runs the whole count-in. `clock.now()` and `onTimeUpdate` report the negative time while parked; `useIvories().parked()` tells a host. A host-supplied `AudioClock`, `MediaClock` or `ManualClock` is never moved.
 - `keyboard+notation` / `endless+keyboard` (and `<Notation>` without `zoom`): the notation panel cut off the bottom of a grand staff. The engraving is now fitted to the panel's height so a whole system shows.
+
+### Known limitations
+
+- Live keys on an SF2 piano (`TimGM6mb.sf2`: a sound pack without the piano, or `sources` of kind `sf2`) cut off about 150 ms after release instead of fading: pepperscore plays SF2 sounds through the instrument's output, past ivories' per-key envelope.
+- A seek to exactly 0:00 while playing plays on with no count-in (a seek never replays it); pause first to count in from the top.
 
 ### Docs
 

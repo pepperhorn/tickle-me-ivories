@@ -1,12 +1,12 @@
 /**
  * /embed-fixture smoke (spec §9): every preset embedded the way a host site would.
- * Without pepperscore 0.2 (the default; see notation-sync.spec.ts) the notation
+ * Without a loadable pepperscore (the default; see notation-sync.spec.ts) the notation
  * presets show the notation-unavailable message and their sibling views keep playing.
  */
 import { test, expect } from './fixtures'
 
 const PRESETS = ['falling', 'keyboard', 'keyboard+notation', 'endless+falling', 'endless+keyboard']
-const NO_PEPPERSCORE = /pepperscore 0\.2/
+const NO_PEPPERSCORE = /pepperscore 0\.3 or later/
 
 for (const preset of PRESETS) {
   test(`embed fixture renders ${preset}`, async ({ page }) => {

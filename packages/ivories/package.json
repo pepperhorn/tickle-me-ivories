@@ -55,7 +55,7 @@
     "prepack": "npm run build"
   },
   "peerDependencies": {
-    "pepperscore": ">=0.3.0",
+    "pepperscore": "^0.3.0",
     "react": ">=19",
     "react-dom": ">=19"
   },
