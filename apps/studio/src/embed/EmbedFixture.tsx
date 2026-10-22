@@ -46,6 +46,7 @@ function GmProbe() {
  * /embed-fixture: every preset embedded the way a host site would (spec §9 Playwright smoke).
  * Opt-in sections keep the default page light: `?rising` adds FIXTURE_CASES, `?gm` adds a
  * live keyboard whose piano loads from the pepperscore-sounds GM pack (network).
+ * `?notation-themes` adds keyboard+notation with notationTheme="ink-on-dark" (the presets show the default paper card).
  * `?sound-hosts` renders only a live keyboard with fallbackSoundfontUrl set (no presets, so the request log stays clean).
  */
 export function EmbedFixture({ search = typeof location === 'undefined' ? '' : location.search }: { search?: string }) {
@@ -76,6 +77,14 @@ export function EmbedFixture({ search = typeof location === 'undefined' ? '' : l
           </div>
         </section>
       ))}
+      {flags.has('notation-themes') && (
+        <section className="fixture-case flex flex-col gap-2" data-case="notation-ink-on-dark">
+          <h2 className="fixture-case-title text-sm text-[var(--ink-dim)]">keyboard+notation, notationTheme ink-on-dark</h2>
+          <div className="fixture-case-frame h-[360px] overflow-hidden rounded-lg border border-[var(--line)]">
+            <Ivories view="keyboard+notation" notationTheme="ink-on-dark" scoreUrl="/fixtures/minuet.musicxml" ref={(h) => { if (h) registry.cases['notation-ink-on-dark'] = h }} />
+          </div>
+        </section>
+      )}
       {flags.has('gm') && (
         <section className="fixture-case flex flex-col gap-2" data-case="gm-live">
           <h2 className="fixture-case-title text-sm text-[var(--ink-dim)]">live keys, GM piano (pepperscore-sounds core)</h2>

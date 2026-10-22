@@ -41,3 +41,21 @@ test('without pepperscore: notation-unavailable shows and the falling sibling ke
   await expect(section.locator('.ivories-time')).not.toHaveText(/^0:00 \//)
   await section.screenshot({ path: '/tmp/ivories-e2e/embed-notation-unavailable.png' })
 })
+
+test('notation themes: paper card by default, inverted ink with ink-on-dark; transport survives preflight', async ({ page }) => {
+  await page.goto('/embed-fixture?notation-themes')
+  const paper = page.locator('section[data-preset="keyboard+notation"] .ivories-notation')
+  const dark = page.locator('section[data-case="notation-ink-on-dark"] .ivories-notation')
+  await expect(paper).toHaveAttribute('data-notation-theme', 'paper')
+  await expect(dark).toHaveAttribute('data-notation-theme', 'ink-on-dark')
+  expect(await paper.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe('rgb(255, 255, 255)')
+  expect(await dark.evaluate((e) => getComputedStyle(e).backgroundColor)).not.toBe('rgb(255, 255, 255)')
+  // Before any engraving: the play button keeps its green pill under Tailwind's preflight.
+  const play = page.locator('section[data-preset="keyboard+notation"] .ivories-transport-play')
+  await expect(play).toHaveAccessibleName('Play')
+  expect(await play.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe('rgb(52, 86, 66)')
+  const score = dark.locator('.ivories-notation-score')
+  if (process.env.PEPPERSCORE_REQUIRED) await score.waitFor({ timeout: 20_000 })
+  test.skip(!(await score.count()), 'pepperscore 0.2 is not installed: no engraving to invert')
+  expect(await score.evaluate((e) => getComputedStyle(e).filter)).toContain('invert(1)')
+})

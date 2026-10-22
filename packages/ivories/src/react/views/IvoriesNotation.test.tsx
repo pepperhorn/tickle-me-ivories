@@ -21,3 +21,22 @@ describe('notation presets (spec §4)', () => {
     expect(container.querySelector('.ivories-preset-notation .ivories-notation')).not.toBeNull()
   })
 })
+
+describe('notationTheme (0.1.1)', () => {
+  it('defaults to the paper card', async () => {
+    const { container, getByTestId } = render(<Ivories view="keyboard+notation" musicXml={xml} engine={fakeEngine()} />)
+    await waitFor(() => getByTestId('pepperscore'))
+    const n = container.querySelector<HTMLElement>('.ivories-preset-notation .ivories-notation')!
+    expect(n.classList.contains('ivories-notation-paper')).toBe(true)
+    expect(n.dataset.notationTheme).toBe('paper')
+  })
+
+  it('forwards ink-on-dark from the preset to <Notation>', async () => {
+    const { container, getByTestId } = render(<Ivories view="endless+keyboard" notationTheme="ink-on-dark" musicXml={xml} engine={fakeEngine()} />)
+    await waitFor(() => getByTestId('pepperscore'))
+    const n = container.querySelector<HTMLElement>('.ivories-notation')!
+    expect(n.classList.contains('ivories-notation-ink-on-dark')).toBe(true)
+    expect(n.classList.contains('ivories-notation-paper')).toBe(false)
+    expect(n.dataset.notationTheme).toBe('ink-on-dark')
+  })
+})

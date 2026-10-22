@@ -10,17 +10,23 @@ import { loadPepperscore } from './loadPepperscore'
 import { toExternalClock } from './externalClock'
 import type { PepperScoreClockHandle, PepperScoreComponent } from './loadPepperscore'
 
+/** `paper` (default): the engraving sits on a light card, readable on the dark stage.
+    `ink-on-dark`: no card; the engraving is inverted to light ink on the dark stage. */
+export type NotationTheme = 'paper' | 'ink-on-dark'
+
 export interface NotationProps {
   view?: 'vertical' | 'endless'
   /** pepperscore stave scale (settings.zoom). */
   zoom?: number
   height?: number | string
   className?: string
+  /** Surface for the engraving (default `paper`). */
+  notationTheme?: NotationTheme
   /** The pepperscore handle (seek, currentTime), e.g. for an e2e sync check. */
   scoreRef?: Ref<PepperScoreClockHandle>
 }
 
-function NotationView({ view = 'vertical', zoom, height, className, scoreRef }: NotationProps) {
+function NotationView({ view = 'vertical', zoom, height, className, notationTheme, scoreRef }: NotationProps) {
   const iv = useIvories()
   const [loaded, setLoaded] = useState<{ C: PepperScoreComponent | null; error: IvoriesError | null }>({ C: null, error: null })
   const xml = iv.score?.rawXml
@@ -64,10 +70,12 @@ function NotationView({ view = 'vertical', zoom, height, className, scoreRef }: 
   }, [xml])
 
   const C = loaded.C
+  const theme: NotationTheme = notationTheme === 'ink-on-dark' ? 'ink-on-dark' : 'paper'
   return (
     <div
-      className={cx('ivories', 'ivories-view', 'ivories-notation', className)}
+      className={cx('ivories', 'ivories-view', 'ivories-notation', `ivories-notation-${theme}`, className)}
       data-ivories-view={view === 'endless' ? 'endless' : 'notation'}
+      data-notation-theme={theme}
       style={height !== undefined ? { height } : undefined}
     >
       {!iv.score ? null

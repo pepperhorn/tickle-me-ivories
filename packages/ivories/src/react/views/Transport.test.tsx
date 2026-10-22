@@ -146,3 +146,42 @@ describe('Transport time display in live mode (final review 5)', () => {
     expect(iv!.clock.playing).toBe(false)
   })
 })
+
+describe('Transport controls look (0.1.1 pepperscore restyle)', () => {
+  it('the play button is an icon button whose accessible name tracks Play/Pause', async () => {
+    const { clock } = setup()
+    const play = await screen.findByRole('button', { name: 'Play' })
+    expect(play.classList.contains('ivories-transport-play')).toBe(true)
+    expect(play.classList.contains('ivories-btn-play')).toBe(true)
+    const icon = play.querySelector('svg')!
+    expect(icon.getAttribute('aria-hidden')).toBe('true')
+    fireEvent.click(play)
+    await waitFor(() => expect(clock.playing).toBe(true))
+    const pause = await screen.findByRole('button', { name: 'Pause' })
+    expect(pause.querySelector('svg')).not.toBeNull()
+    expect(pause.closest('.ivories-transport')!.hasAttribute('data-playing')).toBe(true)
+  })
+
+  it('metronome is a switch that reflects and sets the audio setting', async () => {
+    let iv: ReturnType<typeof useIvories> | null = null
+    function Grab() { iv = useIvories(); return null }
+    render(<IvoriesProvider score={doc()} clock={new AudioClock({ currentTime: 0 })} engine={fakeEngine()}><Transport /><Grab /></IvoriesProvider>)
+    const sw = await screen.findByRole('switch', { name: 'Metronome' }) as HTMLInputElement
+    expect(sw.checked).toBe(iv!.settings.audio.metronome)
+    const before = sw.checked
+    fireEvent.click(sw)
+    await waitFor(() => expect(iv!.settings.audio.metronome).toBe(!before))
+    expect(sw.checked).toBe(!before)
+  })
+
+  it('range inputs carry their filled share for the styled track', async () => {
+    const { clock } = setup()
+    const seek = await screen.findByRole('slider', { name: 'Seek' }) as HTMLInputElement
+    const tempo = screen.getByRole('slider', { name: 'Tempo' }) as HTMLInputElement
+    expect(seek.style.getPropertyValue('--ivories-range-progress')).toBe('0%')
+    act(() => clock.seek(2))
+    await waitFor(() => expect(seek.style.getPropertyValue('--ivories-range-progress')).toBe('50%'))
+    fireEvent.change(tempo, { target: { value: '2' } })
+    await waitFor(() => expect(tempo.style.getPropertyValue('--ivories-range-progress')).toBe('100%'))
+  })
+})

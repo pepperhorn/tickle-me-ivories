@@ -1,7 +1,8 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import 'ivories/style.css'
+// index.css first: it declares the layer order (ivories above Tailwind's preflight).
 import './index.css'
+import 'ivories/style.css'
 import App from './App.tsx'
 import { DebugRoute } from './debug/DebugRoute'
 import { EmbedFixture } from './embed/EmbedFixture'

@@ -110,41 +110,196 @@
   .ivories .ivories-message[role='status'] { color: var(--ivories-ink); }
   .ivories.ivories-boundary { position: relative; display: block; min-height: 3rem; }
 
+  /* Transport (pepperscore's chrome language: a green pill play button with an
+     icon, slim filled range tracks, a switch, small caps labels, Poppins).
+     Every colour is a var() with a fallback rather than a token declared on
+     .ivories, so a host can set them on any ancestor (the preset, a page
+     wrapper, :root) and nested .ivories roots do not reset them. */
   .ivories.ivories-transport {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.5rem 1rem;
-    border-top: 1px solid var(--ivories-line);
-    background: var(--ivories-panel);
+    gap: 0.625rem 0.875rem;
+    padding: 0.5rem 0.875rem;
+    border-top: 1px solid var(--ivories-transport-border, var(--ivories-line));
+    background: var(--ivories-transport-bg, var(--ivories-panel));
+    color: var(--ivories-transport-ink, var(--ivories-ink));
+    font-family: var(--ivories-transport-font, Poppins, system-ui, -apple-system, 'Segoe UI', sans-serif);
     font-size: 0.75rem;
+    line-height: 1.2;
   }
   .ivories .ivories-btn {
-    border: 1px solid var(--ivories-line);
-    border-radius: 999px;
-    padding: 0.375rem 1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin: 0;
+    border: 1px solid var(--ivories-transport-border, var(--ivories-line));
+    border-radius: var(--ivories-transport-radius, 10px);
+    padding: 0.4375rem 0.875rem;
     background: transparent;
-    color: var(--ivories-ink);
+    color: var(--ivories-transport-ink, var(--ivories-ink));
     font: inherit;
-    font-weight: 600;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    transition: background-color 0.12s, border-color 0.12s, box-shadow 0.12s;
+  }
+  .ivories .ivories-btn:focus-visible,
+  .ivories .ivories-transport-range:focus-visible,
+  .ivories .ivories-transport-switch:focus-visible,
+  .ivories .ivories-bpm-input:focus-visible {
+    outline: 2px solid var(--ivories-transport-focus, #8fb89a);
+    outline-offset: 2px;
+  }
+  .ivories .ivories-btn-play {
+    min-width: 5.75rem;
+    border-color: var(--ivories-transport-play-bg, #345642);
+    background: var(--ivories-transport-play-bg, #345642);
+    color: var(--ivories-transport-play-ink, #ffffff);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.28);
+  }
+  .ivories .ivories-btn-play:hover {
+    border-color: var(--ivories-transport-play-bg-hover, #41694f);
+    background: var(--ivories-transport-play-bg-hover, #41694f);
+  }
+  .ivories .ivories-btn-play:active { transform: translateY(1px); }
+  .ivories .ivories-transport-icon { display: block; flex: none; }
+  .ivories .ivories-btn-enable-sound {
+    border-color: var(--ivories-transport-accent, #8fb89a);
+    color: var(--ivories-transport-accent, #8fb89a);
+  }
+  .ivories .ivories-btn-enable-sound:hover { background: rgba(143, 184, 154, 0.12); }
+
+  /* Range inputs: a 4px track filled up to --ivories-range-progress (set inline). */
+  .ivories .ivories-transport-range {
+    appearance: none;
+    -webkit-appearance: none;
+    height: 1rem;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
     cursor: pointer;
   }
-  .ivories .ivories-btn-play, .ivories .ivories-btn-enable-sound { background: var(--ivories-accent); border-color: var(--ivories-accent); color: #000000; }
-  .ivories .ivories-seek { flex: 1 1 10rem; min-width: 6rem; accent-color: var(--ivories-accent); }
-  .ivories .ivories-time, .ivories .ivories-tempo-value { font-variant-numeric: tabular-nums; color: var(--ivories-ink-dim); }
-  .ivories .ivories-tempo, .ivories .ivories-metronome { display: inline-flex; align-items: center; gap: 0.375rem; color: var(--ivories-ink-dim); }
-  .ivories .ivories-tempo-input { width: 6rem; accent-color: var(--ivories-accent); }
-  .ivories .ivories-bpm { display: inline-flex; align-items: center; gap: 0.375rem; color: var(--ivories-ink-dim); }
-  .ivories .ivories-bpm-input {
-    width: 4.5rem;
-    border: 1px solid var(--ivories-line);
-    border-radius: 0.375rem;
-    padding: 0.125rem 0.375rem;
-    background: transparent;
-    color: var(--ivories-ink);
-    font: inherit;
+  .ivories .ivories-transport-range::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 999px;
+    background: linear-gradient(
+      to right,
+      var(--ivories-transport-fill, #8fb89a) 0 var(--ivories-range-progress, 0%),
+      var(--ivories-transport-track, rgba(255, 255, 255, 0.14)) var(--ivories-range-progress, 0%) 100%
+    );
+  }
+  .ivories .ivories-transport-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    margin-top: -5px;
+    border: 2px solid var(--ivories-transport-fill, #8fb89a);
+    border-radius: 50%;
+    background: var(--ivories-transport-thumb, #ffffff);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  }
+  .ivories .ivories-transport-range::-moz-range-track {
+    height: 4px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--ivories-transport-track, rgba(255, 255, 255, 0.14));
+  }
+  .ivories .ivories-transport-range::-moz-range-progress {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--ivories-transport-fill, #8fb89a);
+  }
+  .ivories .ivories-transport-range::-moz-range-thumb {
+    width: 10px;
+    height: 10px;
+    border: 2px solid var(--ivories-transport-fill, #8fb89a);
+    border-radius: 50%;
+    background: var(--ivories-transport-thumb, #ffffff);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  }
+  .ivories .ivories-seek { flex: 1 1 10rem; min-width: 6rem; }
+  .ivories .ivories-tempo-input { width: 6rem; }
+
+  .ivories .ivories-time, .ivories .ivories-tempo-value {
+    color: var(--ivories-transport-ink-dim, var(--ivories-ink-dim));
+    font-size: 0.75rem;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .ivories .ivories-tempo-value { min-width: 2.5rem; }
+  .ivories .ivories-transport-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+    color: var(--ivories-transport-ink-dim, var(--ivories-ink-dim));
+    cursor: pointer;
+  }
+  /* pepperscore's small caps control labels (the accessible names are aria-labels). */
+  .ivories .ivories-transport-label {
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  /* Metronome switch: a styled checkbox (role="switch"), 29x17 like pepperscore's .ps-switch. */
+  .ivories .ivories-transport-switch {
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    flex: none;
+    width: 29px;
+    height: 17px;
+    margin: 0;
+    border: 0;
+    border-radius: 999px;
+    background: var(--ivories-transport-switch-off, rgba(255, 255, 255, 0.2));
+    cursor: pointer;
+    transition: background-color 0.15s;
+  }
+  .ivories .ivories-transport-switch::after {
+    content: '';
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: var(--ivories-transport-thumb, #ffffff);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    transition: transform 0.15s;
+  }
+  .ivories .ivories-transport-switch:checked { background: var(--ivories-transport-switch-on, #5d8164); }
+  .ivories .ivories-transport-switch:checked::after { transform: translateX(12px); }
+
+  .ivories .ivories-bpm-input {
+    width: 3.25rem;
+    margin: 0;
+    border: 0;
+    border-bottom: 1px solid var(--ivories-transport-border-strong, rgba(255, 255, 255, 0.28));
+    border-radius: 0;
+    padding: 0.25rem 0;
+    background: transparent;
+    color: var(--ivories-transport-ink, var(--ivories-ink));
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 700;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+  .ivories .ivories-bpm-input::-webkit-inner-spin-button,
+  .ivories .ivories-bpm-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  @media (prefers-reduced-motion: reduce) {
+    .ivories .ivories-btn, .ivories .ivories-transport-switch, .ivories .ivories-transport-switch::after { transition: none; }
   }
   .ivories.ivories-preset { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 12rem; }
   .ivories .ivories-preset-main { position: relative; flex: 1 1 auto; min-height: 0; }
@@ -164,6 +319,39 @@
   /* Notation (spec §4.3): pepperscore fills the box and scrolls inside it. */
   .ivories.ivories-notation { display: block; width: 100%; height: 100%; overflow: auto; background: var(--ivories-panel); }
   .ivories .ivories-notation-score { height: 100%; }
+  /* The preset frames the score on the chrome panel, so a paper card has an edge to sit on. */
+  .ivories .ivories-preset-notation { padding: 0.75rem 0.75rem 0.5rem; background: var(--ivories-panel); }
+  /* notationTheme="paper" (default): black ink on a light card, like pepperscore's own reader,
+     whether or not the host loads pepperscore's CSS. */
+  .ivories.ivories-notation.ivories-notation-paper {
+    border: 1px solid var(--ivories-notation-border, #e9e9e4);
+    border-radius: var(--ivories-notation-radius, 12px);
+    padding: var(--ivories-notation-padding, 0.5rem);
+    background: var(--ivories-notation-paper, #ffffff);
+    color: var(--ivories-notation-ink, #242824);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+  }
+  .ivories.ivories-notation-paper .ivories-message { background: #f2f6f0; color: #46604d; border: 1px solid #cddbcc; }
+  .ivories.ivories-notation-paper .ivories-message[role='alert'] { background: #fdf0ee; color: #a3261b; border-color: #f2cbc6; }
+  /* notationTheme="ink-on-dark": no card; the engraving is inverted to light ink on the stage.
+     invert + hue-rotate(180deg) flips lightness but keeps hues, so pepperscore's playing-note
+     amber and blue cursor stay amber and blue. pepperscore paints white grounds (its root, the
+     score viewport and edge fades); they are cleared first or they would invert to black slabs.
+     !important because pepperscore's sheet is unlayered and this one is in @layer ivories. */
+  .ivories.ivories-notation.ivories-notation-ink-on-dark { background: var(--ivories-notation-dark-bg, var(--ivories-panel)); }
+  .ivories.ivories-notation-ink-on-dark .ivories-notation-score {
+    /* Dark text, so it inverts to light (pepperscore without its CSS inherits this colour). */
+    color: var(--ivories-notation-ink, #242824);
+    background: transparent !important;
+    filter: var(--ivories-notation-ink-filter, invert(1) hue-rotate(180deg));
+  }
+  .ivories.ivories-notation-ink-on-dark .ivories-notation-score [class~='score-viewport'] {
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+  }
+  .ivories.ivories-notation-ink-on-dark .ivories-notation-score [class~='edge-start'],
+  .ivories.ivories-notation-ink-on-dark .ivories-notation-score [class~='edge-end'] { display: none !important; }
   /* Stage (spec §5.2): slots in an aspect-locked box; split divider; picture-in-picture inset. */
   .ivories.ivories-stage {
     display: flex; align-items: center; justify-content: center;

@@ -92,3 +92,22 @@ describe('Notation (spec §4.3)', () => {
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'notation-needs-musicxml' }))
   })
 })
+
+describe('Notation notationTheme (0.1.1)', () => {
+  it.each([
+    [undefined, 'paper'],
+    ['paper', 'paper'],
+    ['ink-on-dark', 'ink-on-dark'],
+  ] as const)('notationTheme=%s renders the %s surface', async (theme, expected) => {
+    const { container } = render(<IvoriesProvider score={xmlScore()} engine={fakeEngine()}><Notation notationTheme={theme} /></IvoriesProvider>)
+    await screen.findByTestId('pepperscore')
+    const root = container.querySelector<HTMLElement>('.ivories-notation')!
+    expect(root.dataset.notationTheme).toBe(expected)
+    expect(root.classList.contains(`ivories-notation-${expected}`)).toBe(true)
+  })
+
+  it('keeps the theme on the status message path too (MIDI score)', () => {
+    const { container } = render(<IvoriesProvider score={midiScore()} engine={fakeEngine()}><Notation notationTheme="ink-on-dark" /></IvoriesProvider>)
+    expect(container.querySelector('.ivories-notation-ink-on-dark .ivories-message')).not.toBeNull()
+  })
+})
