@@ -6,7 +6,7 @@ import type {
 import { DEFAULT_TEXT_STYLE, MAX_GRADIENT_STOPS, MIN_GRADIENT_STOPS } from './types'
 import type { DisplayMode, TempoSetting, Voice } from '../model/types'
 import { MAX_TEMPO_SCALE, MIN_TEMPO_SCALE } from '../model/tempoMap'
-import { getSoundfontNames } from 'smplr'
+import { isInstrumentName } from '../audio/sounds'
 
 // GlobalPrefs, SavedVoice and SongProfile now live in ./types (preflight F4);
 // re-exported here so no call site of `../settings/profile` needs to change.
@@ -159,6 +159,7 @@ export function validAudio(a: unknown): AudioSettings | null {
   // simply dropped, which reads as the default (on), rather than refusing the
   // whole audio block and with it the user's volumes.
   if (typeof a.countIn === 'boolean') out.countIn = a.countIn
+  if (a.metronomeVoice === 'woodblock' || a.metronomeVoice === 'drum-machine' || a.metronomeVoice === 'click') out.metronomeVoice = a.metronomeVoice
   return out
 }
 
@@ -277,14 +278,11 @@ export function validFallSeconds(v: unknown): number | null {
   return isNum(v) ? clamp(v, MIN_FALL_SECONDS, MAX_FALL_SECONDS) : null
 }
 
-/** The soundfont instrument names the engine can actually load. */
-const VALID_INSTRUMENT_NAMES = new Set(getSoundfontNames())
-
 /**
  * Drops entries that are not objects with a string id, and omits any field of
  * the wrong type so mergeVoices keeps the parsed value for it. Volume is
  * clamped to 0-1 and hue to 0-360: both reach the engine or the colour maths.
- * An instrument name that getSoundfontNames() does not recognise is dropped
+ * An instrument that is not a GM sound name (or 'drums') is dropped
  * the same way -- mergeVoices then keeps the parsed voice's own instrument.
  */
 export function sanitiseVoices(list: unknown[]): SavedVoice[] {
@@ -293,7 +291,7 @@ export function sanitiseVoices(list: unknown[]): SavedVoice[] {
     if (!isObj(v) || typeof v.id !== 'string') continue
     const s: SavedVoice = { id: v.id }
     if (typeof v.label === 'string') s.label = v.label
-    if (typeof v.instrument === 'string' && VALID_INSTRUMENT_NAMES.has(v.instrument)) s.instrument = v.instrument
+    if (isInstrumentName(v.instrument)) s.instrument = v.instrument
     if (isNum(v.hue)) s.hue = clamp(v.hue, 0, 360)
     if (isNum(v.volume)) s.volume = clamp(v.volume, 0, 1)
     if (typeof v.visible === 'boolean') s.visible = v.visible

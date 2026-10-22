@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react'
-import { Ivories, IvoriesProvider, Keyboard, useIvories } from 'ivories'
+import { useEffect } from 'react'
+import { Ivories } from 'ivories'
 import type { IvoriesHandle, IvoriesPreset, IvoriesProps, PepperScoreClockHandle } from 'ivories'
-import { LIVE_VOICE_ID } from 'ivories/core'
 
-/** Backup soundfont host for the ?sound-hosts case (same value hosts pass as sounds.fallbackSoundfontUrl). */
-export const FIXTURE_SOUNDFONT = 'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@044fab8e1456bfafc5776e86dfd6bb8697149aef'
+/** The asset base of the ?audio cases: a host that does not exist, answered by the e2e test (e2e/audio.spec.ts). */
+export const FIXTURE_SOUNDS_BASE = 'https://sounds.ivories.test/'
 
 export const FIXTURE_PRESETS: { view: IvoriesPreset; src: string }[] = [
   { view: 'falling', src: '/fixtures/demo.mid' },
@@ -31,35 +30,25 @@ declare global { interface Window { __ivoriesFixture?: FixtureRegistry } }
 
 const registry: FixtureRegistry = { handles: {}, notation: {}, cases: {} }
 
-/** Publishes whether the provider's live keys were built from the GM pack (R-G e2e probe). */
-function GmProbe() {
-  const { engine } = useIvories()
-  const [gm, setGm] = useState(false)
-  useEffect(() => {
-    const id = window.setInterval(() => setGm(engine.isGmVoice(LIVE_VOICE_ID)), 100)
-    return () => window.clearInterval(id)
-  }, [engine])
-  return <span className="fixture-gm-probe hidden" data-gm-live={String(gm)} />
-}
-
 /**
  * /embed-fixture: every preset embedded the way a host site would (spec §9 Playwright smoke).
- * Opt-in sections keep the default page light: `?rising` adds FIXTURE_CASES, `?gm` adds a
- * live keyboard whose piano loads from the pepperscore-sounds GM pack (network).
+ * Opt-in sections keep the default page light: `?rising` adds FIXTURE_CASES.
  * `?notation-themes` adds keyboard+notation with notationTheme="ink-on-dark" (the presets show the default paper card).
- * `?sound-hosts` renders only a live keyboard with fallbackSoundfontUrl set (no presets, so the request log stays clean).
+ * `?audio` renders only two keyboard-only players on FIXTURE_SOUNDS_BASE (no presets, so the request log stays clean):
+ * `audio-a` without a count-in, `audio-b` with the default one-bar count-in.
+ * `?default-sounds` renders only a keyboard-only player on pepperscore's default asset base (network).
  * `?only=<preset>` renders that one preset (screenshots; five pianos loading at once can starve a page of connections).
  */
 export function EmbedFixture({ search = typeof location === 'undefined' ? '' : location.search }: { search?: string }) {
   const flags = new URLSearchParams(search)
-  const soundHostsOnly = flags.has('sound-hosts')
+  const audioOnly = flags.has('audio') || flags.has('default-sounds')
   const only = flags.get('only')
   const presets = only ? FIXTURE_PRESETS.filter((p) => p.view === only) : FIXTURE_PRESETS
   useEffect(() => { window.__ivoriesFixture = registry }, [])
   return (
     <main className="embed-fixture flex h-full flex-col gap-8 overflow-y-auto bg-[var(--ground)] p-6">
       <h1 className="embed-fixture-title text-lg font-semibold text-[var(--ink)]">ivories embed fixture</h1>
-      {!soundHostsOnly && presets.map((p) => (
+      {!audioOnly && presets.map((p) => (
         <section key={p.view} className="fixture-preset flex flex-col gap-2" data-preset={p.view}>
           <h2 className="fixture-preset-title text-sm text-[var(--ink-dim)]">{p.view}</h2>
           <div className="fixture-preset-frame h-[360px] overflow-hidden rounded-lg border border-[var(--line)]">
@@ -88,24 +77,23 @@ export function EmbedFixture({ search = typeof location === 'undefined' ? '' : l
           </div>
         </section>
       )}
-      {flags.has('gm') && (
-        <section className="fixture-case flex flex-col gap-2" data-case="gm-live">
-          <h2 className="fixture-case-title text-sm text-[var(--ink-dim)]">live keys, GM piano (pepperscore-sounds core)</h2>
-          <div className="fixture-case-frame h-[160px] overflow-hidden rounded-lg border border-[var(--line)]">
-            <IvoriesProvider sounds={{ pack: 'core' }} liveAudio>
-              <Keyboard input="midi" />
-              <GmProbe />
-            </IvoriesProvider>
+      {flags.has('audio') && (['audio-a', 'audio-b'] as const).map((id) => (
+        <section key={id} className="fixture-case flex flex-col gap-2" data-case={id}>
+          <h2 className="fixture-case-title text-sm text-[var(--ink-dim)]">{id}: keyboard only, sounds from {FIXTURE_SOUNDS_BASE}</h2>
+          <div className="fixture-case-frame h-[200px] overflow-hidden rounded-lg border border-[var(--line)]">
+            <Ivories
+              view="keyboard" scoreUrl="/fixtures/demo.mid" sounds={{ assetBaseUrl: FIXTURE_SOUNDS_BASE }}
+              countIn={id === 'audio-a' ? 0 : 1}
+              ref={(h) => { if (h) registry.cases[id] = h }}
+            />
           </div>
         </section>
-      )}
-      {soundHostsOnly && (
-        <section className="fixture-case flex flex-col gap-2" data-case="sound-hosts">
-          <h2 className="fixture-case-title text-sm text-[var(--ink-dim)]">live keys, pack blocked, fallback soundfont on jsDelivr</h2>
-          <div className="fixture-case-frame h-[160px] overflow-hidden rounded-lg border border-[var(--line)]">
-            <IvoriesProvider sounds={{ pack: 'core', fallbackSoundfontUrl: FIXTURE_SOUNDFONT }} liveAudio>
-              <Keyboard input="midi" />
-            </IvoriesProvider>
+      ))}
+      {flags.has('default-sounds') && (
+        <section className="fixture-case flex flex-col gap-2" data-case="default-sounds">
+          <h2 className="fixture-case-title text-sm text-[var(--ink-dim)]">keyboard only, pepperscore's default asset base</h2>
+          <div className="fixture-case-frame h-[200px] overflow-hidden rounded-lg border border-[var(--line)]">
+            <Ivories view="keyboard" scoreUrl="/fixtures/demo.mid" countIn={0} ref={(h) => { if (h) registry.cases['default-sounds'] = h }} />
           </div>
         </section>
       )}

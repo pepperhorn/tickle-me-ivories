@@ -11,26 +11,26 @@ vi.mock('../core/audio/engine', async (orig) => {
   return { ...real, AudioEngine: vi.fn(function (o: unknown) { made.opts.push(o); const e = fakeEngine(); made.engines.push(e as never); return e }) }
 })
 
-describe('provider sounds option (R-G)', () => {
+describe('provider sounds option', () => {
   it('builds its own engine with sounds; the same content keeps the engine untouched', async () => {
     const kid = <span className="kid" />
-    const { rerender, container } = render(<IvoriesProvider sounds={{ pack: 'complete' }}>{kid}</IvoriesProvider>)
+    const { rerender, container } = render(<IvoriesProvider sounds={{ soundPack: 'complete' }}>{kid}</IvoriesProvider>)
     await waitFor(() => expect(container.querySelector('.kid')).not.toBeNull())
-    expect(made.opts.at(-1)).toMatchObject({ sounds: { pack: 'complete' } })
+    expect(made.opts.at(-1)).toMatchObject({ sounds: { soundPack: 'complete' } })
     const n = made.opts.length
     const eng = made.engines.at(-1)!
-    rerender(<IvoriesProvider sounds={{ pack: 'complete' }}>{kid}</IvoriesProvider>)
+    rerender(<IvoriesProvider sounds={{ soundPack: 'complete' }}>{kid}</IvoriesProvider>)
     await act(async () => {})   // flush the rerender's effects and their promises
     expect(made.opts.length).toBe(n)
     // Only ever the same content, which the engine ignores (engine.test: same content is a no-op).
-    for (const [o] of eng.setSounds.mock.calls) expect(o).toEqual({ pack: 'complete' })
+    for (const [o] of eng.setSounds.mock.calls) expect(o).toEqual({ soundPack: 'complete' })
     expect(eng.dispose).not.toHaveBeenCalled()
   })
 
-  it('passes fallbackSoundfontUrl to the engine untouched', async () => {
-    const SF = 'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@044fab8e1456bfafc5776e86dfd6bb8697149aef'
-    render(<IvoriesProvider sounds={{ pack: 'core', fallbackSoundfontUrl: SF }}>{null}</IvoriesProvider>)
-    expect(made.opts.at(-1)).toMatchObject({ sounds: { pack: 'core', fallbackSoundfontUrl: SF } })
+  it('passes the asset base, sound pack and sources to the engine untouched', async () => {
+    const sounds = { assetBaseUrl: '/pepperscore-sounds/', soundPack: 'complete' as const, sources: [] }
+    render(<IvoriesProvider sounds={sounds}>{null}</IvoriesProvider>)
+    expect(made.opts.at(-1)).toMatchObject({ sounds })
   })
 
   it('new sounds content reloads the instrument in place: no new engine, children stay mounted (final review 2)', async () => {
@@ -42,13 +42,13 @@ describe('provider sounds option (R-G)', () => {
       useEffect(() => { mounts++ }, [])
       return <span className="kid" />
     }
-    const { rerender, container } = render(<IvoriesProvider sounds={{ pack: 'complete' }}><Kid /></IvoriesProvider>)
+    const { rerender, container } = render(<IvoriesProvider sounds={{ soundPack: 'complete' }}><Kid /></IvoriesProvider>)
     await waitFor(() => expect(container.querySelector('.kid')).not.toBeNull())
     const n = made.opts.length
     const eng = made.engines.at(-1)!
     seen = []
-    rerender(<IvoriesProvider sounds={{ pack: 'core', instrument: 'bright_acoustic_piano' }}><Kid /></IvoriesProvider>)
-    await waitFor(() => expect(eng.setSounds).toHaveBeenLastCalledWith({ pack: 'core', instrument: 'bright_acoustic_piano' }))
+    rerender(<IvoriesProvider sounds={{ soundPack: 'core', instrument: 'bright_acoustic_piano' }}><Kid /></IvoriesProvider>)
+    await waitFor(() => expect(eng.setSounds).toHaveBeenLastCalledWith({ soundPack: 'core', instrument: 'bright_acoustic_piano' }))
     await act(async () => {})   // flush the rerender's effects and their promises
     expect(made.opts.length).toBe(n)
     expect(eng.dispose).not.toHaveBeenCalled()

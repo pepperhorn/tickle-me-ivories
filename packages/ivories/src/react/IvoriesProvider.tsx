@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import type { ReactNode, Ref } from 'react'
 import { AudioEngine } from '../core/audio/engine'
-import type { SoundsOption } from '../core/audio/gmSounds'
+import type { SoundsOption } from '../core/audio/sounds'
+import { validMetronomeVoice } from '../core/audio/metronome'
 import { AudioClock } from '../core/clock/AudioClock'
 import { ManualClock } from '../core/clock/ManualClock'
 import { DEFAULT_LIVE_BPM, clampBpm } from '../core/render/beats'
@@ -10,7 +11,6 @@ import type { TrailNote } from '../core/midi/trail'
 import { MediaClock } from '../core/clock/MediaClock'
 import { PlaybackDriver } from '../core/audio/playback'
 import { claimPlayback, releasePlayback } from '../core/audio/claim'
-import { sharedAudioContext } from '../core/audio/sharedContext'
 import { FrameLoop } from '../core/render/frameLoop'
 import { EMPTY_HELD, diffHeld, heldScoreNotes } from '../core/render/activeNotes'
 import { SCALE_1, loadScoreSource } from '../core/io/loadScoreSource'
@@ -59,8 +59,8 @@ export interface IvoriesProviderProps extends ScoreSource, IvoriesEvents {
   clock?: Clock
   /** Advanced/test seam; the provider builds one on the page-wide AudioContext otherwise. */
   engine?: AudioEngine
-  /** Piano samples from the pepperscore-sounds GM pack for the provider's own engine (R-G). Unset: smplr's grand piano.
-      `fallbackSoundfontUrl` moves the non-pack instruments and the backup piano off gleitz.github.io / smpldsnds.github.io. */
+  /** Where the provider's own engine loads its sounds (pepperscore/audio): `assetBaseUrl`, `soundPack`, `sources`,
+      and `instrument` for the piano voices and live keys. Unset: pepperscore's pinned pepperscore-sounds-core on jsDelivr. */
   sounds?: SoundsOption
   /** Schedule audio. Default true with the provider's own clock or an AudioClock; false for a
       ManualClock or MediaClock (the host carries the sound). */
@@ -142,7 +142,7 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   const soundsKey = props.sounds ? JSON.stringify(props.sounds) : ''
   const soundsRef = useRef(props.sounds); soundsRef.current = props.sounds
   const ownEngine = useDisposable(
-    () => (props.engine ? null : new AudioEngine({ makeContext: sharedAudioContext, sounds: soundsRef.current })),
+    () => (props.engine ? null : new AudioEngine({ sounds: soundsRef.current })),
     (e) => e.dispose(), [!props.engine],
   )
   useEffect(() => { void ownEngine?.setSounds(soundsRef.current) }, [ownEngine, soundsKey])
@@ -301,6 +301,15 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
     return () => { live = false }
   }, [ownEngine, voices, report])
   useEffect(() => { ownEngine?.setMasterVolume(settings.audio.masterVolume) }, [ownEngine, settings.audio.masterVolume])
+
+  // ---- metronome: its voice always follows the settings; it LOADS only once it is on (or a count-in plays) ----
+  const metronomeVoice = validMetronomeVoice(settings.audio.metronomeVoice)
+  useEffect(() => { engine?.setMetronomeVoice(metronomeVoice) }, [engine, metronomeVoice])
+  const metronomeOn = settings.audio.metronome
+  useEffect(() => {
+    if (!engine || !audio || !metronomeOn || audioDead.current) return
+    void engine.prepareMetronome()
+  }, [engine, audio, metronomeOn, metronomeVoice])
 
   // ---- only one provider on the page sounds at a time ----
   useEffect(() => {
@@ -474,14 +483,23 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   // then runs. Anywhere else (a resume, a seek, a pause mid-count) it simply runs on.
   const play = useCallback(() => {
     if (!clock || !engine) return
+    // Where Play starts: from the top (0:00, the idle park, or after the end) or right here.
+    const startsAtTop = (): { top: boolean; atEnd: boolean } => {
+      const s = scoreRef.current
+      if (!s || clock instanceof MediaClock || clock instanceof ManualClock) return { top: false, atEnd: false }
+      const pos = clock.now()
+      const atEnd = s.durationSec > 0 && pos >= s.durationSec - 1e-6
+      return { top: Math.abs(pos) <= 1e-9 || atEnd || parkedRef.current(), atEnd }
+    }
+    const countInPlays = startsAtTop().top && leadRef.current.beats > 0
     startPlayback({
       clock, engine, audio, reportError: report,
+      // The metronome loads lazily: on Play, only when its clicks are about to be needed.
+      warm: audio && !audioDead.current && (countInPlays || settingsRef.current.audio.metronome)
+        ? () => engine.prepareMetronome() : undefined,
       prepare: () => {
-        const s = scoreRef.current
-        if (!s || clock instanceof MediaClock || clock instanceof ManualClock) return
-        const pos = clock.now()
-        const atEnd = s.durationSec > 0 && pos >= s.durationSec - 1e-6
-        if (Math.abs(pos) > 1e-9 && !atEnd && !parkedRef.current()) return
+        const { top, atEnd } = startsAtTop()
+        if (!top) return
         const l = leadRef.current
         if (l.sec > 0) clock.seek(-(l.sec + (audio && l.beats > 0 ? LOOKAHEAD_SEC : 0)))
         else if (atEnd) clock.seek(0)

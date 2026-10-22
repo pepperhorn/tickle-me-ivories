@@ -242,3 +242,68 @@ describe('PlaybackDriver driven by a ManualClock', () => {
     expect(engine.play).not.toHaveBeenCalled()
   })
 })
+
+describe('PlaybackDriver + the real AudioEngine on a fake pepperscore/audio (count-in, notes, Stop)', () => {
+  async function engineRig(s: ScoreDocument) {
+    const { AudioEngine } = await import('./engine')
+    const { leadInFor } = await import('../model/countIn')
+    const src = { currentTime: 10 }
+    const gain = () => ({ gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() })
+    const ctx = { get currentTime() { return src.currentTime }, state: 'running', destination: {}, createGain: vi.fn(gain) }
+    const starts: { note: number; time: number }[] = []
+    const ticks: { time: number; beat: number; accent?: boolean }[] = []
+    const instStop = vi.fn()
+    const metroStop = vi.fn()
+    const engine = new AudioEngine({
+      audioApi: {
+        getSharedAudio: () => ({ context: ctx as never, master: {} as never }),
+        loadInstrument: async () => ({ start: (o) => { starts.push({ note: o.note, time: o.time }); return () => {} }, stop: instStop, dispose: vi.fn() }),
+        createMetronome: async () => ({ output: { gain: { value: 0.5 } } as never, tick: (o) => { ticks.push(o); return () => {} }, setVoice: async () => {}, stop: metroStop, dispose: vi.fn() }),
+      },
+    })
+    await engine.loadVoice(s.voices[0])
+    await engine.prepareMetronome()
+    const clock = new AudioClock(src)
+    const audio = { ...DEFAULT_SETTINGS.audio, metronome: false, countIn: true }
+    const driver = new PlaybackDriver({ clock, engine, getScore: () => s, getAudio: () => audio, audioEnabled: () => true, countInClicks: 'always' })
+    const lead = leadInFor(s, { mode: 'scale', scale: 1 })
+    driver.setScore(s, { mode: 'scale', scale: 1 }, lead)
+    return { src, clock, driver, starts, ticks, instStop, metroStop, lead }
+  }
+
+  it('hands each note to the voice\'s pepperscore instrument as its MIDI number, after the count-in', async () => {
+    const r = await engineRig(score())
+    r.clock.seek(-r.lead.sec)
+    r.clock.play()
+    for (let i = 0; i < 200; i++) { r.src.currentTime += 0.025; r.driver.tick() }
+    expect(r.starts.map((s) => s.note)).toEqual([60, 61, 62, 63])
+    expect(r.ticks.map((t) => t.accent)).toEqual([true, false, false, false])
+  })
+
+  it('6/8 counts in every eighth (six clicks, accent on 1) on the pepperscore metronome', async () => {
+    const s = { ...score(), timeSignatures: [{ ticks: 0, numerator: 6, denominator: 8 }] }
+    const r = await engineRig(s)
+    expect(r.lead.beats).toBe(6)
+    r.clock.seek(-(r.lead.sec + 0.2))   // the provider starts one lookahead early, so beat 1 is not late
+    r.clock.play()
+    for (let i = 0; i < 80; i++) { r.src.currentTime += 0.025; r.driver.tick() }
+    expect(r.ticks.map((t) => t.beat)).toEqual([0, 1, 1, 1, 1, 1])
+    const gaps = r.ticks.slice(1).map((t, i) => +(t.time - r.ticks[i].time).toFixed(6))
+    expect(new Set(gaps)).toEqual(new Set([0.25]))   // an eighth at 120 BPM
+  })
+
+  it('Stop (pause) cancels the queued notes and clicks: pepperscore stop() on both, nothing handed over after', async () => {
+    const r = await engineRig(score())
+    r.clock.seek(-0.55)   // the last count-in click (-0.5), then the first note
+    r.clock.play()
+    for (let i = 0; i < 18; i++) { r.src.currentTime += 0.025; r.driver.tick() }
+    const handed = r.starts.length
+    expect(handed).toBeGreaterThan(0)
+    expect(r.ticks.length).toBeGreaterThan(0)
+    r.clock.pause()
+    expect(r.instStop).toHaveBeenCalled()
+    expect(r.metroStop).toHaveBeenCalled()
+    for (let i = 0; i < 40; i++) { r.src.currentTime += 0.025; r.driver.tick() }
+    expect(r.starts.length).toBe(handed)
+  })
+})

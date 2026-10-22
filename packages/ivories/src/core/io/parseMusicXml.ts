@@ -25,6 +25,7 @@ import { Key } from 'tonal'
 import { buildTempoMap } from '../model/tempoMap'
 import { normaliseTimeSignatures } from '../model/timeSignatures'
 import { makeVoice, retimeScore } from './parseMidi'
+import { GM_DRUMS, instrumentForProgram } from '../audio/sounds'
 import type { NoteEvent, ScoreDocument, TempoSetting, TimeSigEvent, Voice } from '../model/types'
 
 /** Fixed tick resolution; each part's <divisions> are scaled into it. */
@@ -153,6 +154,8 @@ interface PartInfo {
   channel10: boolean
   /** <midi-unpitched> (1-based) by midi-instrument id. */
   unpitched: Map<string, number>
+  /** The part's GM program (<midi-program>, 1-based) from its first midi-instrument that has one. */
+  program: number | null
 }
 
 /**
@@ -183,8 +186,9 @@ export function parseMusicXml(
       const u = num(kid(mi, 'midi-unpitched'))
       if (u !== null && u >= 1 && u <= 128) unpitched.set(mi.getAttribute('id') ?? '', Math.round(u))
     }
+    const programs = mis.map((mi) => num(kid(mi, 'midi-program'))).filter((p): p is number => p !== null)
     partInfo.set(id, {
-      id, name: partName, unpitched,
+      id, name: partName, unpitched, program: programs[0] ?? null,
       channel10: channels.length > 0 && channels.every((c) => c === 10),
     })
   }
@@ -356,7 +360,7 @@ export function parseMusicXml(
 
   // Notes, ties merged, grouped into part+staff voices.
   const notes: NoteEvent[] = []
-  const voiceDefs: { id: string; label: string; partId: string; staff: number; percussion: boolean }[] = []
+  const voiceDefs: { id: string; label: string; partId: string; staff: number; percussion: boolean; program: number | null }[] = []
   const multiPart = perPart.length > 1
   let nextId = 0
   for (const pp of perPart) {
@@ -371,7 +375,7 @@ export function parseMusicXml(
       if (!used.has(staff)) continue
       const id = `xml-${pp.id}-staff${staff}`
       voiceDefs.push({
-        id, partId: pp.id, staff, percussion: pp.percussion,
+        id, partId: pp.id, staff, percussion: pp.percussion, program: info?.program ?? null,
         label: voiceLabel(partName, staff, staves, multiPart) + (pp.percussion ? ' (percussion)' : ''),
       })
       for (const n of merged) {
@@ -389,6 +393,8 @@ export function parseMusicXml(
     const v = makeVoice(d.id, d.label, i, voiceDefs.length)
     v.source = { kind: 'xml-part', partId: d.partId, staff: d.staff }
     if (d.percussion) v.percussion = true
+    // The part's sound: the drum kit for percussion, else its GM program (piano without one).
+    v.instrument = d.percussion ? GM_DRUMS : instrumentForProgram(d.program)
     return v
   })
   notes.sort((a, b) => a.startTicks - b.startTicks || a.pitch - b.pitch)

@@ -173,7 +173,7 @@ export const useTransport = create<TransportState & TransportActions>((set, get)
    * Replaces the score object but reuses the SAME notes array. App.tsx keys its
    * scheduler effect on score.notes for exactly this reason: a colour or label
    * change must not rebuild the scheduler, which would re-hand already-scheduled
-   * notes to smplr and double them.
+   * notes to the instruments and double them.
    */
   updateVoice: (id, patch) => set((s) => {
     if (!s.score) return {}

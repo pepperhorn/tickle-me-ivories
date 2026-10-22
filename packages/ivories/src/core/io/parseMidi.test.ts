@@ -169,3 +169,24 @@ describe('retimeScore', () => {
     expect(s.notes[0].startSec).toBe(before)
   })
 })
+
+describe('voice instruments from the tracks (GM program, piano default)', () => {
+  const build = (programs: (number | 'drums')[]) => {
+    const midi = new Midi()
+    programs.forEach((p, i) => {
+      const t = midi.addTrack()
+      if (p === 'drums') t.channel = 9
+      else t.instrument.number = p
+      t.addNote({ midi: 60 + i, time: 0, duration: 1 })
+    })
+    return parseMidi(new Uint8Array(midi.toArray()).buffer as ArrayBuffer, 'p.mid', SCALE_1)
+  }
+
+  it('maps each track\'s program (0-based in the file) to its GM sound, channel 10 to the drum kit', () => {
+    expect(build([0, 40, 'drums']).voices.map((v) => v.instrument)).toEqual(['acoustic_grand_piano', 'violin', 'drums'])
+  })
+
+  it('both hands of a hand-split single track keep the track\'s sound', () => {
+    expect(build([4]).voices.map((v) => v.instrument)).toEqual(['electric_piano_1', 'electric_piano_1'])
+  })
+})

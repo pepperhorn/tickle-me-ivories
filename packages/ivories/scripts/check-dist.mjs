@@ -9,7 +9,7 @@ const problems = []
 for (const f of ['index.js', 'core.js', 'style.css', 'types/index.d.ts', 'types/core/index.d.ts']) {
   if (!existsSync(new URL(f, dist))) problems.push(`missing dist/${f}`)
 }
-const ALLOWED = [/^react$/, /^react\/jsx-runtime$/, /^react-dom(\/.*)?$/, /^smplr$/, /^@tonejs\/midi$/, /^tonal$/, /^fflate$/, /^@noble\/hashes\//, /^pepperscore$/]
+const ALLOWED = [/^react$/, /^react\/jsx-runtime$/, /^react-dom(\/.*)?$/, /^@tonejs\/midi$/, /^tonal$/, /^fflate$/, /^@noble\/hashes\//, /^pepperscore(\/audio)?$/]
 for (const f of readdirSync(dist).filter((n) => n.endsWith('.js'))) {
   const text = readFileSync(new URL(f, dist), 'utf8')
   for (const m of text.matchAll(/(?:\bfrom|\bimport)\s*\(?\s*["']([^"'./][^"']*)["']/g)) {

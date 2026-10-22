@@ -45,6 +45,9 @@ export interface TextSettings {
   style: TextStyle
 }
 
+/** The metronome's sound (pepperscore/audio's metronome voices). Spelled out here so this module stays import-free. */
+export type MetronomeVoiceName = 'woodblock' | 'drum-machine' | 'click'
+
 export interface AudioSettings {
   masterVolume: number    // 0-1
   metronome: boolean
@@ -54,6 +57,8 @@ export interface AudioSettings {
       saved before it existed stay valid; absent means on. The lead-in bar
       itself always plays. */
   countIn?: boolean
+  /** The metronome and count-in sound. Optional like countIn (older saves stay valid); absent means 'woodblock'. */
+  metronomeVoice?: MetronomeVoiceName
 }
 
 export interface ThemeSettings {

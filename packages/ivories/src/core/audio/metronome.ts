@@ -2,6 +2,8 @@ import { ticksToSec } from '../model/tempoMap'
 import { normaliseTimeSignatures } from '../model/timeSignatures'
 import { clampToNow } from './engine'
 import { LOOKAHEAD_SEC } from './scheduler'
+import type { Metronome as PepperMetronome } from 'pepperscore/audio'
+import type { MetronomeVoiceName } from '../settings/types'
 import type { LeadIn } from '../model/countIn'
 import type { ScoreDocument, TempoSetting } from '../model/types'
 
@@ -80,66 +82,107 @@ export class BeatCursor {
   }
 }
 
-const ACCENT_HZ = 1600
-const BEAT_HZ = 1000
-const CLICK_SEC = 0.035
+export type { MetronomeVoiceName }
+/** The metronome's sounds (pepperscore/audio METRONOME_VOICES): wood blocks, kick and hat, or a soft synthesized tick. */
+export const METRONOME_VOICE_NAMES: readonly MetronomeVoiceName[] = ['woodblock', 'drum-machine', 'click']
+export const DEFAULT_METRONOME_VOICE: MetronomeVoiceName = 'woodblock'
+
+/** Anything -> a metronome voice; unknown values are the default (woodblock). */
+export function validMetronomeVoice(v: unknown): MetronomeVoiceName {
+  return METRONOME_VOICE_NAMES.includes(v as MetronomeVoiceName) ? (v as MetronomeVoiceName) : DEFAULT_METRONOME_VOICE
+}
+
+/** The part of pepperscore/audio's Metronome this wrapper drives. */
+export type PepperMetronomeLike = Pick<PepperMetronome, 'output' | 'tick' | 'setVoice' | 'stop' | 'dispose'>
 
 /**
- * A synthesised click rather than a sample: it needs no load, cannot fail, and
- * is scheduled at an exact AudioContext time like every other sound in the app.
+ * The click: pepperscore/audio's createMetronome on the engine's context and master bus, built
+ * LAZILY (prepare(), or the first click). It is created on the synthesized 'click' voice, which
+ * loads nothing, and then switched to the chosen voice: the wood blocks pull TimGM6mb.sf2
+ * (about 6 MB) from the asset base, and until they arrive pepperscore plays a synthesized knock
+ * (a soft tick for the drum machine), so a beat is never silent while the kit loads.
  *
- * Clicks are handed to Web Audio up to LOOKAHEAD_SEC ahead of when they sound,
- * exactly like notes in AudioEngine.play. F19: every caller of engine.stopAll()
- * (pause, seek, tempo change, file load/unload) must also call stop() here, or
- * clicks already scheduled keep sounding across the change.
+ * Clicks are handed over up to LOOKAHEAD_SEC ahead of when they sound, exactly like notes in
+ * AudioEngine.play. F19: every caller of engine.stopAll() (pause, seek, tempo change, file
+ * load/unload) must also call stop() here, or clicks already scheduled keep sounding.
  */
-export class MetronomeVoice {
-  private readonly ctx: BaseAudioContext
-  private readonly destination: AudioNode
-  private pending: OscillatorNode[] = []
+export class SharedMetronome {
+  private readonly create: () => Promise<PepperMetronomeLike>
+  private readonly now: () => number
+  private m: PepperMetronomeLike | null = null
+  private building: Promise<PepperMetronomeLike | null> | null = null
+  private failed = false
+  private voice: MetronomeVoiceName = DEFAULT_METRONOME_VOICE
+  /** Voice switches run one after another (pepperscore loads the kit once). */
+  private chain: Promise<void> = Promise.resolve()
+  /** Clicks asked for while the metronome was still being built (flushed, clamped to now, once it exists). */
+  private queued: { time: number; accent: boolean; volume: number }[] = []
 
-  constructor(ctx: BaseAudioContext, destination: AudioNode) {
-    this.ctx = ctx
-    this.destination = destination
+  constructor(create: () => Promise<PepperMetronomeLike>, now: () => number) {
+    this.create = create
+    this.now = now
+  }
+
+  get voiceName(): MetronomeVoiceName { return this.voice }
+
+  /** Selects the voice. Loads nothing until the metronome is built; then loads the voice's drum notes. */
+  setVoice(voice: MetronomeVoiceName): void {
+    if (voice === this.voice) return
+    this.voice = voice
+    if (this.m) this.switchTo(this.m, voice)
+  }
+
+  /** Builds the metronome and loads the chosen voice. Resolves once that voice is ready (or fell back); never rejects. */
+  async prepare(): Promise<void> {
+    const m = await this.build()
+    if (m) await this.chain
   }
 
   click(time: number, accent: boolean, volume: number): void {
-    if (volume <= 0) return
-    // Same guard as AudioEngine.play: after a seek/tempo change, originSec + beat.sec
-    // can already be behind the clock by the time this tick runs. Scheduling the
-    // envelope at a PAST time makes exponentialRampToValueAtTime measure its ramp
-    // from that past instant, so most of the decay (and some of the 35ms itself)
-    // has already elapsed by the time anything actually sounds -- an inaudible or
-    // near-silent click. Clamp once and use the clamped time everywhere below.
-    const t = clampToNow(time, this.ctx.currentTime)
-    const osc = this.ctx.createOscillator()
-    const gain = this.ctx.createGain()
-    osc.type = 'square'
-    osc.frequency.value = accent ? ACCENT_HZ : BEAT_HZ
-    gain.gain.setValueAtTime(Math.min(1, Math.max(0, volume)) * 0.25, t)
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + CLICK_SEC)
-    osc.connect(gain)
-    gain.connect(this.destination)
-    osc.onended = () => {
-      const i = this.pending.indexOf(osc)
-      if (i !== -1) this.pending.splice(i, 1)
-      gain.disconnect()
-      osc.disconnect()
+    if (volume <= 0 || this.failed) return
+    if (!this.m) {
+      this.queued.push({ time, accent, volume })
+      void this.build()
+      return
     }
-    this.pending.push(osc)
-    osc.start(t)
-    osc.stop(t + CLICK_SEC)
+    this.tick(this.m, time, accent, volume)
   }
 
-  /** Cancels every click already scheduled ahead of now, the same job
-      engine.stopAll() does for notes. Call it everywhere stopAll() is called. */
+  /** Cancels every click already scheduled ahead of now, the same job engine.stopAll() does for notes. */
   stop(): void {
-    for (const osc of this.pending.splice(0)) {
-      try {
-        osc.stop()
-      } catch {
-        /* already stopped */
-      }
-    }
+    this.queued = []
+    try { this.m?.stop() } catch { /* nothing sounding */ }
+  }
+
+  dispose(): void {
+    this.queued = []
+    try { this.m?.dispose() } catch { /* already gone */ }
+    this.m = null
+  }
+
+  private tick(m: PepperMetronomeLike, time: number, accent: boolean, volume: number): void {
+    m.output.gain.value = Math.min(1, Math.max(0, volume))
+    // Same guard as AudioEngine.play: a click behind the clock (after a seek) sounds now, not never.
+    m.tick({ time: clampToNow(time, this.now()), beat: accent ? 0 : 1, accent })
+  }
+
+  private switchTo(m: PepperMetronomeLike, voice: MetronomeVoiceName): void {
+    this.chain = this.chain.then(() => m.setVoice(voice)).catch(() => { /* pepperscore falls back to synth */ })
+  }
+
+  private build(): Promise<PepperMetronomeLike | null> {
+    if (this.m) return Promise.resolve(this.m)
+    if (this.failed) return Promise.resolve(null)
+    this.building ??= this.create().then(
+      (m) => {
+        this.m = m
+        this.switchTo(m, this.voice)
+        const pending = this.queued.splice(0)
+        for (const q of pending) this.tick(m, q.time, q.accent, q.volume)
+        return m
+      },
+      () => { this.failed = true; this.queued = []; return null },
+    )
+    return this.building
   }
 }

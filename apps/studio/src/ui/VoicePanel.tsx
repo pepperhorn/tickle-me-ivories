@@ -1,8 +1,8 @@
-import { getSoundfontNames } from 'smplr'
+import { GM_DRUMS, GM_INSTRUMENT_NAMES } from 'ivories/core'
 import type { Voice } from 'ivories/core'
 
-/** smplr's own General MIDI names -- the only ids Soundfont() will load. */
-export const INSTRUMENT_OPTIONS: string[] = getSoundfontNames()
+/** The General MIDI sounds pepperscore/audio loads (by name), and the drum kit. */
+export const INSTRUMENT_OPTIONS: string[] = [...GM_INSTRUMENT_NAMES, GM_DRUMS]
 
 const pretty = (id: string) => id.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase())
 

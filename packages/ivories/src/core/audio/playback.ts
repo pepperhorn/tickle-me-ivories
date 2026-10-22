@@ -46,7 +46,7 @@ export interface PlaybackDriverOptions {
 
 /**
  * The scheduler tick that used to live in App.tsx, driven by any Clock.
- * Audio timing comes from the exact `time` handed to smplr, not from when
+ * Audio timing comes from the exact `time` handed to the instruments, not from when
  * the interval fires. Every seek, rate change and pause silences what was
  * already scheduled and re-seats the cursors (Global Constraints).
  */
@@ -66,7 +66,7 @@ export class PlaybackDriver {
 
   /**
    * Rebuild the cursors. Call when score.notes is REPLACED (load or retime),
-   * never on a voice edit: rebuilding re-hands notes smplr already has.
+   * never on a voice edit: rebuilding re-hands notes the instruments already have.
    * The count-in clicks sit before t = 0 in the same beat cursor.
    */
   setScore(score: ScoreDocument | null, tempo: TempoSetting, lead: LeadIn = score ? leadInFor(score, tempo) : { sec: 0, beats: 0, beatSec: 0 }): void {

@@ -186,7 +186,7 @@ describe('decodeProfile validation of untrusted input', () => {
     expect(mergeVoices([voice('l')], p.voices)[0]).toEqual(voice('l'))
   })
 
-  it('drops an instrument name getSoundfontNames() does not recognise, keeping the parsed value', () => {
+  it('drops an instrument that is not a GM sound name (or drums), keeping the parsed value', () => {
     const p = decodeProfile(tampered((x) => {
       x.voices = [{ id: 'l', instrument: 'not_a_real_instrument' }]
     }))

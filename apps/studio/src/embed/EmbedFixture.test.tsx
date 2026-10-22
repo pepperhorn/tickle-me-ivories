@@ -16,10 +16,11 @@ describe('embed fixture (spec §9)', () => {
     expect(container.querySelector('section.fixture-case')!.previousElementSibling).toHaveProperty('dataset.preset', 'endless+keyboard')
   })
 
-  it('keeps the default page to the presets; ?gm adds only the GM live case', () => {
+  it('keeps the default page to the presets; ?default-sounds renders only its case', () => {
     expect(render(<EmbedFixture search="" />).container.querySelectorAll('section.fixture-case')).toHaveLength(0)
-    const gm = render(<EmbedFixture search="?gm" />).container
-    expect([...gm.querySelectorAll<HTMLElement>('section.fixture-case')].map((s) => s.dataset.case)).toEqual(['gm-live'])
+    const d = render(<EmbedFixture search="?default-sounds" />).container
+    expect(d.querySelectorAll('section.fixture-preset')).toHaveLength(0)
+    expect([...d.querySelectorAll<HTMLElement>('section.fixture-case')].map((s) => s.dataset.case)).toEqual(['default-sounds'])
   })
 
   it('?only=<preset> renders just that preset', () => {
@@ -27,9 +28,9 @@ describe('embed fixture (spec §9)', () => {
     expect([...container.querySelectorAll<HTMLElement>('section.fixture-preset')].map((s) => s.dataset.preset)).toEqual(['keyboard+notation'])
   })
 
-  it('?sound-hosts renders only the sound-hosts case, no presets', () => {
-    const { container } = render(<EmbedFixture search="?sound-hosts" />)
+  it('?audio renders only the two audio players, no presets', () => {
+    const { container } = render(<EmbedFixture search="?audio" />)
     expect(container.querySelectorAll('section.fixture-preset')).toHaveLength(0)
-    expect([...container.querySelectorAll<HTMLElement>('section.fixture-case')].map((s) => s.dataset.case)).toEqual(['sound-hosts'])
+    expect([...container.querySelectorAll<HTMLElement>('section.fixture-case')].map((s) => s.dataset.case)).toEqual(['audio-a', 'audio-b'])
   })
 })

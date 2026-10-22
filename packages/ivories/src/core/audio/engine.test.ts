@@ -3,7 +3,6 @@ import { AudioEngine, LIVE_VOICE_ID, clampToNow, volumeToGain } from './engine'
 import type { InstrumentFactoryFn } from './engine'
 import type { Voice } from '../model/types'
 import type { ScheduledNote } from './scheduler'
-import { resetGmSoundCaches } from './gmSounds'
 
 const voice = (id: string, patch: Partial<Voice> = {}): Voice => ({
   id, label: id, hue: 200, instrument: 'acoustic_grand_piano',
@@ -38,7 +37,7 @@ type FakeInstrument = { start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof
 function harness() {
   const ctx = fakeContext()
   const made: FakeInstrument[] = []
-  const makeInstrument = vi.fn(async (_c: BaseAudioContext, id: string, destination: AudioNode) => {
+  const makeInstrument = vi.fn(async (_c: AudioContext, id: string, destination: AudioNode) => {
     const inst = { id, destination, start: vi.fn(), stop: vi.fn(), dispose: vi.fn() }
     made.push(inst)
     return inst as never
@@ -111,7 +110,7 @@ describe('AudioEngine voice bus', () => {
     expect(h.made[0].start).toHaveBeenCalledWith(expect.objectContaining({ time: 102, duration: 0.5 }))
   })
 
-  it('passes raw velocity to smplr -- volume must NOT fold into it', async () => {
+  it('passes raw velocity to the instrument -- volume must NOT fold into it', async () => {
     await h.engine.loadVoice(voice('v1', { volume: 0.25 }))
     h.engine.play(sched(60, 0.5, 100), voice('v1', { volume: 0.25 }), 0)
     expect(h.made[0].start).toHaveBeenCalledWith(
@@ -355,137 +354,231 @@ describe('AudioEngine live voice (spec §4.1)', () => {
   })
 })
 
-describe('AudioEngine sounds option (R-G)', () => {
-  it('loads the piano voice and the live keys from the GM pack through the Sampler seam', async () => {
-    resetGmSoundCaches()
-    const ctx = { ...fakeContext(), decodeAudioData: vi.fn(async () => ({}) as AudioBuffer) }
-    const fetchJson = vi.fn(async (url: string) => ({
-      ok: true, status: 200,
-      json: async () => (url.endsWith('pack.json')
-        ? { pack: 'core', fluidr3: ['acoustic_grand_piano'] }
-        : { name: 'acoustic_grand_piano', samples: { 60: btoa('x') } }),
-    }))
-    const sampler = { start: vi.fn(() => () => {}), stop: vi.fn(), dispose: vi.fn(), ready: Promise.resolve() }
-    const makeSampler = vi.fn(() => sampler as never)
-    const engine = new AudioEngine({
-      makeContext: () => ctx as unknown as AudioContext,
-      sounds: { pack: 'core' },
-      soundsDeps: { fetch: fetchJson, makeSampler },
-    })
-    await engine.loadVoice(voice('v1'))
-    await engine.prepareLive()
-    expect(fetchJson).toHaveBeenCalledWith('https://cdn.jsdelivr.net/npm/pepperscore-sounds-core@0.1.0/soundfonts/fluidr3/acoustic_grand_piano.json')
-    expect(makeSampler).toHaveBeenCalledTimes(2)
-    expect(engine.isGmVoice('v1')).toBe(true)
-    expect(engine.isGmVoice(LIVE_VOICE_ID)).toBe(true)
-    engine.noteOn(60, 90)
-    expect(sampler.start).toHaveBeenCalledWith({ note: 60, velocity: 90 })
+/**
+ * A fake pepperscore/audio: the engine's only sound layer. Instruments record every start
+ * (what pepperscore would turn into an AudioBufferSourceNode), and stop() cancels them.
+ */
+function fakePepperscore(o: { shared?: boolean } = {}) {
+  const ctx = fakeContext()
+  const master = { id: 'pepperscore-master' }
+  type Start = { note: unknown; time: number; duration: number; velocity: number; destination?: unknown }
+  const instruments: { sound: string; options: Record<string, unknown>; starts: Start[]; stop: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> }[] = []
+  const metronomes: { options: Record<string, unknown>; ticks: unknown[]; voices: string[]; output: { gain: { value: number } }; stop: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> }[] = []
+  const api = {
+    getSharedAudio: vi.fn(() => (o.shared === false ? null : { context: ctx, master })),
+    resumeAudio: vi.fn(async (c: { resume(): Promise<void> }) => { await c.resume(); return true }),
+    loadInstrument: vi.fn(async (sound: string, options: Record<string, unknown>) => {
+      const inst = { sound, options, starts: [] as Start[], stop: vi.fn(), dispose: vi.fn() }
+      instruments.push(inst)
+      return { start: (s: Start) => { inst.starts.push(s); return () => {} }, stop: inst.stop, dispose: inst.dispose }
+    }),
+    createMetronome: vi.fn(async (options: Record<string, unknown>) => {
+      const m = { options, ticks: [] as unknown[], voices: [] as string[], output: { gain: { value: 0.5 } }, stop: vi.fn(), dispose: vi.fn() }
+      metronomes.push(m)
+      return {
+        output: m.output as unknown as GainNode,
+        tick: (t: unknown) => { m.ticks.push(t); return () => {} },
+        setVoice: vi.fn(async (v: string) => { m.voices.push(v) }),
+        stop: m.stop, dispose: m.dispose,
+      }
+    }),
+  }
+  return { ctx, master, api, instruments, metronomes }
+}
+
+describe('AudioEngine on pepperscore/audio (one engine on the page)', () => {
+  it('plays on pepperscore\'s shared context, through its master compressor', () => {
+    const ps = fakePepperscore()
+    const engine = new AudioEngine({ audioApi: ps.api as never })
+    expect(engine.audioContext).toBe(ps.ctx)
+    const masterGain = ps.ctx.createGain.mock.results[0].value
+    expect(masterGain.connect).toHaveBeenCalledWith(ps.master)
   })
 
-  it('an unreachable pack index warns once across the piano voice and the live bus (fix round 1)', async () => {
-    resetGmSoundCaches()
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const ctx = { ...fakeContext(), decodeAudioData: vi.fn(async () => ({}) as AudioBuffer) }
-    const fetchJson = vi.fn(async (url: string) => (url.endsWith('pack.json')
-      ? { ok: false, status: 503, json: async () => ({}) }
-      : { ok: true, status: 200, json: async () => ({ name: 'acoustic_grand_piano', samples: { 60: btoa('x') } }) }))
-    const sampler = { start: vi.fn(() => () => {}), stop: vi.fn(), dispose: vi.fn(), ready: Promise.resolve() }
-    const engine = new AudioEngine({
-      makeContext: () => ctx as unknown as AudioContext,
-      sounds: {},
-      soundsDeps: { fetch: fetchJson, makeSampler: () => sampler as never },
-    })
-    await engine.loadVoice(voice('v1'))
-    await engine.prepareLive()
-    expect(fetchJson.mock.calls.filter(([u]) => u.endsWith('pack.json'))).toHaveLength(2)
-    expect(warn).toHaveBeenCalledTimes(1)
-    expect(warn.mock.calls[0][0]).toBe('[ivories] audio: GM sound pack index https://cdn.jsdelivr.net/npm/pepperscore-sounds-core@0.1.0/pack.json is unreachable')
-    warn.mockRestore()
+  it('without Web Audio, reading the time throws (the provider then plays silently)', () => {
+    const ps = fakePepperscore({ shared: false })
+    const engine = new AudioEngine({ audioApi: ps.api as never })
+    expect(() => engine.currentTime).toThrow(/Web Audio/)
   })
 
-  it('an explicit makeInstrument still wins over sounds (tests and hosts keep their seam)', async () => {
-    const { made, makeInstrument } = harness()
-    const engine = new AudioEngine({ makeContext: () => fakeContext() as unknown as AudioContext, makeInstrument, sounds: { pack: 'core' } })
+  it('loads each voice with loadInstrument on the context, into the voice\'s own gain, with the sounds options', async () => {
+    const ps = fakePepperscore()
+    const sources = [{ id: 'mine', programs: [1], kind: 'sf2', url: '/my.sf2' }]
+    const engine = new AudioEngine({
+      audioApi: ps.api as never,
+      sounds: { assetBaseUrl: 'https://sounds.example.test/', soundPack: 'complete', sources: sources as never, instrument: 'bright_acoustic_piano' },
+    })
     await engine.loadVoice(voice('v1'))
-    expect(makeInstrument).toHaveBeenCalledTimes(1)
-    expect(made).toHaveLength(1)
-    expect(engine.isGmVoice('v1')).toBe(false)
+    await engine.loadVoice(voice('v2', { instrument: 'violin' }))
+    await engine.prepareLive()
+    expect(ps.instruments.map((i) => i.sound)).toEqual(['bright_acoustic_piano', 'violin', 'bright_acoustic_piano'])
+    const [first] = ps.instruments
+    expect(first.options).toMatchObject({ context: ps.ctx, assetBaseUrl: 'https://sounds.example.test/', soundPack: 'complete', sources })
+    expect(ps.instruments[0].options.destination).not.toBe(ps.instruments[1].options.destination)
+  })
+
+  it('0.1.0\'s `pack` still picks the sound pack (deprecated alias of soundPack)', async () => {
+    const ps = fakePepperscore()
+    const engine = new AudioEngine({ audioApi: ps.api as never, sounds: { pack: 'complete' } })
+    await engine.loadVoice(voice('v1'))
+    expect(ps.instruments[0].options.soundPack).toBe('complete')
+  })
+
+  it('with no sounds option, every instrument comes from pepperscore\'s default asset base (no other loader)', async () => {
+    const ps = fakePepperscore()
+    const engine = new AudioEngine({ audioApi: ps.api as never })
+    await engine.loadVoice(voice('v1'))
+    expect(ps.api.loadInstrument).toHaveBeenCalledWith('acoustic_grand_piano', expect.not.objectContaining({ assetBaseUrl: expect.anything() }))
+  })
+
+  // Regression (0.1.1 silence, .superpowers/audio-diagnosis.md): the GM pack was handed to smplr keyed by
+  // MIDI-number strings, so no pitch matched a sample and no voice ever started. pepperscore resolves samples
+  // from the MIDI NOTE NUMBER itself; every scheduled note must reach start() as that number, unchanged.
+  it('hands every scheduled note to the instrument as its MIDI note number, at its time, velocity untouched', async () => {
+    const ps = fakePepperscore()
+    const engine = new AudioEngine({ audioApi: ps.api as never })
+    await engine.loadVoice(voice('v1'))
+    for (const [pitch, at] of [[21, 0.5], [60, 1], [61, 1.5], [108, 2]] as const) engine.play(sched(pitch, at, 77), voice('v1'), 20)
+    const starts = ps.instruments[0].starts
+    expect(starts.map((s) => s.note)).toEqual([21, 60, 61, 108])
+    for (const s of starts) expect(typeof s.note).toBe('number')
+    expect(starts.map((s) => s.time)).toEqual([20.5, 21, 21.5, 22])
+    expect(starts.every((s) => s.velocity === 77 && s.duration === 1)).toBe(true)
+  })
+
+  it('live keys go over as MIDI numbers too, now, on their own release envelope', async () => {
+    const ps = fakePepperscore()
+    const engine = new AudioEngine({ audioApi: ps.api as never })
+    await engine.prepareLive()
+    engine.noteOn(64, 99)
+    const [s] = ps.instruments[0].starts
+    expect(s).toMatchObject({ note: 64, time: 10, velocity: 99 })
+    expect(s.duration).toBeGreaterThan(1)
+    expect(s.destination).toBeDefined()
+  })
+
+  it('stopAll cancels what was queued on every score voice (pepperscore\'s stop), never the live bus', async () => {
+    const ps = fakePepperscore()
+    const engine = new AudioEngine({ audioApi: ps.api as never })
+    await engine.loadVoice(voice('v1'))
+    await engine.prepareLive()
+    engine.stopAll()
+    expect(ps.instruments[0].stop).toHaveBeenCalledTimes(1)
+    expect(ps.instruments[1].stop).not.toHaveBeenCalled()
+  })
+
+  it('a note that cannot start (not loaded) is silent and does not throw into the scheduler', async () => {
+    const engine = new AudioEngine({
+      makeContext: () => fakeContext() as unknown as AudioContext,
+      makeInstrument: async () => ({ start: () => { throw new Error('not loaded') }, stop() {}, dispose() {} }),
+    })
+    await engine.loadVoice(voice('v1'))
+    expect(() => engine.play(sched(60, 0), voice('v1'), 0)).not.toThrow()
+  })
+
+  it('resume goes through pepperscore\'s bounded resumeAudio', async () => {
+    const ps = fakePepperscore()
+    ps.ctx.state = 'suspended'
+    const engine = new AudioEngine({ audioApi: ps.api as never })
+    await engine.resume()
+    expect(ps.api.resumeAudio).toHaveBeenCalledWith(ps.ctx)
   })
 })
 
-describe('AudioEngine.setSounds (final review 2: reload in place)', () => {
-  function gmEngine() {
-    resetGmSoundCaches()
-    const ctx = { ...fakeContext(), decodeAudioData: vi.fn(async () => ({}) as AudioBuffer) }
-    const fetchJson = vi.fn(async (url: string) => ({
-      ok: true, status: 200,
-      json: async () => (url.endsWith('pack.json')
-        ? { pack: 'core', fluidr3: ['acoustic_grand_piano', 'bright_acoustic_piano'] }
-        : { name: 'x', samples: { 60: btoa('x') } }),
-    }))
-    const samplers: { start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> }[] = []
-    const makeSampler = vi.fn(() => {
-      const s = { start: vi.fn(() => () => {}), stop: vi.fn(), dispose: vi.fn(), ready: Promise.resolve() }
-      samplers.push(s)
-      return s as never
-    })
-    const engine = new AudioEngine({
-      makeContext: () => ctx as unknown as AudioContext,
-      sounds: { pack: 'core' },
-      soundsDeps: { fetch: fetchJson, makeSampler },
-    })
-    return { engine, fetchJson, samplers, makeSampler }
-  }
-
-  it('reloads every loaded voice and the live bus with the new sound; later notes use it', async () => {
-    const { engine, fetchJson, samplers } = gmEngine()
+describe('AudioEngine.setSounds (reload in place)', () => {
+  it('reloads every loaded voice and the live bus from the new base; later notes use it', async () => {
+    const ps = fakePepperscore()
+    const engine = new AudioEngine({ audioApi: ps.api as never, sounds: { assetBaseUrl: 'https://a.test/' } })
     await engine.loadVoice(voice('v1'))
     await engine.prepareLive()
-    const [oldVoice, oldLive] = samplers
-    await engine.setSounds({ pack: 'core', instrument: 'bright_acoustic_piano' })
-    expect(fetchJson).toHaveBeenCalledWith('https://cdn.jsdelivr.net/npm/pepperscore-sounds-core@0.1.0/soundfonts/fluidr3/bright_acoustic_piano.json')
-    expect(samplers).toHaveLength(4)
-    expect(oldVoice.dispose).toHaveBeenCalled()
-    expect(oldLive.dispose).toHaveBeenCalled()
-    engine.noteOn(60, 90)
-    expect(oldLive.start).not.toHaveBeenCalled()
-    expect(samplers.slice(2).some((s) => s.start.mock.calls.length === 1)).toBe(true)
-    engine.play(sched(62, 0), voice('v1'), 0)
-    expect(oldVoice.start).not.toHaveBeenCalled()
+    await engine.setSounds({ assetBaseUrl: 'https://b.test/' })
+    expect(ps.instruments.map((i) => i.options.assetBaseUrl)).toEqual(['https://a.test/', 'https://a.test/', 'https://b.test/', 'https://b.test/'])
+    expect(ps.instruments[0].dispose).toHaveBeenCalled()
+    engine.play(sched(60, 0), voice('v1'), 0)
+    expect(ps.instruments[2].starts).toHaveLength(1)
   })
 
   it('the same content is a no-op', async () => {
-    const { engine, makeSampler } = gmEngine()
+    const ps = fakePepperscore()
+    const engine = new AudioEngine({ audioApi: ps.api as never, sounds: { soundPack: 'core' } })
     await engine.loadVoice(voice('v1'))
-    await engine.setSounds({ pack: 'core' })
-    expect(makeSampler).toHaveBeenCalledTimes(1)
+    await engine.setSounds({ soundPack: 'core' })
+    expect(ps.instruments).toHaveLength(1)
   })
 
-  it('an explicit makeInstrument ignores setSounds', async () => {
-    const { makeInstrument, engine } = harness()
-    await engine.loadVoice(voice('v1'))
-    await engine.setSounds({ pack: 'core' })
-    expect(makeInstrument).toHaveBeenCalledTimes(1)
+  it('an explicit makeInstrument keeps its instruments', async () => {
+    const h = harness()
+    await h.engine.loadVoice(voice('v1'))
+    await h.engine.setSounds({ assetBaseUrl: 'https://b.test/' })
+    expect(h.made).toHaveLength(1)
   })
 })
 
-describe('AudioEngine sample loader sharing (final review 6)', () => {
-  it('engines on the same AudioContext share one SampleLoader; another context gets its own', async () => {
-    const ctx = fakeContext()
-    const other = fakeContext()
-    const loaders: unknown[] = []
-    const makeInstrument = vi.fn(async (_c: BaseAudioContext, id: string, destination: AudioNode, loader: unknown) => {
-      loaders.push(loader)
-      return { id, destination, start: vi.fn(), stop: vi.fn(), dispose: vi.fn() } as never
-    })
-    const a = new AudioEngine({ makeContext: () => ctx as unknown as AudioContext, makeInstrument })
-    const b = new AudioEngine({ makeContext: () => ctx as unknown as AudioContext, makeInstrument })
-    const c = new AudioEngine({ makeContext: () => other as unknown as AudioContext, makeInstrument })
-    await a.loadVoice(voice('v1'))
-    await b.loadVoice(voice('v1'))
-    await c.loadVoice(voice('v1'))
-    expect(loaders[0]).toBeTruthy()
-    expect(loaders[1]).toBe(loaders[0])
-    expect(loaders[2]).not.toBe(loaders[0])
+describe('AudioEngine metronome (pepperscore createMetronome, built lazily)', () => {
+  it('loads nothing until it is prepared or clicks', () => {
+    const ps = fakePepperscore()
+    const engine = new AudioEngine({ audioApi: ps.api as never })
+    engine.setMetronomeVoice('drum-machine')
+    engine.metronome()
+    expect(ps.api.createMetronome).not.toHaveBeenCalled()
+  })
+
+  it('prepare builds it on the engine master (synth click first, so a beat is never silent), then loads the chosen voice', async () => {
+    const ps = fakePepperscore()
+    const engine = new AudioEngine({ audioApi: ps.api as never, sounds: { assetBaseUrl: 'https://sounds.example.test/' } })
+    engine.setMetronomeVoice('drum-machine')
+    await engine.prepareMetronome()
+    expect(ps.api.createMetronome).toHaveBeenCalledTimes(1)
+    expect(ps.metronomes[0].options).toMatchObject({ context: ps.ctx, destination: engine.masterNode, voice: 'click', assetBaseUrl: 'https://sounds.example.test/' })
+    expect(ps.metronomes[0].voices).toEqual(['drum-machine'])
+    await engine.prepareMetronome()
+    expect(ps.api.createMetronome).toHaveBeenCalledTimes(1)
+  })
+
+  it('defaults to the woodblock and follows a later voice change', async () => {
+    const ps = fakePepperscore()
+    const engine = new AudioEngine({ audioApi: ps.api as never })
+    await engine.prepareMetronome()
+    engine.setMetronomeVoice('click')
+    await engine.prepareMetronome()
+    expect(ps.metronomes[0].voices).toEqual(['woodblock', 'click'])
+  })
+
+  it('click ticks at the time (clamped to now) with the accent as beat 1, at the metronome volume', async () => {
+    const ps = fakePepperscore()
+    const engine = new AudioEngine({ audioApi: ps.api as never })
+    await engine.prepareMetronome()
+    const m = engine.metronome()
+    m.click(12, true, 0.8)
+    m.click(5, false, 0.3)
+    m.click(13, false, 0)
+    expect(ps.metronomes[0].ticks).toEqual([{ time: 12, beat: 0, accent: true }, { time: 10, beat: 1, accent: false }])
+    expect(ps.metronomes[0].output.gain.value).toBeCloseTo(0.3)
+  })
+
+  it('a click asked for while it is still being built is played once it exists', async () => {
+    const ps = fakePepperscore()
+    const engine = new AudioEngine({ audioApi: ps.api as never })
+    engine.metronome().click(11, true, 1)
+    await engine.prepareMetronome()
+    expect(ps.metronomes[0].ticks).toEqual([{ time: 11, beat: 0, accent: true }])
+  })
+
+  it('stop cancels its scheduled beats; dispose releases it', async () => {
+    const ps = fakePepperscore()
+    const engine = new AudioEngine({ audioApi: ps.api as never })
+    await engine.prepareMetronome()
+    engine.metronome().stop()
+    expect(ps.metronomes[0].stop).toHaveBeenCalledTimes(1)
+    engine.dispose()
+    expect(ps.metronomes[0].dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('a metronome that cannot be built stays quiet and never rejects', async () => {
+    const ps = fakePepperscore()
+    ps.api.createMetronome.mockRejectedValueOnce(new Error('no audio'))
+    const engine = new AudioEngine({ audioApi: ps.api as never })
+    await expect(engine.prepareMetronome()).resolves.toBeUndefined()
+    expect(() => engine.metronome().click(11, true, 1)).not.toThrow()
   })
 })
