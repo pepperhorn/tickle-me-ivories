@@ -53,7 +53,8 @@ export interface PlaybackDriverOptions {
 export class PlaybackDriver {
   private scheduler: Scheduler | null = null
   private beats: BeatCursor | null = null
-  private metronome: MetronomeLike | null = null
+  /** Set once a click has gone to the engine's metronome, so silence() only touches it then. */
+  private metronomeUsed = false
   private timer: ReturnType<typeof setInterval> | null = null
   private audioFailed = false
   private readonly off: () => void
@@ -80,6 +81,22 @@ export class PlaybackDriver {
     this.beats = b
   }
 
+  /**
+   * Rebuild only the beat cursor for a new lead-in (the Count-in select), keeping the note
+   * scheduler. While playing, the new cursor resumes where the old one had handed clicks up
+   * to, so no click (and no note) already given to Web Audio is handed over twice; paused, it
+   * sits at the playhead, ready for the next Play.
+   */
+  setLeadIn(score: ScoreDocument | null, tempo: TempoSetting, lead: LeadIn): void {
+    if (!score) { this.beats = null; return }
+    const { clock } = this.o
+    const head = clock.now()
+    const from = clock.playing && this.beats ? Math.max(head, this.beats.horizon) : head
+    const b = new BeatCursor([...countInBeats(lead), ...beatTimes(score, tempo)])
+    b.seek(from)
+    this.beats = b
+  }
+
   start(): void {
     if (!this.timer) this.timer = setInterval(() => this.tick(), TICK_MS)
   }
@@ -96,7 +113,8 @@ export class PlaybackDriver {
   /** Cancels everything already handed to the engine, notes and clicks. */
   silence(): void {
     this.o.engine.stopAll()
-    this.metronome?.stop()
+    // Asked of the engine each time, never cached: the engine may have rebuilt it (a sounds change).
+    if (this.metronomeUsed) this.o.engine.metronome().stop()
   }
 
   tick(): void {
@@ -152,8 +170,8 @@ export class PlaybackDriver {
         // Count-in clicks (sec < 0) only while the Count-in setting is on;
         // the bar's own beats only while the metronome is.
         if (beat.sec < 0 ? audio.countIn === false : !audio.metronome) continue
-        this.metronome ??= engine.metronome()
-        this.metronome.click(origin + beat.sec / rate, beat.accent, audio.metronomeVolume)
+        this.metronomeUsed = true
+        engine.metronome().click(origin + beat.sec / rate, beat.accent, audio.metronomeVolume)
       }
     } else {
       // Keep the beat cursor level with the playhead while the click is off,

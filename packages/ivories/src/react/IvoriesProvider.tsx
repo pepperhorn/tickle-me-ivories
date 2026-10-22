@@ -261,6 +261,8 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
 
   // ---- scheduler ----
   const driverRef = useRef<PlaybackDriver | null>(null)
+  /** The note array the driver's scheduler was last built from. */
+  const drivenNotes = useRef(notes)
   useEffect(() => {
     if (!clock || !engine) return
     const d = new PlaybackDriver({
@@ -282,12 +284,24 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
       countInClicks: 'always',
     })
     d.setScore(scoreRef.current, tempoRef.current, leadRef.current)
+    drivenNotes.current = scoreRef.current?.notes
     d.start()
     driverRef.current = d
     return () => { d.dispose(); driverRef.current = null }
   }, [clock, engine, markAudioDead])
-  // Rebuilt only when the note array is replaced (a voice edit keeps it).
-  useEffect(() => { driverRef.current?.setScore(scoreRef.current, tempoRef.current, leadRef.current) }, [notes, lead])
+  // Rebuilt only when the note array is replaced (a voice edit keeps it). A lead-in change
+  // alone (the Count-in select, allowed mid-play) rebuilds just the beat cursor, from where
+  // it had handed clicks up to: a full setScore would hand the lookahead's notes over again.
+  useEffect(() => {
+    const d = driverRef.current
+    if (!d) return
+    if (drivenNotes.current !== notes) {
+      drivenNotes.current = notes
+      d.setScore(scoreRef.current, tempoRef.current, leadRef.current)
+    } else {
+      d.setLeadIn(scoreRef.current, tempoRef.current, leadRef.current)
+    }
+  }, [notes, lead])
 
   // ---- our own engine loads its instruments ----
   const voices = score?.voices
@@ -312,11 +326,19 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   }, [engine, audio, metronomeOn, metronomeVoice])
 
   // ---- only one provider on the page sounds at a time ----
+  // Claimed on the Play press itself (play() below), so another player stops at once rather
+  // than after this one's resume/metronome wait; and on every clock 'play' (a host's own play()).
+  const playOwner = useRef<{ pause(): void } | null>(null)
   useEffect(() => {
     if (!clock || !audio) return
-    const owner = { pause: () => clock.pause() }
+    const owner = { pause: () => { cancelPendingStart(clock); clock.pause() } }
+    playOwner.current = owner
     const off = clock.subscribe((e) => { if (e.type === 'play') claimPlayback(owner) })
-    return () => { off(); releasePlayback(owner) }
+    return () => {
+      off()
+      releasePlayback(owner)
+      if (playOwner.current === owner) playOwner.current = null
+    }
   }, [clock, audio])
 
   // ---- the shared frame loop: time updates and score note on/off ----
@@ -492,6 +514,7 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
       return { top: Math.abs(pos) <= 1e-9 || atEnd || parkedRef.current(), atEnd }
     }
     const countInPlays = startsAtTop().top && leadRef.current.beats > 0
+    if (audio && playOwner.current) claimPlayback(playOwner.current)
     startPlayback({
       clock, engine, audio, reportError: report,
       // The metronome loads lazily: on Play, only when its clicks are about to be needed.

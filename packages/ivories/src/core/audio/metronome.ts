@@ -57,6 +57,8 @@ export function countInBeats(lead: LeadIn): Beat[] {
 export class BeatCursor {
   private cursor = 0
   private beats: Beat[]
+  /** Every beat before this score time has been handed out (collect) or skipped (seek). */
+  private handedTo = -Infinity
 
   constructor(beats: Beat[]) {
     this.beats = beats
@@ -70,7 +72,11 @@ export class BeatCursor {
       else hi = mid
     }
     this.cursor = lo
+    this.handedTo = playheadSec
   }
+
+  /** The score time up to which beats have already been handed out (a rebuilt cursor resumes here while playing). */
+  get horizon(): number { return this.handedTo }
 
   collect(playheadSec: number): Beat[] {
     const horizon = playheadSec + LOOKAHEAD_SEC
@@ -78,6 +84,7 @@ export class BeatCursor {
     while (this.cursor < this.beats.length && this.beats[this.cursor].sec < horizon) {
       out.push(this.beats[this.cursor++])
     }
+    this.handedTo = Math.max(this.handedTo, horizon)
     return out
   }
 }
@@ -106,6 +113,9 @@ export type PepperMetronomeLike = Pick<PepperMetronome, 'output' | 'tick' | 'set
  * AudioEngine.play. F19: every caller of engine.stopAll() (pause, seek, tempo change, file
  * load/unload) must also call stop() here, or clicks already scheduled keep sounding.
  */
+/** A click queued during the build may sound this late (at once); an older one is dropped. */
+const LATE_CLICK_SEC = 0.05
+
 export class SharedMetronome {
   private readonly create: () => Promise<PepperMetronomeLike>
   private readonly now: () => number
@@ -115,8 +125,11 @@ export class SharedMetronome {
   private voice: MetronomeVoiceName = DEFAULT_METRONOME_VOICE
   /** Voice switches run one after another (pepperscore loads the kit once). */
   private chain: Promise<void> = Promise.resolve()
-  /** Clicks asked for while the metronome was still being built (flushed, clamped to now, once it exists). */
+  /** Clicks asked for while the metronome was still being built (flushed once it exists; those already past are dropped). */
   private queued: { time: number; accent: boolean; volume: number }[] = []
+  /** Bumped by reset()/dispose(): a build that started under an older generation is thrown away on arrival. */
+  private gen = 0
+  private disposed = false
 
   constructor(create: () => Promise<PepperMetronomeLike>, now: () => number) {
     this.create = create
@@ -139,7 +152,7 @@ export class SharedMetronome {
   }
 
   click(time: number, accent: boolean, volume: number): void {
-    if (volume <= 0 || this.failed) return
+    if (volume <= 0 || this.failed || this.disposed) return
     if (!this.m) {
       this.queued.push({ time, accent, volume })
       void this.build()
@@ -154,10 +167,23 @@ export class SharedMetronome {
     try { this.m?.stop() } catch { /* nothing sounding */ }
   }
 
-  dispose(): void {
+  /**
+   * Drops the built metronome (its sounds changed): the next click or prepare() builds a new one
+   * through `create`, on the same voice. A build still in flight is disposed when it arrives.
+   */
+  reset(): void {
+    this.gen++
     this.queued = []
     try { this.m?.dispose() } catch { /* already gone */ }
     this.m = null
+    this.building = null
+    this.failed = false
+    this.chain = Promise.resolve()
+  }
+
+  dispose(): void {
+    this.reset()
+    this.disposed = true
   }
 
   private tick(m: PepperMetronomeLike, time: number, accent: boolean, volume: number): void {
@@ -172,16 +198,28 @@ export class SharedMetronome {
 
   private build(): Promise<PepperMetronomeLike | null> {
     if (this.m) return Promise.resolve(this.m)
-    if (this.failed) return Promise.resolve(null)
+    if (this.failed || this.disposed) return Promise.resolve(null)
+    const gen = this.gen
     this.building ??= this.create().then(
       (m) => {
+        // Reset or disposed meanwhile: this one belongs to old sounds (or a dead engine).
+        if (gen !== this.gen || this.disposed) {
+          try { m.dispose() } catch { /* already gone */ }
+          return null
+        }
         this.m = m
         this.switchTo(m, this.voice)
-        const pending = this.queued.splice(0)
+        // A build slower than a beat must not knock every missed beat at once: only clicks
+        // still ahead (or a hair behind, which clampToNow sounds now) are played.
+        const now = this.now()
+        const pending = this.queued.splice(0).filter((q) => q.time >= now - LATE_CLICK_SEC)
         for (const q of pending) this.tick(m, q.time, q.accent, q.volume)
         return m
       },
-      () => { this.failed = true; this.queued = []; return null },
+      () => {
+        if (gen === this.gen) { this.failed = true; this.queued = [] }
+        return null
+      },
     )
     return this.building
   }

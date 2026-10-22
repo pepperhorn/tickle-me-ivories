@@ -277,6 +277,16 @@
   .ivories .ivories-transport-select option { background: var(--ivories-transport-bg, var(--ivories-panel)); color: var(--ivories-transport-ink, var(--ivories-ink)); }
   .ivories .ivories-transport-select:focus-visible { outline: 2px solid var(--ivories-transport-focus, #8fb89a); outline-offset: 2px; }
 
+  /* The count-in's screen-reader status (one per provider): visually hidden. */
+  .ivories .ivories-count-in-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
   /* The on-stage count-in: large, subtle, centred over the roll, popping on each beat. */
   .ivories .ivories-count-in-overlay {
     position: absolute;

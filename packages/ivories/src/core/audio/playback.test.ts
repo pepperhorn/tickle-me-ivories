@@ -268,7 +268,7 @@ describe('PlaybackDriver + the real AudioEngine on a fake pepperscore/audio (cou
     const driver = new PlaybackDriver({ clock, engine, getScore: () => s, getAudio: () => audio, audioEnabled: () => true, countInClicks: 'always' })
     const lead = leadInFor(s, { mode: 'scale', scale: 1 })
     driver.setScore(s, { mode: 'scale', scale: 1 }, lead)
-    return { src, clock, driver, starts, ticks, instStop, metroStop, lead }
+    return { src, clock, driver, engine, starts, ticks, instStop, metroStop, lead }
   }
 
   it('hands each note to the voice\'s pepperscore instrument as its MIDI number, after the count-in', async () => {
@@ -305,5 +305,49 @@ describe('PlaybackDriver + the real AudioEngine on a fake pepperscore/audio (cou
     expect(r.metroStop).toHaveBeenCalled()
     for (let i = 0; i < 40; i++) { r.src.currentTime += 0.025; r.driver.tick() }
     expect(r.starts.length).toBe(handed)
+  })
+
+  it('a sounds change mid-session leaves the metronome and count-in clicking (the driver never keeps a dead metronome)', async () => {
+    const r = await engineRig(score())
+    r.clock.seek(-r.lead.sec)
+    r.clock.play()
+    for (let i = 0; i < 20; i++) { r.src.currentTime += 0.025; r.driver.tick() }
+    const before = r.ticks.length
+    expect(before).toBeGreaterThan(0)
+    await r.engine.setSounds({ assetBaseUrl: 'https://b.test/' })
+    for (let i = 0; i < 4; i++) await Promise.resolve()
+    for (let i = 0; i < 40; i++) { r.src.currentTime += 0.025; r.driver.tick(); await Promise.resolve() }
+    await new Promise((res) => setTimeout(res, 0))
+    expect(r.ticks.length).toBe(4)
+    expect(r.ticks.map((t) => t.accent)).toEqual([true, false, false, false])
+  })
+})
+
+describe('PlaybackDriver.setLeadIn (a Count-in change)', () => {
+  it('while playing, rebuilds the beat cursor without re-handing a click or a note already given to Web Audio', () => {
+    const r = rig({ ...DEFAULT_SETTINGS.audio, metronome: true, countIn: true })
+    r.clock.seek(0.4)
+    r.clock.play()
+    r.driver.tick()
+    expect(r.clicks).toHaveLength(1)
+    expect(r.clicks[0]).toBeCloseTo(10.1, 9)   // the beat at 0.5, origin 9.6
+    r.driver.setLeadIn(r.s, { mode: 'scale', scale: 1 }, { sec: 4, beats: 8, beatSec: 0.5 })
+    r.driver.tick()
+    r.src.currentTime += 0.025
+    r.driver.tick()
+    expect(r.clicks).toHaveLength(1)
+    expect(r.engine.play).toHaveBeenCalledTimes(1)
+    // Later beats still come.
+    for (let i = 0; i < 20; i++) { r.src.currentTime += 0.025; r.driver.tick() }
+    expect(r.clicks).toHaveLength(2)
+  })
+
+  it('while paused, the new lead-in is what the next Play from the top counts', () => {
+    const r = rig({ ...DEFAULT_SETTINGS.audio, metronome: true, countIn: true })
+    r.driver.setLeadIn(r.s, { mode: 'scale', scale: 1 }, { sec: 4, beats: 8, beatSec: 0.5 })
+    r.clock.seek(-4)
+    r.clock.play()
+    for (let i = 0; i < 170; i++) { r.src.currentTime += 0.025; r.driver.tick() }
+    expect(r.clicks.filter((t) => t < 14 - 1e-9).length).toBe(8)
   })
 })

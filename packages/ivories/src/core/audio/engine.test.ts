@@ -581,4 +581,69 @@ describe('AudioEngine metronome (pepperscore createMetronome, built lazily)', ()
     await expect(engine.prepareMetronome()).resolves.toBeUndefined()
     expect(() => engine.metronome().click(11, true, 1)).not.toThrow()
   })
+
+  it('keeps clicking after a sounds change, through a reference held from before it (the driver\'s), on a metronome from the new base', async () => {
+    const ps = fakePepperscore()
+    const engine = new AudioEngine({ audioApi: ps.api as never, sounds: { assetBaseUrl: 'https://a.test/' } })
+    await engine.prepareMetronome()
+    const held = engine.metronome()
+    held.click(12, true, 1)
+    await engine.setSounds({ assetBaseUrl: 'https://b.test/' })
+    expect(ps.metronomes[0].dispose).toHaveBeenCalledTimes(1)
+    held.click(13, false, 1)
+    await engine.prepareMetronome()
+    engine.metronome().click(14, true, 1)
+    expect(ps.metronomes).toHaveLength(2)
+    expect(ps.metronomes[1].options.assetBaseUrl).toBe('https://b.test/')
+    expect(ps.metronomes[1].ticks).toEqual([{ time: 13, beat: 1, accent: false }, { time: 14, beat: 0, accent: true }])
+    // The voice survives the rebuild.
+    expect(ps.metronomes[1].voices).toEqual(['woodblock'])
+  })
+
+  it('a build still in flight when the sounds change or the engine is disposed is disposed on arrival, never attached', async () => {
+    const ps = fakePepperscore()
+    const real = ps.api.createMetronome.getMockImplementation()!
+    const gates: (() => void)[] = []
+    ps.api.createMetronome.mockImplementation(async (o: Record<string, unknown>) => {
+      await new Promise<void>((r) => gates.push(r))
+      return real(o)
+    })
+    const engine = new AudioEngine({ audioApi: ps.api as never, sounds: { assetBaseUrl: 'https://a.test/' } })
+    engine.metronome().click(11, true, 1)
+    expect(gates).toHaveLength(1)
+    await engine.setSounds({ assetBaseUrl: 'https://b.test/' })
+    engine.metronome().click(11.5, false, 1)
+    expect(gates).toHaveLength(2)
+    gates[0](); gates[1]()
+    await engine.prepareMetronome()
+    // The stale build (old base) is thrown away; only the new one sounds.
+    expect(ps.metronomes.map((m) => m.options.assetBaseUrl).sort()).toEqual(['https://a.test/', 'https://b.test/'])
+    const stale = ps.metronomes.find((m) => m.options.assetBaseUrl === 'https://a.test/')!
+    const fresh = ps.metronomes.find((m) => m.options.assetBaseUrl === 'https://b.test/')!
+    expect(stale.dispose).toHaveBeenCalledTimes(1)
+    expect(stale.ticks).toEqual([])
+    expect(fresh.ticks).toEqual([{ time: 11.5, beat: 1, accent: false }])
+    // Dispose while a build is in flight: it arrives to a dead engine and is disposed too.
+    engine.metronome().stop()
+    const e2 = new AudioEngine({ audioApi: ps.api as never })
+    e2.metronome().click(11, true, 1)
+    e2.dispose()
+    gates[2]()
+    await new Promise((r) => setTimeout(r, 0))
+    const late = ps.metronomes[2]
+    expect(late.dispose).toHaveBeenCalledTimes(1)
+    expect(late.ticks).toEqual([])
+  })
+
+  it('clicks asked for while it is still loading do not all knock at once: those already past are dropped', async () => {
+    const ps = fakePepperscore()
+    const engine = new AudioEngine({ audioApi: ps.api as never })
+    const m = engine.metronome()
+    // The context clock reads 10: the build took longer than a beat.
+    m.click(9, true, 1)
+    m.click(9.5, false, 1)
+    m.click(10.2, false, 1)
+    await engine.prepareMetronome()
+    expect(ps.metronomes[0].ticks).toEqual([{ time: 10.2, beat: 1, accent: false }])
+  })
 })

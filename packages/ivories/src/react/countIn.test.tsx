@@ -11,6 +11,8 @@ import { Transport } from './views/Transport'
 import { FallingKeys } from './views/FallingKeys'
 import { stubCtx } from '../core/render/pianoRoll.test-helpers'
 import type { IvoriesHandle } from './IvoriesProvider'
+import { DEFAULT_SETTINGS } from '../core/settings/types'
+import { Keyboard } from './views/Keyboard'
 
 /** 120 bpm 4/4, first note on the downbeat; four bars long. */
 const bytes = (num = 4, den = 4) => {
@@ -145,5 +147,84 @@ describe('count-in on Play (user ruling 2026-10-22)', () => {
     expect(await shown(-0.1)).toBe('4')
     expect(await shown(0)).toBe('')
     vi.restoreAllMocks()
+  })
+
+  it('changing the Count-in while playing hands no note or click to Web Audio twice', async () => {
+    const src = { currentTime: 100 }
+    const clock = new AudioClock(src)
+    const engine = fakeEngine(src)
+    const clicks: number[] = []
+    const metro = { click: (t: number) => { clicks.push(t) }, stop: () => {} }
+    ;(engine as unknown as { metronome: () => typeof metro }).metronome = () => metro
+    const ref = createRef<IvoriesHandle>()
+    const { container } = render(
+      <IvoriesProvider ref={ref} score={doc()} clock={clock} engine={engine} settings={{ audio: { ...DEFAULT_SETTINGS.audio, metronome: true } }}>
+        <Transport />
+      </IvoriesProvider>,
+    )
+    await waitFor(() => expect(ref.current).not.toBeNull())
+    // Past the top (no count-in); the beat and the note at 0.5 sit inside the lookahead.
+    act(() => { clock.seek(0.4); clock.play() })
+    await waitFor(() => expect(engine.play).toHaveBeenCalled())
+    await waitFor(() => expect(clicks.length).toBeGreaterThan(0))
+    const select = container.querySelector<HTMLSelectElement>('.ivories-count-in-select')!
+    fireEvent.change(select, { target: { value: '2' } })
+    await new Promise((r) => setTimeout(r, 60))
+    fireEvent.change(select, { target: { value: '0' } })
+    await new Promise((r) => setTimeout(r, 60))
+    const ids = engine.play.mock.calls.map((c) => (c[0] as { note: { id: number } }).note.id)
+    expect(ids).toEqual([...new Set(ids)])
+    expect(clicks).toEqual([...new Set(clicks)])
+  })
+
+  it('the count is announced once per count-in, by one stage view, not every beat by every view', async () => {
+    const stub = stubCtx()
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((() => stub.ctx) as unknown as typeof HTMLCanvasElement.prototype.getContext)
+    const src = { currentTime: 100 }
+    const clock = new AudioClock(src)
+    const { container } = render(<IvoriesProvider score={doc()} clock={clock} engine={fakeEngine(src)}><FallingKeys /><Keyboard /></IvoriesProvider>)
+    await waitFor(() => expect(container.querySelectorAll('.ivories-count-in-overlay').length).toBe(2))
+    const overlays = [...container.querySelectorAll('.ivories-count-in-overlay')]
+    // The big numbers are visual only.
+    for (const o of overlays) {
+      expect(o.getAttribute('aria-live')).toBeNull()
+      expect(o.getAttribute('aria-hidden')).toBe('true')
+    }
+    const status = () => [...container.querySelectorAll('.ivories-count-in-status')]
+    expect(status()).toHaveLength(1)
+    expect(status()[0].getAttribute('role')).toBe('status')
+    const texts: string[] = []
+    for (const t of [-2, -1.4, -0.9, -0.1]) {
+      act(() => clock.seek(t))
+      await waitFor(() => expect(overlays[0].getAttribute('data-count')).not.toBeNull())
+      texts.push(status()[0].textContent ?? '')
+    }
+    expect(new Set(texts)).toEqual(new Set(['Count-in']))
+    act(() => clock.seek(0.5))
+    await waitFor(() => expect(status()[0].textContent).toBe(''))
+    vi.restoreAllMocks()
+  })
+
+  it('Play claims the page at once, before the audio has resumed: another playing provider stops on the press', async () => {
+    const srcA = { currentTime: 100 }, srcB = { currentTime: 100 }
+    const clockA = new AudioClock(srcA), clockB = new AudioClock(srcB)
+    const engineB = fakeEngine(srcB)
+    // B's context takes its time to start (Play waits up to RESUME_WAIT_MS for it).
+    ;(engineB as unknown as { resume: () => Promise<void> }).resume = () => new Promise(() => {})
+    const a = createRef<IvoriesHandle>(), b = createRef<IvoriesHandle>()
+    render(
+      <>
+        <IvoriesProvider ref={a} score={doc()} clock={clockA} engine={fakeEngine(srcA)}><Transport /></IvoriesProvider>
+        <IvoriesProvider ref={b} score={doc()} clock={clockB} engine={engineB}><Transport /></IvoriesProvider>
+      </>,
+    )
+    await waitFor(() => expect(a.current && b.current).toBeTruthy())
+    act(() => a.current!.play())
+    await waitFor(() => expect(clockA.playing).toBe(true))
+    act(() => b.current!.play())
+    expect(clockA.playing).toBe(false)
+    expect(clockB.playing).toBe(false)
+    await waitFor(() => expect(clockB.playing).toBe(true), { timeout: 2000 })
+    act(() => b.current!.pause())
   })
 })

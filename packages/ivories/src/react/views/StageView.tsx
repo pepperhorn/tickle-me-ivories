@@ -63,11 +63,44 @@ function CountInOverlay({ keyboardPx, horizontal }: { keyboardPx: number; horizo
     ...(horizontal ? { left: keyboardPx } : { bottom: keyboardPx }),
     ['--ivories-count-in-beat' as string]: `${iv.lead.beatSec || 0.5}s`,
   }
+  // The big numbers are visual only; one polite "Count-in" per count-in, from one view per provider.
+  const announcer = useCountInAnnouncer(iv.frames)
   return (
-    <div className="ivories-count-in-overlay" style={style} aria-live="polite" data-count={n || undefined}>
-      {n > 0 && <span key={n} className="ivories-count-in-number">{n}</span>}
-    </div>
+    <>
+      <div className="ivories-count-in-overlay" style={style} aria-hidden="true" data-count={n || undefined}>
+        {n > 0 && <span key={n} className="ivories-count-in-number">{n}</span>}
+      </div>
+      {announcer && <span className="ivories-count-in-status" role="status">{n > 0 ? 'Count-in' : ''}</span>}
+    </>
   )
+}
+
+/** Per provider (keyed on its frame loop): the mounted count-in overlays, the first of which announces. */
+const announcers = new WeakMap<object, { order: symbol[]; listeners: Set<() => void> }>()
+function announcerRegistry(key: object) {
+  let r = announcers.get(key)
+  if (!r) { r = { order: [], listeners: new Set() }; announcers.set(key, r) }
+  return r
+}
+
+/** True for exactly one mounted CountInOverlay per provider; the next one takes over when it unmounts. */
+function useCountInAnnouncer(key: object): boolean {
+  const [me] = useState(() => Symbol('count-in'))
+  const subscribe = useCallback((fn: () => void) => {
+    const r = announcerRegistry(key)
+    r.listeners.add(fn)
+    return () => { r.listeners.delete(fn) }
+  }, [key])
+  useEffect(() => {
+    const r = announcerRegistry(key)
+    r.order.push(me)
+    r.listeners.forEach((fn) => fn())
+    return () => {
+      r.order = r.order.filter((x) => x !== me)
+      r.listeners.forEach((fn) => fn())
+    }
+  }, [key, me])
+  return useSyncExternalStore(subscribe, () => announcers.get(key)?.order[0] === me, () => false)
 }
 
 /** Shared by the labels-off overlay state so it never allocates. */

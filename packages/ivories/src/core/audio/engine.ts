@@ -130,7 +130,7 @@ export class AudioEngine {
    * Switches the asset base / sound pack / sources without rebuilding the engine:
    * every loaded voice and the live bus reload their instrument in place, each
    * keeping the old one sounding until its replacement is ready, and the
-   * metronome is rebuilt on its next use. Same content is a no-op; an explicit
+   * metronome (the same SharedMetronome object) is rebuilt on its next use. Same content is a no-op; an explicit
    * makeInstrument (test/host seam) keeps its instruments. Never rejects.
    */
   setSounds(sounds: SoundsOption | undefined): Promise<void> {
@@ -138,7 +138,9 @@ export class AudioEngine {
     if (key === this.soundsKey) return Promise.resolve()
     this.soundsKey = key
     this.sounds = sounds
-    if (this.metro) { this.metro.dispose(); this.metro = null }
+    // The same SharedMetronome stays (the driver and hosts may hold it); only the pepperscore
+    // metronome inside it is dropped, and rebuilt from the new sounds on its next use.
+    this.metro?.reset()
     if (this.customFactory) return Promise.resolve()
     this.gen++
     const reloads = [...this.buses.values()].map((b) => this.loadVoice(b.voice).catch(() => {}))
@@ -333,6 +335,9 @@ export class AudioEngine {
     this.noteOff(midi, true)
     const ctx = this.context()
     // A gain per key so the release can fade (pepperscore's stop cuts the sample).
+    // Known limitation (README, CHANGELOG): an SF2 plan ignores `destination` and plays
+    // through the instrument's output, so on TimGM6mb a release cuts instead of fading.
+    // Fading inst.output or the bus would fade every held key, so it is left as is.
     const env = ctx.createGain()
     env.connect(bus.gain)
     const t = ctx.currentTime
