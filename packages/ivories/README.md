@@ -40,7 +40,15 @@ Views default to `height: 100%` of their parent, so the box that contains them n
 
 ## Presets
 
-`<Ivories view>`: `falling`, `rising`, `keyboard`, `keyboard+notation`, `endless+falling`, `endless+keyboard`. `orientation` (`vertical` | `horizontal`) applies to the falling or rising main view. `chrome`: `full` (transport with seek, tempo, metronome, and the BPM field when there is no score), `minimal` (play button), `none`.
+`<Ivories view>`: `falling`, `rising`, `keyboard`, `keyboard+notation`, `endless+falling`, `endless+keyboard`. `orientation` (`vertical` | `horizontal`) applies to the rising main view; falling is vertical only (`orientation="horizontal"` on falling is deprecated and ignored, see [Horizontal piano roll](#horizontal-piano-roll)). `chrome`: `full` (transport with seek, tempo, count-in, metronome, and the BPM field when there is no score), `minimal` (play button), `none`. `countIn` (`0 | 1 | 2`, default 1) and `noteBarLabels` (`'pitch' | 'pitch-octave' | 'none'`, default `'pitch'`) pass through; see below.
+
+## Count-in
+
+Play from the top (0:00, or after the score has ended) starts with a count-in before the score's first beat: `countIn` bars on the provider (`0`, `1` default, or `2`). The clock runs at negative time through it, so on a falling roll every bar, even a note on beat 1, starts fully above the keys, and on a rising roll the first tile leaves its key on beat 1 of bar 1. The count uses the opening time signature and tempo (one bar of 4/4 is four quarter beats, 3/4 three, 6/8 six eighths; over a pickup the last counted bar stops where the pickup enters). Its clicks (accent on 1) sound whether or not the metronome is on, and the views show the count large and faint over the roll ("1 2 3 4", "1 2 3 4 1 2 3 4" for two bars). With `countIn={0}` a single silent beat still runs first, so no bar starts on the keys. A seek, a scrub or a resume from pause never replays it. The Transport's Count-in select (Off / 1 bar / 2 bars) changes it; `useIvories()` exposes `countIn`, `setCountIn` and `lead` (the lead-in in seconds). It applies to the provider's own clock or a host `AudioClock`; a `MediaClock` or `ManualClock` stays where the host puts it. A host that draws its own count passes `showCountIn={false}`.
+
+## Note names on the bars
+
+Falling and rising note bars carry their note name by default: the pitch class without octave or MIDI number, spelled as written in a MusicXML score ("F♯", "B♭"), else by the key signature (flats in a flat key), else with sharps. `noteBarLabels` on `<FallingKeys>`, `<RisingKeys>`, `<Ivories>` and in `Stage` `viewProps`: `'pitch'` (default), `'pitch-octave'` ("F♯4") or `'none'`. The text is white Poppins 600 over a dark translucent outline, centred, sized to the bar's width (up to 20px), and left off a bar too narrow or too short to read (black keys on a full 88-key roll in a small box, very short notes). Load Poppins on the page as for the rest of the UI.
 
 ## Composing views
 
@@ -101,7 +109,7 @@ Props shared by every slot go in `viewProps`; `slotViewProps` overrides them for
 
 ## Sizing a keyboard-only view
 
-`<Keyboard>` (and `view="keyboard"`) has no roll, so its keys may use the whole height of the box, up to their natural proportion (white keys 5.8x as long as wide). A box taller than that keeps the keys anchored to the bottom edge with empty stage above; a shorter box gives shorter keys. The keyboard-only view is always vertical; `orientation` applies only to the falling and rising views. Falling and rising views still cap the keyboard at 55% of the stage height to leave room for the roll.
+`<Keyboard>` (and `view="keyboard"`) has no roll, so its keys may use the whole height of the box, up to their natural proportion (white keys 5.8x as long as wide). A box taller than that keeps the keys anchored to the bottom edge with empty stage above; a shorter box gives shorter keys. The keyboard-only view is always vertical; `orientation` applies only to the rising view. Falling and rising views still cap the keyboard at 55% of the stage height to leave room for the roll.
 
 To size the box so the keys fill it exactly, use `keyboardAspect(range?)` from `ivories/core` as the CSS `aspect-ratio`. It returns width / height for `'full'` (the default, 88 keys: 52 / 5.8) or a `[low, high]` range, widened to whole black-key groups as the `range` prop is. It matches only an explicit `range` (or `'full'`): a view with no `range` follows `settings.display.zoom`, and `'fit'` picks its range from the score, which `keyboardAspect` cannot know. Note labels placed `above` and an `above-keys` chord readout move onto the keys and to the top of the stage when there is no room above the keyboard.
 
@@ -153,7 +161,7 @@ function RecordButton({ onTake }: { onTake(s: ScoreDocument): void }) {
 
 ## Horizontal piano roll
 
-`orientation="horizontal"` on `<FallingKeys>`, `<RisingKeys>` and `<Ivories>` stands the keyboard on the left edge, low notes at the bottom, with time running across: falling notes arrive from the right, rising notes leave to the right. Key proportions are unchanged. `onLayout` still reports the vertical (canonical) geometry; `toScreen`, `fromScreen` and `pitchAtScreen` from `ivories/core` map between it and the view. In a `<Stage>` layout an ivories slot carries it: `{ kind: 'ivories', view: 'rising', orientation: 'horizontal' }`.
+`orientation="horizontal"` on `<RisingKeys>` and `<Ivories view="rising">` stands the keyboard on the left edge, low notes at the bottom, with time running across: each tile is born at its key when the note sounds and travels away to the right, after the count-in. Falling is vertical only: `orientation="horizontal"` on `<FallingKeys>` / `<Ivories view="falling">` (and a falling `Stage` slot) is deprecated, draws vertical and warns once in development; use the rising roll for a horizontal view. Key proportions are unchanged. `onLayout` still reports the vertical (canonical) geometry; `toScreen`, `fromScreen` and `pitchAtScreen` from `ivories/core` map between it and the view. In a `<Stage>` layout an ivories slot carries it: `{ kind: 'ivories', view: 'rising', orientation: 'horizontal' }`.
 
 ## GM piano sounds
 
@@ -233,7 +241,11 @@ The transport follows pepperscore's chrome (a green pill play button with a play
 | `--ivories-notation-dark-bg` | `var(--ivories-panel)` | `ink-on-dark` background |
 | `--ivories-notation-ink-filter` | `invert(1) hue-rotate(180deg)` | `ink-on-dark` filter |
 
-Contextual classes for overrides and tests: `ivories-transport-play` (with `ivories-transport-play-label` and `ivories-transport-icon`), `ivories-transport-seek`, `ivories-transport-tempo`, `ivories-transport-range`, `ivories-transport-time`, `ivories-transport-switch` (the metronome checkbox, `role="switch"`), `ivories-transport-label`, `ivories-notation-paper`, `ivories-notation-ink-on-dark`. The transport root carries `data-playing` while playing.
+The seek track is drawn under the range input and broken at every beat of the score's time signatures (the denominator note; dotted quarters in 6/8, 9/8 and 12/8), with a stronger mark at each bar line, following the tempo map. When beats would sit closer than 4px only bar lines are marked, and when those crowd too, every 2nd, 4th, 8th... bar. `--ivories-transport-tick` (default `rgba(255,255,255,.45)`) colours the bar marks; the breaks take `--ivories-transport-bg`. The on-stage count is `--ivories-count-in-ink` (default `rgba(255,255,255,.3)`).
+
+Without a `zoom`, the notation presets fit the engraving to the panel's height, so a whole system (both staves of a grand staff) is always visible: when pepperscore's default overflows the panel, the stave scale is reduced until the tallest system fits, and tried again at the default when the panel grows.
+
+Contextual classes for overrides and tests: `ivories-transport-play` (with `ivories-transport-play-label` and `ivories-transport-icon`), `ivories-transport-seek` (in `ivories-seek-wrap`, over `ivories-seek-track`), `ivories-count-in-select`, `ivories-count-in-overlay` (the on-stage count, `data-count` while counting), `ivories-transport-tempo`, `ivories-transport-range`, `ivories-transport-time`, `ivories-transport-switch` (the metronome checkbox, `role="switch"`), `ivories-transport-label`, `ivories-notation-paper`, `ivories-notation-ink-on-dark`. The transport root carries `data-playing` while playing.
 
 ## SSR
 
