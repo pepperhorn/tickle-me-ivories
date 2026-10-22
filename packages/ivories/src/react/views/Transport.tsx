@@ -191,7 +191,6 @@ function TransportView({ controls, className }: { controls?: TransportControls; 
       {c.bpm && iv.liveClockActive && <BpmField />}
       {c.meter && meter && (
         <span className="ivories-meter ivories-transport-meter" role="img" aria-label={`Time signature ${meter.numerator}/${meter.denominator}`} data-meter={`${meter.numerator}/${meter.denominator}`}>
-          <span className="ivories-meter-label ivories-transport-label" aria-hidden="true">Time</span>
           <span className="ivories-meter-value" aria-hidden="true">{meter.numerator}/{meter.denominator}</span>
         </span>
       )}
@@ -211,24 +210,25 @@ function TransportView({ controls, className }: { controls?: TransportControls; 
         </label>
       )}
       {c.metronome && (
-        <label className="ivories-metronome ivories-transport-field">
-          {/* Label first, like every other field in the row (and pepperscore's switch rows). */}
-          <span className="ivories-metronome-label ivories-transport-label">Metronome</span>
-          <input
-            type="checkbox" role="switch" aria-label="Metronome" className="ivories-metronome-input ivories-transport-switch"
-            checked={iv.settings.audio.metronome}
-            onChange={(e) => iv.setAudio({ metronome: e.target.checked })}
-          />
-        </label>
-      )}
-      {c.metronome && (
-        <select
-          aria-label="Metronome sound" className="ivories-metronome-voice ivories-transport-select"
-          value={validMetronomeVoice(iv.settings.audio.metronomeVoice)}
-          onChange={(e) => iv.setAudio({ metronomeVoice: validMetronomeVoice(e.target.value) })}
-        >
-          {METRONOME_VOICE_NAMES.map((v) => <option key={v} className="ivories-metronome-voice-option" value={v}>{METRONOME_VOICE_LABELS[v]}</option>)}
-        </select>
+        // The switch and its sound select wrap together, as one control.
+        <span className="ivories-metronome-group">
+          <label className="ivories-metronome ivories-transport-field">
+            {/* Label first, like every other field in the row (and pepperscore's switch rows). */}
+            <span className="ivories-metronome-label ivories-transport-label">Metronome</span>
+            <input
+              type="checkbox" role="switch" aria-label="Metronome" className="ivories-metronome-input ivories-transport-switch"
+              checked={iv.settings.audio.metronome}
+              onChange={(e) => iv.setAudio({ metronome: e.target.checked })}
+            />
+          </label>
+          <select
+            aria-label="Metronome sound" className="ivories-metronome-voice ivories-transport-select"
+            value={validMetronomeVoice(iv.settings.audio.metronomeVoice)}
+            onChange={(e) => iv.setAudio({ metronomeVoice: validMetronomeVoice(e.target.value) })}
+          >
+            {METRONOME_VOICE_NAMES.map((v) => <option key={v} className="ivories-metronome-voice-option" value={v}>{METRONOME_VOICE_LABELS[v]}</option>)}
+          </select>
+        </span>
       )}
       {needsTap && (
         <button type="button" className="ivories-btn ivories-btn-enable-sound ivories-transport-enable-sound" onClick={() => resumeAudio(iv)}>

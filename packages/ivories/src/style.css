@@ -238,7 +238,7 @@
   }
   /* The seek track: an SVG under a transparent native range, broken at every
      beat (a gap in the track's own background colour) and marked at bar lines. */
-  .ivories .ivories-seek-wrap { position: relative; display: flex; align-items: center; flex: 1 1 10rem; min-width: 6rem; height: var(--ivories-transport-control-h, 2rem); }
+  .ivories .ivories-seek-wrap { position: relative; display: flex; align-items: center; flex: 1 1 8rem; min-width: 6rem; height: var(--ivories-transport-control-h, 2rem); }
   .ivories .ivories-seek { position: relative; flex: 1 1 auto; width: 100%; min-width: 0; }
   .ivories .ivories-seek-track { position: absolute; left: 0; top: 50%; width: 100%; height: 16px; transform: translateY(-50%); overflow: visible; pointer-events: none; }
   .ivories .ivories-seek-track-bg { fill: var(--ivories-transport-track, rgba(255, 255, 255, 0.14)); }
@@ -336,6 +336,7 @@
     text-align: center;
     line-height: 1.4;
   }
+  .ivories .ivories-metronome-group { display: inline-flex; align-items: center; gap: 0.5rem; }
   .ivories .ivories-metronome-voice { min-width: 0; }
   .ivories .ivories-transport-field {
     display: inline-flex;
