@@ -21,4 +21,10 @@ describe('embed fixture (spec §9)', () => {
     const gm = render(<EmbedFixture search="?gm" />).container
     expect([...gm.querySelectorAll<HTMLElement>('section.fixture-case')].map((s) => s.dataset.case)).toEqual(['gm-live'])
   })
+
+  it('?sound-hosts renders only the sound-hosts case, no presets', () => {
+    const { container } = render(<EmbedFixture search="?sound-hosts" />)
+    expect(container.querySelectorAll('section.fixture-preset')).toHaveLength(0)
+    expect([...container.querySelectorAll<HTMLElement>('section.fixture-case')].map((s) => s.dataset.case)).toEqual(['sound-hosts'])
+  })
 })

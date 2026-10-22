@@ -3,6 +3,9 @@ import { Ivories, IvoriesProvider, Keyboard, useIvories } from 'ivories'
 import type { IvoriesHandle, IvoriesPreset, IvoriesProps, PepperScoreClockHandle } from 'ivories'
 import { LIVE_VOICE_ID } from 'ivories/core'
 
+/** Backup soundfont host for the ?sound-hosts case (same value hosts pass as sounds.fallbackSoundfontUrl). */
+export const FIXTURE_SOUNDFONT = 'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@044fab8e1456bfafc5776e86dfd6bb8697149aef'
+
 export const FIXTURE_PRESETS: { view: IvoriesPreset; src: string }[] = [
   { view: 'falling', src: '/fixtures/demo.mid' },
   { view: 'keyboard', src: '/fixtures/demo.mid' },
@@ -43,14 +46,16 @@ function GmProbe() {
  * /embed-fixture: every preset embedded the way a host site would (spec §9 Playwright smoke).
  * Opt-in sections keep the default page light: `?rising` adds FIXTURE_CASES, `?gm` adds a
  * live keyboard whose piano loads from the pepperscore-sounds GM pack (network).
+ * `?sound-hosts` renders only a live keyboard with fallbackSoundfontUrl set (no presets, so the request log stays clean).
  */
 export function EmbedFixture({ search = typeof location === 'undefined' ? '' : location.search }: { search?: string }) {
   const flags = new URLSearchParams(search)
+  const soundHostsOnly = flags.has('sound-hosts')
   useEffect(() => { window.__ivoriesFixture = registry }, [])
   return (
     <main className="embed-fixture flex h-full flex-col gap-8 overflow-y-auto bg-[var(--ground)] p-6">
       <h1 className="embed-fixture-title text-lg font-semibold text-[var(--ink)]">ivories embed fixture</h1>
-      {FIXTURE_PRESETS.map((p) => (
+      {!soundHostsOnly && FIXTURE_PRESETS.map((p) => (
         <section key={p.view} className="fixture-preset flex flex-col gap-2" data-preset={p.view}>
           <h2 className="fixture-preset-title text-sm text-[var(--ink-dim)]">{p.view}</h2>
           <div className="fixture-preset-frame h-[360px] overflow-hidden rounded-lg border border-[var(--line)]">
@@ -78,6 +83,16 @@ export function EmbedFixture({ search = typeof location === 'undefined' ? '' : l
             <IvoriesProvider sounds={{ pack: 'core' }} liveAudio>
               <Keyboard input="midi" />
               <GmProbe />
+            </IvoriesProvider>
+          </div>
+        </section>
+      )}
+      {soundHostsOnly && (
+        <section className="fixture-case flex flex-col gap-2" data-case="sound-hosts">
+          <h2 className="fixture-case-title text-sm text-[var(--ink-dim)]">live keys, pack blocked, fallback soundfont on jsDelivr</h2>
+          <div className="fixture-case-frame h-[160px] overflow-hidden rounded-lg border border-[var(--line)]">
+            <IvoriesProvider sounds={{ pack: 'core', fallbackSoundfontUrl: FIXTURE_SOUNDFONT }} liveAudio>
+              <Keyboard input="midi" />
             </IvoriesProvider>
           </div>
         </section>
