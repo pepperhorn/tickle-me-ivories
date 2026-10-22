@@ -234,7 +234,8 @@ The transport follows pepperscore's chrome (a green pill play button with a play
 | `--ivories-transport-switch-on` | `#5d8164` | metronome switch on |
 | `--ivories-transport-focus` | `#8fb89a` | keyboard focus ring |
 | `--ivories-notation-paper` | `#ffffff` | paper card |
-| `--ivories-notation-border` | `#e9e9e4` | paper card border |
+| `--ivories-notation-border` | `#e2e9e0` | paper card border (pepperscore's panel border) |
+| `--ivories-notation-shadow` | `0 12px 32px rgba(8,16,11,.45)` | paper card shadow |
 | `--ivories-notation-radius` | `12px` | paper card radius |
 | `--ivories-notation-padding` | `0.5rem` | paper card inner padding |
 | `--ivories-notation-ink` | `#242824` | text colour inside the notation (before inversion in `ink-on-dark`) |
