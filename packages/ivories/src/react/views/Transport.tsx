@@ -117,7 +117,7 @@ function TransportView({ controls, className }: { controls?: TransportControls; 
         </button>
       )}
       {c.seek && (
-        <span className="ivories-seek-wrap" data-count-in={t < 0 ? '' : undefined}>
+        <span className="ivories-seek-wrap" data-count-in={t < 0 && !iv.parked() ? '' : undefined}>
           <SeekTrack score={iv.score} tempo={iv.tempo} progress={seekValue / seekMax} />
           <input
             type="range" aria-label="Seek" className="ivories-seek ivories-transport-range ivories-transport-seek"

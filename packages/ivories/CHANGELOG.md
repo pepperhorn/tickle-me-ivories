@@ -20,6 +20,7 @@
 
 ### Fixed
 
+- Idle frame: before Play (and after a seek to 0:00 while paused) the provider's own clock waits at the start of the count-in (`-lead.sec`: `countIn` bars, or the one silent beat with `countIn={0}`) instead of at 0, so the falling roll never idles with a beat-1 note drawn on the keys. The time readout still reads 0:00, the seek thumb sits at the start, no count is shown, and Play from there runs the whole count-in. `clock.now()` and `onTimeUpdate` report the negative time while parked; `useIvories().parked()` tells a host. A host-supplied `AudioClock`, `MediaClock` or `ManualClock` is never moved.
 - `keyboard+notation` / `endless+keyboard` (and `<Notation>` without `zoom`): the notation panel cut off the bottom of a grand staff. The engraving is now fitted to the panel's height so a whole system shows.
 
 ### Docs

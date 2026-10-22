@@ -428,10 +428,50 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   // A Play still waiting on resume() never starts a clock this provider has let go of.
   useEffect(() => () => { if (clock) cancelPendingStart(clock) }, [clock])
 
-  // Play: from the top (0:00, or after the end) the clock first steps back to the
-  // start of the lead-in -- plus one scheduler lookahead when audio is on, so the
-  // first click is handed to Web Audio ahead of its time -- then runs. Anywhere
-  // else (a resume, a seek, a pause mid-count) it simply runs on.
+  // ---- idle park (user ruling 2026-10-22): the falling roll never idles with a bar on the keys ----
+  // While the provider's OWN clock is paused at the top (score load, a seek to 0),
+  // it waits at the start of the lead-in (-lead.sec), so the idle frame already
+  // shows every bar above the key line; readouts clamp to 0:00. Host clocks
+  // (AudioClock, MediaClock, ManualClock) stay where the host puts them.
+  const parkedAt = useRef<number | null>(null)
+  const parkable = clock !== null && clock === ownClock
+  const parked = useCallback(() => {
+    const at = parkedAt.current
+    const c = clockRef.current
+    return parkable && at !== null && c !== null && !c.playing && Math.abs(c.now() - at) < 1e-9
+  }, [parkable])
+  const parkedRef = useRef(parked); parkedRef.current = parked
+  useEffect(() => {
+    if (!clock || !parkable) { parkedAt.current = null; return }
+    const tryPark = () => {
+      const l = leadRef.current
+      if (!scoreRef.current || clock.playing || !(l.sec > 0)) return
+      const pos = clock.now()
+      const prev = parkedAt.current
+      const atTop = Math.abs(pos) < 1e-9 || (prev !== null && Math.abs(pos - prev) < 1e-9)
+      if (!atTop) return
+      parkedAt.current = -l.sec
+      if (Math.abs(pos + l.sec) > 1e-9) clock.seek(-l.sec)
+    }
+    tryPark()
+    let pending = false
+    let live = true
+    const off = clock.subscribe((e) => {
+      if (e.type === 'play') parkedAt.current = null
+      // Deferred: re-seeking inside a seek event would reach later subscribers
+      // (the scheduler) out of order. Re-checked when it runs.
+      if (e.type === 'seek' && Math.abs(e.time) < 1e-9 && !pending) {
+        pending = true
+        queueMicrotask(() => { pending = false; if (live) tryPark() })
+      }
+    })
+    return () => { live = false; off() }
+  }, [clock, parkable, lead, score])
+
+  // Play: from the top (0:00, the idle park, or after the end) the clock first
+  // steps back to the start of the lead-in -- plus one scheduler lookahead when
+  // audio is on, so the first click is handed to Web Audio ahead of its time --
+  // then runs. Anywhere else (a resume, a seek, a pause mid-count) it simply runs on.
   const play = useCallback(() => {
     if (!clock || !engine) return
     startPlayback({
@@ -441,7 +481,7 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
         if (!s || clock instanceof MediaClock || clock instanceof ManualClock) return
         const pos = clock.now()
         const atEnd = s.durationSec > 0 && pos >= s.durationSec - 1e-6
-        if (Math.abs(pos) > 1e-9 && !atEnd) return
+        if (Math.abs(pos) > 1e-9 && !atEnd && !parkedRef.current()) return
         const l = leadRef.current
         if (l.sec > 0) clock.seek(-(l.sec + (audio && l.beats > 0 ? LOOKAHEAD_SEC : 0)))
         else if (atEnd) clock.seek(0)
@@ -459,8 +499,8 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
 
   const setAudio = useCallback((p: Partial<AudioSettings>) => setAudioPatch((cur) => ({ ...cur, ...p })), [])
   const value = useMemo<IvoriesContextValue | null>(() => (clock && engine && frames
-    ? { score, tempo, clock, engine, settings, fallSeconds, maxNoteDur, audio, frames, active, status, setAudio, reportError: report, live: liveHub, bpm, setBpm, requestLiveClock, liveClockActive, play, countIn, setCountIn, lead, countInPerBar, showCountIn }
-    : null), [score, tempo, clock, engine, settings, fallSeconds, maxNoteDur, audio, frames, active, status, setAudio, report, liveHub, bpm, setBpm, requestLiveClock, liveClockActive, play, countIn, setCountIn, lead, countInPerBar, showCountIn])
+    ? { score, tempo, clock, engine, settings, fallSeconds, maxNoteDur, audio, frames, active, status, setAudio, reportError: report, live: liveHub, bpm, setBpm, requestLiveClock, liveClockActive, play, countIn, setCountIn, lead, countInPerBar, showCountIn, parked }
+    : null), [score, tempo, clock, engine, settings, fallSeconds, maxNoteDur, audio, frames, active, status, setAudio, report, liveHub, bpm, setBpm, requestLiveClock, liveClockActive, play, countIn, setCountIn, lead, countInPerBar, showCountIn, parked])
 
   // Children render once the clock, engine and frame loop exist (after the
   // first effect; never on the server), so a view always finds a context.

@@ -50,6 +50,13 @@ export interface IvoriesContextValue {
   countInPerBar: number
   /** Views draw the count during the lead-in (provider prop showCountIn). */
   showCountIn: boolean
+  /**
+   * True while the provider's own clock sits idle at the start of the lead-in
+   * (on load, or after a seek to 0 while paused): the views draw every bar above
+   * the key line and show no count; readouts clamp the negative time to 0:00.
+   * Always false for a host clock.
+   */
+  parked(): boolean
   /** Live MIDI input (spec §4.1), started only while a view asks for it. */
   live: {
     held: ValueStore<ReadonlyMap<number, LiveNote>>

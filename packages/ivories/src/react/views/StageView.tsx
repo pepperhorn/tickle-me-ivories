@@ -49,12 +49,13 @@ export interface StageViewProps {
 function CountInOverlay({ keyboardPx, horizontal }: { keyboardPx: number; horizontal: boolean }) {
   const iv = useIvories()
   const [n, setN] = useState(0)
-  const ref = useRef({ lead: iv.lead, perBar: iv.countInPerBar })
-  ref.current = { lead: iv.lead, perBar: iv.countInPerBar }
+  const ref = useRef({ lead: iv.lead, perBar: iv.countInPerBar, parked: iv.parked })
+  ref.current = { lead: iv.lead, perBar: iv.countInPerBar, parked: iv.parked }
   useEffect(() => {
     let last = -1
     return iv.frames.add((t) => {
-      const b = countInLabelAt(t, ref.current.lead, ref.current.perBar)
+      // Idle at the start of the lead-in (before Play) shows no count.
+      const b = ref.current.parked() ? 0 : countInLabelAt(t, ref.current.lead, ref.current.perBar)
       if (b !== last) { last = b; setN(b) }
     })
   }, [iv.frames])
