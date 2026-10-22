@@ -27,6 +27,12 @@ describe('provider sounds option (R-G)', () => {
     expect(eng.dispose).not.toHaveBeenCalled()
   })
 
+  it('passes fallbackSoundfontUrl to the engine untouched', async () => {
+    const SF = 'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@044fab8e1456bfafc5776e86dfd6bb8697149aef'
+    render(<IvoriesProvider sounds={{ pack: 'core', fallbackSoundfontUrl: SF }}>{null}</IvoriesProvider>)
+    expect(made.opts.at(-1)).toMatchObject({ sounds: { pack: 'core', fallbackSoundfontUrl: SF } })
+  })
+
   it('new sounds content reloads the instrument in place: no new engine, children stay mounted (final review 2)', async () => {
     let mounts = 0
     let seen: unknown[] = []

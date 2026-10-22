@@ -5,6 +5,7 @@ import type { ScheduledNote } from './scheduler'
 import { MetronomeVoice } from './metronome'
 import { gmInstrumentFactory, isGmInstrument } from './gmSounds'
 import type { GmSoundDeps, SoundsOption } from './gmSounds'
+import { soundfontFallbackFactory } from './soundfontFallback'
 
 const GRAND_PIANO_ID = 'acoustic_grand_piano'
 
@@ -120,7 +121,11 @@ export class AudioEngine {
   }
 
   private factoryFor(sounds: SoundsOption | undefined): InstrumentFactoryFn {
-    return sounds ? gmInstrumentFactory(sounds, defaultMakeInstrument, this.soundsDeps) : defaultMakeInstrument
+    if (!sounds) return defaultMakeInstrument
+    const fallback = sounds.fallbackSoundfontUrl?.trim()
+      ? soundfontFallbackFactory(sounds.fallbackSoundfontUrl, { pageBase: this.soundsDeps?.pageBase })
+      : defaultMakeInstrument
+    return gmInstrumentFactory(sounds, fallback, this.soundsDeps)
   }
 
   /**

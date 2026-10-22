@@ -11,6 +11,12 @@ export interface SoundsOption {
   assetBaseUrl?: string
   /** The GM sound the piano voice and live keys load. Default 'acoustic_grand_piano'. */
   instrument?: string
+  /**
+   * Base URL of a gleitz-layout MIDI.js soundfont (`<base>/MusyngKite/<instrument>-mp3.js`). When set,
+   * instruments not in the pack, and the backup piano when the pack fails, load from here instead of
+   * gleitz.github.io / smpldsnds.github.io. A relative URL resolves against the page.
+   */
+  fallbackSoundfontUrl?: string
 }
 
 export type FetchJson = (url: string) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>
