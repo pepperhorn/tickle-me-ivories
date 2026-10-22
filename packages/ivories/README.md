@@ -8,6 +8,8 @@ npm install ivories
 npm install pepperscore@^0.2
 ```
 
+Notation views also need pepperscore's stylesheet for the playback cursor and the playing-note highlight: `import 'pepperscore/style.css'`.
+
 ```tsx
 import { Ivories } from 'ivories'
 import 'ivories/style.css'
@@ -17,17 +19,17 @@ import 'ivories/style.css'
 
 Hosts must import `ivories/style.css`: overlay positioning and view sizing live there. All of it sits in a single `@layer ivories`, so any unlayered host CSS wins over the defaults.
 
-Cascade layers rank by the order they are first declared, not by import order of the rules inside them. Tailwind v4 puts its utilities in `@layer utilities`, so a host using Tailwind must make sure `ivories` is declared first, or the library defaults beat your utilities. Either import `ivories/style.css` before your Tailwind CSS:
-
-```tsx
-import 'ivories/style.css'   // first: declares @layer ivories
-import './index.css'         // then: @import "tailwindcss";
-```
-
-or declare the order yourself at the top of your main stylesheet, before `@import "tailwindcss"`:
+Cascade layers rank by the order they are first declared, not by import order of the rules inside them. With Tailwind v4 (`@layer theme, base, components, utilities`), put `ivories` after `base` and before `components`: above `base`, Tailwind's preflight reset (which strips button backgrounds, borders and padding) does not flatten the transport; below `utilities`, your utilities still win over the library defaults. Declare the order at the top of your main stylesheet, before `@import "tailwindcss"`, and import that stylesheet before `ivories/style.css`, since the first declaration of a layer name fixes its rank:
 
 ```css
-@layer ivories, theme, base, components, utilities;
+/* index.css */
+@layer theme, base, ivories, components, utilities;
+@import "tailwindcss";
+```
+
+```tsx
+import './index.css'          // first: declares the layer order
+import 'ivories/style.css'
 ```
 
 Load Poppins on the page (the library sets `font-family: Poppins, system-ui, sans-serif` but never fetches fonts).
@@ -187,6 +189,51 @@ A callback you pass (`onNoteOn`, `onNoteOff`, `onError`, a live-note subscriber)
 ## Styling
 
 Every rule lives under `.ivories`; theme tokens are `--ivories-*` custom properties (stage, keys, grid, flash, progress, live hue) and `ivories-theme-classic|outline|contrast|transparent` presets.
+
+### Notation surface
+
+`notationTheme` on `<Ivories>` (notation presets) and on `<Notation>`:
+
+- `paper` (default): the engraving sits on a light card with a subtle border, radius and inner padding, like pepperscore's own reader, so black ink reads on the dark stage. It does not depend on pepperscore's stylesheet being loaded.
+- `ink-on-dark`: no card; the engraving is inverted to light ink on the dark panel (`filter: invert(1) hue-rotate(180deg)`, which keeps pepperscore's amber playing notes and blue cursor in their hues). pepperscore's white grounds are cleared with `!important`, because its sheet is unlayered.
+
+```tsx
+<Ivories view="keyboard+notation" notationTheme="ink-on-dark" musicXml={xml} />
+<Notation view="endless" notationTheme="paper" />
+```
+
+### Transport and notation custom properties
+
+The transport follows pepperscore's chrome (a green pill play button with a play/pause icon, slim filled range tracks, a switch for the metronome, small caps labels, Poppins). These properties are read with fallbacks rather than declared on `.ivories`, so set them on any ancestor (the element you pass as `className`, a page wrapper, or `:root`):
+
+| Property | Default | Used for |
+| --- | --- | --- |
+| `--ivories-transport-bg` | `var(--ivories-panel)` | transport bar background |
+| `--ivories-transport-border` | `var(--ivories-line)` | bar top border, secondary button border |
+| `--ivories-transport-border-strong` | `rgba(255,255,255,.28)` | BPM field underline |
+| `--ivories-transport-ink` | `var(--ivories-ink)` | text, BPM value |
+| `--ivories-transport-ink-dim` | `var(--ivories-ink-dim)` | labels, time readout, tempo % |
+| `--ivories-transport-font` | `Poppins, system-ui, sans-serif` | transport font stack |
+| `--ivories-transport-radius` | `10px` | button radius |
+| `--ivories-transport-play-bg` | `#345642` | play button |
+| `--ivories-transport-play-bg-hover` | `#41694f` | play button hover |
+| `--ivories-transport-play-ink` | `#ffffff` | play icon and label |
+| `--ivories-transport-accent` | `#8fb89a` | "Tap to enable sound" button |
+| `--ivories-transport-fill` | `#8fb89a` | filled part of the seek and tempo tracks, thumb ring |
+| `--ivories-transport-track` | `rgba(255,255,255,.14)` | unfilled track |
+| `--ivories-transport-thumb` | `#ffffff` | slider thumb, switch knob |
+| `--ivories-transport-switch-off` | `rgba(255,255,255,.2)` | metronome switch off |
+| `--ivories-transport-switch-on` | `#5d8164` | metronome switch on |
+| `--ivories-transport-focus` | `#8fb89a` | keyboard focus ring |
+| `--ivories-notation-paper` | `#ffffff` | paper card |
+| `--ivories-notation-border` | `#e9e9e4` | paper card border |
+| `--ivories-notation-radius` | `12px` | paper card radius |
+| `--ivories-notation-padding` | `0.5rem` | paper card inner padding |
+| `--ivories-notation-ink` | `#242824` | text colour inside the notation (before inversion in `ink-on-dark`) |
+| `--ivories-notation-dark-bg` | `var(--ivories-panel)` | `ink-on-dark` background |
+| `--ivories-notation-ink-filter` | `invert(1) hue-rotate(180deg)` | `ink-on-dark` filter |
+
+Contextual classes for overrides and tests: `ivories-transport-play` (with `ivories-transport-play-label` and `ivories-transport-icon`), `ivories-transport-seek`, `ivories-transport-tempo`, `ivories-transport-range`, `ivories-transport-time`, `ivories-transport-switch` (the metronome checkbox, `role="switch"`), `ivories-transport-label`, `ivories-notation-paper`, `ivories-notation-ink-on-dark`. The transport root carries `data-playing` while playing.
 
 ## SSR
 
