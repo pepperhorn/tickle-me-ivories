@@ -5,10 +5,13 @@
   .ivories {
     /* Canvas theme tokens (spec §14.1 of the visualizer spec). readTheme() reads
        them once per layout or theme change from the view's root element. */
-    --ivories-stage-bg: #000000;
+    /* pepperscore's palette family: a deep green-black stage under its #345642
+       green chrome, dark enough for every note hue and the white strike flash. */
+    --ivories-stage-bg: #0e1511;
     --ivories-key-white: #f6f2e4;
-    --ivories-key-black: #0c0c10;
-    --ivories-key-border: rgba(255, 255, 255, 0.16);
+    --ivories-key-black: #151d18;
+    /* The key line: the edge the bars land on (the left edge on a horizontal roll). */
+    --ivories-key-border: rgba(143, 184, 154, 0.55);
     --ivories-key-border-width: 1px;
     /* Per-key stroke: drawKeyboard strokes each key only when this is not
        transparent, so a theme that leaves it alone pays nothing. */
@@ -28,15 +31,15 @@
     --ivories-flash-core-rgb: 255, 255, 255;
     --ivories-flash-warm-rgb: 255, 242, 214;
     --ivories-progress-track: rgba(255, 255, 255, 0.06);
-    --ivories-progress-fill: #e8384f;
+    --ivories-progress-fill: #8fb89a;
     /* Hue (0-360) of keys lit by live MIDI input. */
     --ivories-live-hue: 35;
     /* Chrome tokens (Transport, messages, stage). */
-    --ivories-ink: #e9eaf2;
-    --ivories-ink-dim: #9698ad;
-    --ivories-accent: #ff9c1a;
-    --ivories-panel: #101119;
-    --ivories-line: #22232e;
+    --ivories-ink: #eef3ec;
+    --ivories-ink-dim: #a7b5aa;
+    --ivories-accent: #8fb89a;
+    --ivories-panel: #16211a;
+    --ivories-line: #2a3830;
     position: relative;
     box-sizing: border-box;
     color: var(--ivories-ink);

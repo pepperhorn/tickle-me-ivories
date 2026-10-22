@@ -157,7 +157,7 @@ test('all four themes repaint the stage', async ({ page }) => {
     seen.set(theme, { bg, sig })
     await page.screenshot({ path: `${SHOTS}/theme-${theme}.png` })
   }
-  expect(seen.get('classic')!.bg).toBe('#000000')
+  expect(seen.get('classic')!.bg).toBe('#0e1511')
   expect(seen.get('transparent')!.bg).toBe('transparent')
   // A transparent stage leaves the roll area see-through.
   const alpha = await page.locator(canvas).evaluate((c: HTMLCanvasElement) => c.getContext('2d')!.getImageData(2, 2, 1, 1).data[3])
