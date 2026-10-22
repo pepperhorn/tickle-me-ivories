@@ -1,5 +1,6 @@
 import { Sampler } from 'smplr'
 import type { Instrument, InstrumentFactoryFn } from './engine'
+import { isSafeSoundName } from './soundNames'
 
 export type SoundPackName = 'core' | 'complete'
 
@@ -31,12 +32,6 @@ export interface GmSoundDeps {
 /** Pinned exactly like pepperscore's SOUNDS_VERSION: a pack release never changes a deployed page. */
 export const SOUNDS_VERSION = '0.1.0'
 export const GM_PIANO = 'acoustic_grand_piano'
-const SAFE_NAME = /^[a-z0-9_]+$/
-
-/** Is this a plain lowercase GM instrument name (no path, scheme or case)? */
-export function isSafeSoundName(name: string): boolean {
-  return SAFE_NAME.test(name)
-}
 
 export function defaultSoundsBase(pack: SoundPackName = 'core'): string {
   return `https://cdn.jsdelivr.net/npm/pepperscore-sounds-${pack}@${SOUNDS_VERSION}/`

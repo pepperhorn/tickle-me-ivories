@@ -1,6 +1,7 @@
 import { Soundfont } from 'smplr'
 import type { InstrumentFactoryFn } from './engine'
-import { GM_PIANO, isSafeSoundName } from './gmSounds'
+import { GM_PIANO } from './gmSounds'
+import { isSafeSoundName } from './soundNames'
 
 /** The gleitz kit the fallback loads; smplr's own default, so the backup sound keeps its character. */
 export const FALLBACK_SOUNDFONT_KIT = 'MusyngKite'
@@ -28,7 +29,7 @@ export function soundfontFallbackFactory(rawBase: string, deps: { pageBase?: str
   const base = resolveFallbackSoundfontBase(rawBase, deps.pageBase)
   return async (ctx, id, destination, loader) => {
     const inst = Soundfont(ctx, { instrumentUrl: soundfontFileUrl(base, id), destination, loader } as never)
-    await inst.ready
+    try { await inst.ready } catch (e) { inst.dispose(); throw e }
     return inst
   }
 }

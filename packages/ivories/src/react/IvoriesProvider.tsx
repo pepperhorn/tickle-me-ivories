@@ -57,7 +57,7 @@ export interface IvoriesProviderProps extends ScoreSource, IvoriesEvents {
   /** Advanced/test seam; the provider builds one on the page-wide AudioContext otherwise. */
   engine?: AudioEngine
   /** Piano samples from the pepperscore-sounds GM pack for the provider's own engine (R-G). Unset: smplr's grand piano.
-      `fallbackSoundfontUrl` moves the non-pack instruments and the backup piano off gleitz.github.io. */
+      `fallbackSoundfontUrl` moves the non-pack instruments and the backup piano off gleitz.github.io / smpldsnds.github.io. */
   sounds?: SoundsOption
   /** Schedule audio. Default true with the provider's own clock or an AudioClock; false for a
       ManualClock or MediaClock (the host carries the sound). */

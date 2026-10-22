@@ -41,8 +41,14 @@ describe('soundfontFallback', () => {
   it('a soundfont whose ready rejects rejects the factory', async () => {
     const rejected = Promise.reject(new Error('404'))
     rejected.catch(() => {})
-    vi.mocked(Soundfont).mockImplementationOnce((() => ({ ready: rejected })) as never)
+    const dispose = vi.fn()
+    vi.mocked(Soundfont).mockImplementationOnce((() => ({ ready: rejected, dispose })) as never)
     const make = soundfontFallbackFactory(BASE)
     await expect(make({} as BaseAudioContext, 'violin', {} as AudioNode, {})).rejects.toThrow('404')
+    expect(dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('isSafeSoundName stays internal: not exported from the core entry', async () => {
+    expect('isSafeSoundName' in (await import('../index'))).toBe(false)
   })
 })

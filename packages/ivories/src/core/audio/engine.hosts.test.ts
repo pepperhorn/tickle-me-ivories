@@ -66,9 +66,12 @@ function fakeContext() {
   }
 }
 
+let lastSampler: ReturnType<typeof vi.fn>
+
 function engineWith(routes: Record<string, Route>, sounds?: SoundsOption) {
   fetchJson = makeFetch(routes)
   const makeSampler = vi.fn(() => ({ ready: Promise.resolve(), start: vi.fn(() => () => {}), stop: vi.fn(), dispose: vi.fn() }) as never)
+  lastSampler = makeSampler
   return new AudioEngine({
     makeContext: () => fakeContext() as unknown as AudioContext,
     sounds,
@@ -125,6 +128,7 @@ describe('sounds.fallbackSoundfontUrl keeps every sample request on the configur
     const engine = engineWith({ [INDEX_URL]: PIANO_ONLY, [PIANO_URL]: PIANO }, withSf)
     await engine.loadVoice(voice('v1', { instrument: 'violin' }))
     expect(engine.ready).toBe(true)
+    expect(lastSampler).toHaveBeenCalled()
     expect(soundfontUrls().filter((u) => u === sfUrl('violin')).length).toBeGreaterThan(1)
     expectOnlyConfiguredHosts()
   })
