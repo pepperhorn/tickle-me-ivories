@@ -198,6 +198,23 @@ A callback you pass (`onNoteOn`, `onNoteOff`, `onError`, a live-note subscriber)
 
 Every rule lives under `.ivories`; theme tokens are `--ivories-*` custom properties (stage, keys, grid, flash, progress, live hue) and `ivories-theme-classic|outline|contrast|transparent` presets.
 
+The default (classic) look follows pepperscore's palette: a deep green-black stage under its `#345642` green chrome, sage accents, Poppins. The stage tokens are declared on every `.ivories` root, so override them on the view (its `className`) or with a more specific selector; the canvas reads them when the layout or theme changes.
+
+| Property | Default | Used for |
+| --- | --- | --- |
+| `--ivories-stage-bg` | `#0e1511` | stage behind the roll (the `contrast` preset keeps `#000000`, `transparent` is see-through) |
+| `--ivories-panel` | `#16211a` | chrome panels (transport, notation frame, messages) |
+| `--ivories-line` | `#2a3830` | chrome borders |
+| `--ivories-ink` / `--ivories-ink-dim` | `#eef3ec` / `#a7b5aa` | chrome text |
+| `--ivories-accent` | `#8fb89a` | split divider focus |
+| `--ivories-key-white` / `--ivories-key-black` | `#f6f2e4` / `#151d18` | keys |
+| `--ivories-key-border` | `rgba(143,184,154,.55)` | the key line the bars land on (the keyboard's inner edge on a horizontal roll) |
+| `--ivories-progress-fill` | `#8fb89a` | 3px progress strip on the keyboard's outer edge |
+| `--ivories-message-bg` / `-border` / `-ink` | panel / line / ink | loading and info messages |
+| `--ivories-message-alert-bg` / `-border` / `-ink` | `#2a1a14` / `rgba(196,104,72,.6)` / `#f3c2b1` | error messages (pepperscore's terracotta) |
+
+Note bars keep one hue per voice (left hand blue 207, right hand amber 28, the same pair as pepperscore's blue cursor and amber playing notes), velocity driving lightness; set hues per voice through `settings`/`look`.
+
 ### Notation surface
 
 `notationTheme` on `<Ivories>` (notation presets) and on `<Notation>`:
@@ -233,6 +250,8 @@ The transport follows pepperscore's chrome (a green pill play button with a play
 | `--ivories-transport-switch-off` | `rgba(255,255,255,.2)` | metronome switch off |
 | `--ivories-transport-switch-on` | `#5d8164` | metronome switch on |
 | `--ivories-transport-focus` | `#8fb89a` | keyboard focus ring |
+| `--ivories-transport-control-h` | `2rem` (`2.5rem` on touch) | height of the play button, fields, range hit areas |
+| `--ivories-transport-select-h` | `1.875rem` (`2.25rem` on touch) | count-in select |
 | `--ivories-notation-paper` | `#ffffff` | paper card |
 | `--ivories-notation-border` | `#e2e9e0` | paper card border (pepperscore's panel border) |
 | `--ivories-notation-shadow` | `0 12px 32px rgba(8,16,11,.45)` | paper card shadow |

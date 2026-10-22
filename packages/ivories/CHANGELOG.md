@@ -17,6 +17,7 @@
 - `PlaybackDriver`: `setScore(score, tempo, lead?)` takes the lead-in; option `countInClicks: 'always'` clicks the count-in with the metronome off (the providers use it).
 - `<Transport>` restyled to match pepperscore's chrome: a green pill play button with a play/pause icon (accessible name still "Play"/"Pause"), styled seek and tempo tracks with a filled part, a switch (`role="switch"`) for Metronome, small caps labels and pepperscore's underlined BPM field. New contextual classes (`ivories-transport-play`, `ivories-transport-seek`, ...); the existing classes stay.
 - The notation presets frame the score on the chrome panel with a little padding.
+- Design pass against pepperscore's reader: the classic theme moves from a pure black stage and navy chrome to pepperscore's green family (stage `#0e1511`, panel `#16211a`, ink `#eef3ec`, sage `#8fb89a` accent, progress strip and key line; was red `#e8384f` and a faint white line). The `contrast` preset keeps black. Transport controls share one height (`--ivories-transport-control-h`, 2rem, 2.5rem on touch pointers), the count-in select is styled (30px, bordered, drawn chevron) instead of the OS control, and the Metronome label now precedes its switch like every other field. Loading and error messages are panel chips (`--ivories-message-*`), errors in terracotta. The paper notation card takes pepperscore's `#e2e9e0` border and a green-black shadow (`--ivories-notation-shadow`).
 
 ### Fixed
 
