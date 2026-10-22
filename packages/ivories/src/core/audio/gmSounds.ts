@@ -27,6 +27,11 @@ export const SOUNDS_VERSION = '0.1.0'
 export const GM_PIANO = 'acoustic_grand_piano'
 const SAFE_NAME = /^[a-z0-9_]+$/
 
+/** Is this a plain lowercase GM instrument name (no path, scheme or case)? */
+export function isSafeSoundName(name: string): boolean {
+  return SAFE_NAME.test(name)
+}
+
 export function defaultSoundsBase(pack: SoundPackName = 'core'): string {
   return `https://cdn.jsdelivr.net/npm/pepperscore-sounds-${pack}@${SOUNDS_VERSION}/`
 }
@@ -159,7 +164,7 @@ export function gmInstrumentFactory(o: SoundsOption, fallback: InstrumentFactory
   return async (ctx, id, destination, loader) => {
     const name = gmInstrumentName(id, o)
     const base = resolveSoundsBase(o, deps.pageBase)
-    if (!SAFE_NAME.test(name)) {
+    if (!isSafeSoundName(name)) {
       warnOnce(`[ivories] audio: GM sound name "${name}" is not a safe pack name; using the default piano`)
       return fallback(ctx, id, destination, loader)
     }
