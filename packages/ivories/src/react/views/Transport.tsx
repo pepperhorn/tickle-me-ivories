@@ -159,12 +159,13 @@ function TransportView({ controls, className }: { controls?: TransportControls; 
       )}
       {c.metronome && (
         <label className="ivories-metronome ivories-transport-field">
+          {/* Label first, like every other field in the row (and pepperscore's switch rows). */}
+          <span className="ivories-metronome-label ivories-transport-label">Metronome</span>
           <input
             type="checkbox" role="switch" aria-label="Metronome" className="ivories-metronome-input ivories-transport-switch"
             checked={iv.settings.audio.metronome}
             onChange={(e) => iv.setAudio({ metronome: e.target.checked })}
           />
-          <span className="ivories-metronome-label ivories-transport-label">Metronome</span>
         </label>
       )}
       {needsTap && (
