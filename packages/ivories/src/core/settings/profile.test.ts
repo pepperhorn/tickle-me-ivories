@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   FONT_FAMILY_RE, PROFILE_SCHEMA_VERSION, buildProfile, decodeProfile, encodeProfile,
   isCssColor, isSafeFontFamily, loadGlobals, loadProfile, mergeVoices, saveGlobals, saveProfile,
-  validDisplayMode, validFallSeconds, validText, validTextStyle, validVelocity,
+  validDisplayMode, validFallSeconds, validText, validTextStyle, validTheme, validVelocity,
 } from './profile'
 import { DEFAULT_SETTINGS, DEFAULT_TEXT_STYLE, MAX_GRADIENT_STOPS } from './types'
 import { MAX_TEMPO_SCALE, MIN_TEMPO_SCALE } from '../model/tempoMap'
@@ -563,5 +563,31 @@ describe('count-in setting (audio.countIn)', () => {
       settings: { ...DEFAULT_SETTINGS, audio: { ...DEFAULT_SETTINGS.audio, countIn: false } },
     })
     expect(decodeProfile(encodeProfile(p)).global.audio.countIn).toBe(false)
+  })
+})
+
+describe('template in the theme', () => {
+  beforeEach(() => { vi.stubGlobal('CSS', { supports: (_p: string, v: string) => /^(#[0-9a-f]{3,8}|(rgba?|hsla?)\([^()]*\)|transparent)$/i.test(v) }) })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('validTheme keeps a valid template and drops a bad one', () => {
+    expect(validTheme({ name: 'classic', stageBgOverride: null })).toEqual({ name: 'classic', stageBgOverride: null })
+    expect(validTheme({ name: 'classic', stageBgOverride: null })).not.toHaveProperty('template')
+    expect(validTheme({ name: 'classic', stageBgOverride: null, template: 'chord-cards-crf' }))
+      .toEqual({ name: 'classic', stageBgOverride: null, template: 'chord-cards-crf' })
+    const bare = { name: 'classic', stageBgOverride: null }
+    expect(validTheme({ ...bare, template: 'nope' })).toEqual(bare)
+    expect(validTheme({ ...bare, template: { v: 1, kind: 'look' } })).toEqual(bare)
+    expect(validTheme({ ...bare, template: { v: 1, kind: 'ivories-template', id: 'x'.repeat(17 * 1024) } })).toEqual(bare)
+  })
+
+  it('a profile round-trips an inline template', () => {
+    const template = { v: 1, kind: 'ivories-template', id: 'my-tpl', name: 'Mine' } as const
+    const p = buildProfile({
+      song: { id: 'sha-1', name: 'demo.mid', format: 'midi' },
+      voices: [], tempo: { mode: 'scale', scale: 1 }, mode: 'roll', fallSeconds: 3,
+      settings: { ...DEFAULT_SETTINGS, theme: { name: 'classic', stageBgOverride: null, template: template as any } },
+    })
+    expect(decodeProfile(encodeProfile(p)).theme.template).toEqual(template)
   })
 })

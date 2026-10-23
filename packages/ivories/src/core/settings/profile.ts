@@ -7,6 +7,7 @@ import { DEFAULT_TEXT_STYLE, MAX_GRADIENT_STOPS, MIN_GRADIENT_STOPS } from './ty
 import type { DisplayMode, TempoSetting, Voice } from '../model/types'
 import { MAX_TEMPO_SCALE, MIN_TEMPO_SCALE } from '../model/tempoMap'
 import { isInstrumentName } from '../audio/sounds'
+import { validTemplateRef } from '../template/decode'
 import { isCssColor, isSafeFontFamily, FONT_FAMILY_RE } from './safeValues'
 
 export { isCssColor, isSafeFontFamily, FONT_FAMILY_RE }
@@ -169,7 +170,11 @@ export function validTheme(v: unknown): ThemeSettings | null {
   // same "drop the bad field, keep the block" treatment voices get.
   const override = typeof v.stageBgOverride === 'string' && isCssColor(v.stageBgOverride)
     ? v.stageBgOverride : null
-  return { name: v.name as ThemeName, stageBgOverride: override }
+  const out: ThemeSettings = { name: v.name as ThemeName, stageBgOverride: override }
+  // An invalid template drops just this field, never the theme block.
+  const template = validTemplateRef(v.template)
+  if (template !== undefined) out.template = template
+  return out
 }
 
 /** Returns a clean copy of a valid text style, clamped to the control ranges, or null. */

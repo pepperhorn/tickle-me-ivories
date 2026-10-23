@@ -58,4 +58,14 @@ describe('useSettings', () => {
     get().setTextStyle({ family: 'Inter' })
     expect(DEFAULT_SETTINGS.text.style.family).toBe('Poppins')
   })
+
+  it('picking a theme preset drops a template that came from a look', () => {
+    get().setTheme({ template: 'chord-cards' })
+    expect(get().theme.template).toBe('chord-cards')
+    get().setTheme({ stageBgOverride: '#00b140' })
+    expect(get().theme.template).toBe('chord-cards')
+    get().setTheme({ name: 'contrast' })
+    expect(get().theme.template).toBeUndefined()
+    expect(get().theme.name).toBe('contrast')
+  })
 })

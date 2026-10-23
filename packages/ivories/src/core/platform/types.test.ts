@@ -62,10 +62,7 @@ describe('platform/types.ts stays runtime-free (preflight F4)', () => {
   it('resolves only through settings/types.ts, model/types.ts, layout/types.ts, template/types.ts and platform/errors.ts', () => {
     const { visited } = walk(join(srcRoot, 'platform', 'types.ts'))
     const relative = [...visited].map((f) => f.slice(srcRoot.length + 1))
-    // template/types.ts is type-only and import-free; it joins the graph once
-    // settings/types.ts imports it, so it is allowed rather than required.
-    const allowed = ['layout/types.ts', 'model/types.ts', 'platform/errors.ts', 'platform/types.ts', 'settings/types.ts']
-    if (relative.includes('template/types.ts')) allowed.push('template/types.ts')
+    const allowed = ['layout/types.ts', 'model/types.ts', 'platform/errors.ts', 'platform/types.ts', 'settings/types.ts', 'template/types.ts']
     expect(relative.sort()).toEqual(allowed.sort())
   })
 })

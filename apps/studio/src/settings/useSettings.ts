@@ -25,7 +25,12 @@ function freshDefaults(): Settings {
 export const useSettings = create<Settings & SettingsActions>((set) => ({
   ...freshDefaults(),
 
-  setTheme: (patch) => set((s) => ({ theme: { ...s.theme, ...patch } })),
+  setTheme: (patch) => set((s) => {
+    const theme = { ...s.theme, ...patch }
+    // Picking a preset by name drops a template unless the patch sets one.
+    if ('name' in patch && !('template' in patch)) delete theme.template
+    return { theme }
+  }),
   setDisplay: (patch) => set((s) => ({ display: { ...s.display, ...patch } })),
   setVelocity: (velocity) => set({ velocity }),
   setText: (patch) => set((s) => ({ text: { ...s.text, ...patch } })),
