@@ -40,6 +40,7 @@
       "source": "./src/style.css",
       "default": "./dist/style.css"
     },
+    "./template.schema.json": "./dist/template.schema.json",
     "./package.json": "./package.json"
   },
   "files": [

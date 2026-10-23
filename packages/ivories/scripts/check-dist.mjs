@@ -6,7 +6,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 
 const dist = new URL('../dist/', import.meta.url)
 const problems = []
-for (const f of ['index.js', 'core.js', 'style.css', 'types/index.d.ts', 'types/core/index.d.ts']) {
+for (const f of ['index.js', 'core.js', 'style.css', 'template.schema.json', 'types/index.d.ts', 'types/core/index.d.ts']) {
   if (!existsSync(new URL(f, dist))) problems.push(`missing dist/${f}`)
 }
 const ALLOWED = [/^react$/, /^react\/jsx-runtime$/, /^react-dom(\/.*)?$/, /^@tonejs\/midi$/, /^tonal$/, /^fflate$/, /^@noble\/hashes\//, /^pepperscore(\/audio)?$/]

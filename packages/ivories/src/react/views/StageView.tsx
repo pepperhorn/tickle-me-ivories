@@ -6,8 +6,9 @@ import { applyLabels } from './labels'
 import { StageText, samePitches } from '../text/StageText'
 import { ChordReadout } from '../text/ChordReadout'
 import { StageRenderer, rangeFromProp } from '../../core/render/stageRenderer'
-import { resolveTemplate } from '../../core/template/resolve'
-import type { TemplateRef } from '../../core/template/types'
+import { resolveTemplate, resolveBarLabels } from '../../core/template/resolve'
+import type { BarLabelStyleInput, TemplateRef } from '../../core/template/types'
+import { useCanvasFont } from '../text/useCanvasFont'
 import { readTheme } from '../../core/render/theme'
 import { viewOrientation } from '../../core/render/orientation'
 import { ChordFeed } from '../../core/music/chordFeed'
@@ -23,8 +24,8 @@ import type { ThemeName } from '../../core/settings/types'
 import { IvoriesError } from '../../core/errors'
 import type { Orientation } from '../../core/layout/types'
 import { DEFAULT_BEATS_PER_BAR, DEFAULT_VISIBLE_BEATS } from '../../core/render/beats'
-import { NoteBarLabelCache, noteBarLabelsOf } from '../../core/render/barLabels'
-import type { NoteBarLabels } from '../../core/render/barLabels'
+import { NoteBarLabelCache } from '../../core/render/barLabels'
+import type { BarLabelPaint, NoteBarLabels } from '../../core/render/barLabels'
 import { countInLabelAt } from '../../core/model/countIn'
 import type { NoteEvent } from '../../core/model/types'
 
@@ -43,6 +44,8 @@ export interface StageViewProps {
   /** Names on the falling/rising note bars: 'pitch' (default: "C", "F♯", "B♭" as spelled
       in the score, else by key signature), 'pitch-octave' ("F♯4"), or 'none'. */
   noteBarLabels?: NoteBarLabels
+  /** Label format, accidentals and font (family, weight, scale, colours, case); beats the template's labels. */
+  noteBarLabelStyle?: BarLabelStyleInput
 }
 
 /**
@@ -134,17 +137,33 @@ export function StageView(p: StageViewProps & StageViewKindProps) {
   const [chord, setChord] = useState<ChordDisplayValue | null>(null)
   const [failed, setFailed] = useState(false)
   const [labelCache] = useState(() => new NoteBarLabelCache())
-  const labelCtx = useRef({ key: keys.get(iv.score, text.keyOverride), mode: noteBarLabelsOf(p.noteBarLabels) })
-  labelCtx.current = { key: keys.get(iv.score, text.keyOverride), mode: noteBarLabelsOf(p.noteBarLabels) }
-  const barLabel = useCallback((n: NoteEvent) => labelCache.get(n, labelCtx.current.key, labelCtx.current.mode), [labelCache])
-  const barLabelRef = useRef(barLabel); barLabelRef.current = barLabel
 
   // Everything the frame callback reads, without re-subscribing per change.
   // An explicit per-view theme without a template shows that preset, even over a look's template.
   const ref = p.template ?? (p.theme ? undefined : iv.settings.theme.template)
   const tpl = useMemo(() => resolveTemplate(ref), [ref])
-  const live = useRef({ iv, p, text, tpl })
-  live.current = { iv, p, text, tpl }
+  // The label cache resets on the identity of `labels`, and the renderer re-reads `paint` by
+  // identity: both are memoised on primitives (the style input is keyed by its JSON, so an
+  // inline literal prop does not rebuild them every render).
+  const styleKey = p.noteBarLabelStyle === undefined ? undefined : JSON.stringify(p.noteBarLabelStyle)
+  const styleInput = useRef(p.noteBarLabelStyle); styleInput.current = p.noteBarLabelStyle
+  const labels = useMemo(
+    () => resolveBarLabels(tpl.labels, p.noteBarLabels, styleInput.current),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tpl.labels, p.noteBarLabels, styleKey],
+  )
+  const fontFamily = useCanvasFont(labels.font.family, labels.font.weight)
+  const { weight, scale, color, strokeColor, strokeWidth } = labels.font
+  const paint = useMemo<BarLabelPaint>(
+    () => ({ family: fontFamily, weight, scale, color, strokeColor, strokeWidth }),
+    [fontFamily, weight, scale, color, strokeColor, strokeWidth],
+  )
+  const labelCtx = useRef({ key: keys.get(iv.score, text.keyOverride), mode: labels })
+  labelCtx.current = { key: keys.get(iv.score, text.keyOverride), mode: labels }
+  const barLabel = useCallback((n: NoteEvent) => labelCache.get(n, labelCtx.current.key, labelCtx.current.mode), [labelCache])
+  const barLabelRef = useRef(barLabel); barLabelRef.current = barLabel
+  const live = useRef({ iv, p, text, tpl, paint })
+  live.current = { iv, p, text, tpl, paint }
   const overlayRef = useRef(overlay)
   const lastReadingRef = useRef<ChordReading | null | undefined>(undefined)
   const lastKeyRef = useRef<KeyContext | null>(null)
@@ -181,7 +200,7 @@ export function StageView(p: StageViewProps & StageViewKindProps) {
     ro?.observe(canvas)
 
     const step = (t: number) => {
-      const { iv: c, p: props, text: tx, tpl: template } = live.current
+      const { iv: c, p: props, text: tx, tpl: template, paint: barLabelPaint } = live.current
       // A per-view theme goes into the renderer's settings so its theme cache
       // (keyed on the theme name) re-reads the tokens for this view's class.
       const settings = props.theme && props.theme !== c.settings.theme.name
@@ -207,7 +226,8 @@ export function StageView(p: StageViewProps & StageViewKindProps) {
               grid: props.beatGrid ?? true,
             }
           : null,
-        barLabel: labelCtx.current.mode === 'none' ? undefined : barLabelRef.current,
+        barLabel: labelCtx.current.mode.show ? barLabelRef.current : undefined,
+        barLabelPaint,
         template,
       })
       // The last drawn time, for hosts and e2e sync checks (never read back here).

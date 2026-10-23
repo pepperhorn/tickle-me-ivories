@@ -22,6 +22,12 @@ describe('Ivories presets (spec §4)', () => {
     expect(container.querySelector('.ivories-transport .ivories-seek')).not.toBeNull()
   })
 
+  it('template and noteBarLabelStyle pass through the preset', async () => {
+    const { container } = render(<Ivories template="chord-cards-crf" noteBarLabelStyle={{ format: 'solfege' }} midi={bytes()} engine={fakeEngine()} />)
+    await waitFor(() => expect(container.querySelector('.ivories-falling')).not.toBeNull())
+    expect(container.querySelector('.ivories-falling')!.getAttribute('data-ivories-template')).toBe('chord-cards-crf')
+  })
+
   it('chrome="minimal" keeps only play; chrome="none" has no transport', async () => {
     const a = render(<Ivories chrome="minimal" midi={bytes()} engine={fakeEngine()} />)
     await waitFor(() => expect(a.container.querySelector('.ivories-btn-play')).not.toBeNull())

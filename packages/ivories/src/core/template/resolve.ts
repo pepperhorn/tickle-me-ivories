@@ -33,7 +33,7 @@ export const DEFAULT_BAR_LABEL_STYLE: BarLabelStyle = Object.freeze({
   accidentals: 'glyph',
   font: Object.freeze({
     family: 'Poppins', weight: 600, scale: 1, color: '#ffffff',
-    strokeColor: 'rgba(0,0,0,0.35)', strokeWidth: 3, case: 'upper',
+    strokeColor: 'rgba(0, 0, 0, 0.35)', strokeWidth: 3, case: 'upper',
   }),
 }) as BarLabelStyle
 

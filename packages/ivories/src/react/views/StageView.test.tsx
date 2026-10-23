@@ -9,6 +9,8 @@ import { parseMidi } from '../../core/io/parseMidi'
 import { fakeEngine } from '../testEngine.test-helpers'
 import { stubCtx } from '../../core/render/pianoRoll.test-helpers'
 import { DEFAULT_SETTINGS } from '../../core/settings/types'
+import { StageRenderer } from '../../core/render/stageRenderer'
+import { DEFAULT_BAR_LABEL_PAINT } from '../../core/render/barLabels'
 import { lookFromSettings } from '../../core/platform/look'
 import type { KeyboardLayout } from '../../core/render/geometry'
 
@@ -222,5 +224,39 @@ describe('StageView template (Review Focus 3, 5)', () => {
     rerender(<IvoriesProvider score={doc()} engine={fakeEngine()} look={lookProp}><Keyboard theme="contrast" /></IvoriesProvider>)
     await waitFor(() => expect(rootOf(container).classList.contains('ivories-theme-contrast')).toBe(true))
     expect(tok(container, '--ivories-key-white')).toBe('')
+  })
+})
+
+describe('StageView note bar labels', () => {
+  const drawn = async (ui: React.ReactElement) => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
+      (() => stubCtx().ctx) as unknown as typeof HTMLCanvasElement.prototype.getContext,
+    )
+    const spy = vi.spyOn(StageRenderer.prototype, 'draw')
+    render(ui)
+    await waitFor(() => expect(spy).toHaveBeenCalled())
+    return spy.mock.calls[spy.mock.calls.length - 1][4] as { barLabel?: unknown; barLabelPaint?: Record<string, unknown> }
+  }
+
+  it('noteBarLabels="none" draws no labels', async () => {
+    const input = await drawn(<FallingKeys score={doc()} engine={fakeEngine()} noteBarLabels="none" />)
+    expect(input.barLabel).toBeUndefined()
+  })
+
+  it('noteBarLabelStyle reaches the renderer as paint', async () => {
+    const input = await drawn(<FallingKeys score={doc()} engine={fakeEngine()} noteBarLabelStyle={{ font: { color: '#000000', scale: 1.2 } }} />)
+    expect(input.barLabel).toBeTypeOf('function')
+    expect(input.barLabelPaint!.color).toBe('#000000')
+    expect(input.barLabelPaint!.scale).toBe(1.2)
+  })
+
+  it('no label props: the default paint', async () => {
+    const input = await drawn(<FallingKeys score={doc()} engine={fakeEngine()} />)
+    expect(input.barLabelPaint).toEqual(DEFAULT_BAR_LABEL_PAINT)
+  })
+
+  it('an unsafe label family never reaches the canvas font', async () => {
+    const input = await drawn(<FallingKeys score={doc()} engine={fakeEngine()} noteBarLabelStyle={{ font: { family: 'x"; evil' } }} />)
+    expect(input.barLabelPaint!.family).toBe('Poppins, sans-serif')
   })
 })

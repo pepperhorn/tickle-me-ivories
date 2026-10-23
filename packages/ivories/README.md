@@ -52,6 +52,65 @@ Play from the top (0:00, or after the score has ended) starts with a count-in be
 
 Falling and rising note bars carry their note name by default: the pitch class without octave or MIDI number, spelled as written in a MusicXML score ("F♯", "B♭"), else by the key signature (flats in a flat key), else with sharps. `noteBarLabels` on `<FallingKeys>`, `<RisingKeys>`, `<Ivories>` and in `Stage` `viewProps`: `'pitch'` (default), `'pitch-octave'` ("F♯4") or `'none'`. The text is white Poppins 600 over a dark translucent outline, centred, sized to the bar's width (up to 20px), and left off a bar too narrow or too short to read (black keys on a full 88-key roll in a small box, very short notes). Load Poppins on the page as for the rest of the UI.
 
+`noteBarLabelStyle` (same views, and `Stage` `viewProps`) restyles the names: `format` (`'pitch'`, `'pitch-octave'`, `'solfege'` ("Do", "Re"), `'solfege-octave'`), `accidentals` (`'glyph'` or `'ascii'`), `show`, and `font` (`family`, `weight`, `scale`, `color`, `strokeColor`, `strokeWidth`, `case`). It beats the template's `labels`, and `noteBarLabels="none"` hides them. A font other than Poppins is loaded from Google Fonts on demand; the labels draw in `sans-serif` until it is ready, then switch once. An unsafe family or colour is dropped.
+
+```tsx
+<Ivories noteBarLabelStyle={{ format: 'solfege', font: { color: '#231f20', strokeWidth: 0 } }} />
+```
+
+## Templates
+
+A style template restyles the stage, keys, note bars, note colours and labels in one value. The default (`classic`) is today's look, drawn identically with no template tokens written.
+
+| Id | Look |
+| --- | --- |
+| `classic` | the default dark stage |
+| `classic-crf` | classic, notes coloured by pitch class (CRF palette) |
+| `chord-cards` | cream stage, outlined raised keys on an ink plate, flat outlined bars with a hard shadow |
+| `chord-cards-crf` | chord cards with pitch-class colours |
+| `outline` | the outline preset |
+| `contrast` | the high-contrast preset |
+| `transparent` | see-through stage |
+
+```tsx
+<Ivories template="chord-cards-crf" />
+```
+
+`template` is accepted by `<Ivories>`, `<IvoriesProvider>` and every view (`<Keyboard>`, `<FallingKeys>`, `<RisingKeys>`). Its tokens are written inline on each view's root, so a non-classic template needs no stylesheet from you.
+
+A custom template extends a built-in and overrides only what it names:
+
+```tsx
+import type { IvoriesTemplateV1 } from 'ivories/core'
+
+const mine: IvoriesTemplateV1 = {
+  v: 1,
+  kind: 'ivories-template',
+  id: 'sunny-cards',
+  name: 'Sunny cards',
+  extends: 'chord-cards',
+  stage: { bg: '#fff8e1' },
+  bars: { radius: 8, shading: 'velocity' },
+  colour: { mode: 'pitch' },
+  labels: { format: 'solfege' },
+}
+<Ivories template={mine} />
+```
+
+**Colour mode.** `colour.mode` is `'hand'` (the left/right-hand hues, the default) or `'pitch'` (twelve pitch-class colours from `colour.palette`, the CRF palette by default). `flash.tint` is `'white'` or `'note'` for the key flash.
+
+**`theme` vs `template`.** `theme` picks one of the CSS presets; `template` is the richer value and a built-in template can be based on a preset. With both props, `template` wins. A `theme` prop on its own shows that preset even when a saved look carries a template.
+
+**Overrides.** Template tokens are inline styles, so a plain stylesheet rule loses to them. To override one from your own CSS use `!important` (for example `.my-view { --ivories-stage-bg: #000 !important }`), or set `settings.theme.stageBgOverride`, which beats the template's `stage.bg`.
+
+**Validation.** A template from a prop, look, profile or share is decoded before use: `v` must be `1`, `kind` `'ivories-template'`, `id` match `^[a-z0-9-]{1,48}$`, and the serialized size is at most 16 KiB. Unknown keys are ignored, a colour the browser rejects or an unsafe font family is dropped, numbers are clamped to their ranges, and `colour.palette` needs exactly 12 hex colours. A template that fails (or a look whose template does) falls back to classic and the rest still loads. `decodeTemplate`, `validTemplateRef`, `resolveTemplate`, `BUILTIN_TEMPLATES` and `BUILTIN_TEMPLATE_IDS` are exported from `ivories/core`.
+
+**JSON Schema.** `ivories/template.schema.json` (draft 2020-12) describes the format for editors and validators:
+
+```json
+{ "$schema": "./node_modules/ivories/dist/template.schema.json", "v": 1, "kind": "ivories-template", "id": "mine", "name": "Mine" }
+```
+
 ## Composing views
 
 ```tsx
@@ -236,6 +295,8 @@ The default (classic) look follows pepperscore's palette: a deep green-black sta
 | `--ivories-message-alert-bg` / `-border` / `-ink` | `#2a1a14` / `rgba(196,104,72,.6)` / `#f3c2b1` | error messages (pepperscore's terracotta) |
 
 Note bars keep one hue per voice (left hand blue 207, right hand amber 28, the same pair as pepperscore's blue cursor and amber playing notes), velocity driving lightness; set hues per voice through `settings`/`look`.
+
+A non-classic `template` writes its tokens inline on each view root (see [Templates](#templates)), so they beat these class-level defaults; override one with `!important`.
 
 ### Notation surface
 

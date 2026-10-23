@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unpkg.com/ivories/dist/template.schema.json",
+  "title": "Ivories style template v1",
+  "description": "A style template for ivories. Unknown keys are ignored when loaded; invalid colours and fonts are dropped and numbers are clamped to the ranges below. Serialized size is at most 16 KiB.",
+  "type": "object",
+  "required": ["v", "kind", "id", "name"],
+  "additionalProperties": false,
+  "$defs": {
+    "colour": {
+      "type": "string",
+      "description": "A CSS colour: hex, rgb()/rgba(), hsl()/hsla(), a named colour or transparent. Anything the browser rejects is dropped."
+    }
+  },
+  "properties": {
+    "v": { "const": 1 },
+    "kind": { "const": "ivories-template" },
+    "id": { "type": "string", "pattern": "^[a-z0-9-]{1,48}$" },
+    "name": { "type": "string", "maxLength": 64 },
+    "extends": {
+      "enum": ["classic", "classic-crf", "chord-cards", "chord-cards-crf", "outline", "contrast", "transparent"],
+      "description": "A built-in template to start from."
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bg": { "$ref": "#/$defs/colour" },
+        "gridLine": { "$ref": "#/$defs/colour" },
+        "gridLineC4": { "$ref": "#/$defs/colour" },
+        "beatLine": { "$ref": "#/$defs/colour" },
+        "barLine": { "$ref": "#/$defs/colour" },
+        "middleCMark": { "$ref": "#/$defs/colour" },
+        "progressTrack": { "$ref": "#/$defs/colour" },
+        "progressFill": { "$ref": "#/$defs/colour" }
+      }
+    },
+    "keys": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "white": { "$ref": "#/$defs/colour" },
+        "black": { "$ref": "#/$defs/colour" },
+        "border": { "$ref": "#/$defs/colour" },
+        "borderWidth": { "type": "number", "minimum": 0, "maximum": 4 },
+        "gap": { "type": "number", "minimum": 0, "maximum": 4 },
+        "whiteRadius": { "type": "number", "minimum": 0, "maximum": 8, "description": "Chordl units: px = units * whiteKeyWidth / 25.3." },
+        "blackRadius": { "type": "number", "minimum": 0, "maximum": 8, "description": "Chordl units." },
+        "outline": { "$ref": "#/$defs/colour" },
+        "raised": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "shadowColor": { "$ref": "#/$defs/colour" },
+            "shadowDepth": { "type": "number", "minimum": 0, "maximum": 6, "description": "Chordl units." },
+            "lipColor": { "$ref": "#/$defs/colour" },
+            "lipDepth": { "type": "number", "minimum": 0, "maximum": 12, "description": "Chordl units." }
+          }
+        },
+        "plate": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "fill": { "$ref": "#/$defs/colour" },
+            "borderColor": { "$ref": "#/$defs/colour" },
+            "borderWidth": { "type": "number", "minimum": 0, "maximum": 6 },
+            "shadowColor": { "$ref": "#/$defs/colour" },
+            "shadowDepth": { "type": "number", "minimum": 0, "maximum": 12, "description": "Chordl units." },
+            "padding": { "type": "number", "minimum": 0, "maximum": 16 }
+          }
+        }
+      }
+    },
+    "bars": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "radius": { "type": "number", "minimum": 0, "maximum": 12 },
+        "outlineColor": { "$ref": "#/$defs/colour" },
+        "outlineWidth": { "type": "number", "minimum": 0, "maximum": 4 },
+        "shadowColor": { "$ref": "#/$defs/colour" },
+        "shadowDepth": { "type": "number", "minimum": 0, "maximum": 8 },
+        "shading": { "enum": ["velocity", "flat"] }
+      }
+    },
+    "colour": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "enum": ["hand", "pitch"] },
+        "palette": {
+          "type": "array",
+          "description": "Twelve hex colours, one per pitch class (C = 0), used when mode is pitch.",
+          "minItems": 12,
+          "maxItems": 12,
+          "items": { "type": "string", "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" }
+        }
+      }
+    },
+    "flash": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "tint": { "enum": ["white", "note"] } }
+    },
+    "labels": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "show": { "type": "boolean" },
+        "format": { "enum": ["pitch", "pitch-octave", "solfege", "solfege-octave"] },
+        "accidentals": { "enum": ["glyph", "ascii"] },
+        "font": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "family": { "type": "string", "description": "A font family name; unsafe names are dropped." },
+            "weight": { "type": "number", "minimum": 100, "maximum": 900 },
+            "scale": { "type": "number", "minimum": 0.5, "maximum": 1.5 },
+            "color": { "$ref": "#/$defs/colour" },
+            "strokeColor": { "$ref": "#/$defs/colour" },
+            "strokeWidth": { "type": "number", "minimum": 0, "maximum": 8 },
+            "case": { "enum": ["upper", "lower"] }
+          }
+        }
+      }
+    },
+    "chrome": {
+      "type": "object",
+      "description": "Extra --ivories-* colour tokens for the surrounding chrome, at most 32.",
+      "maxProperties": 32,
+      "additionalProperties": { "$ref": "#/$defs/colour" }
+    }
+  }
+}
