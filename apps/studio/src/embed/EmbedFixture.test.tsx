@@ -33,4 +33,11 @@ describe('embed fixture (spec §9)', () => {
     expect(container.querySelectorAll('section.fixture-preset')).toHaveLength(0)
     expect([...container.querySelectorAll<HTMLElement>('section.fixture-case')].map((s) => s.dataset.case)).toEqual(['audio-a', 'audio-b'])
   })
+
+  it('?templates renders the six template cases', () => {
+    const { container } = render(<EmbedFixture search="?templates" />)
+    expect([...container.querySelectorAll<HTMLElement>('section[data-case^="tpl-"]')].map((s) => s.dataset.case)).toEqual([
+      'tpl-default', 'tpl-classic', 'tpl-cc-falling', 'tpl-cc-rising', 'tpl-cc-rising-h', 'tpl-cc-keyboard',
+    ])
+  })
 })
