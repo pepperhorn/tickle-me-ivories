@@ -16,6 +16,7 @@ export function stubCtx() {
   const fillStyles: string[] = []
   const gradientStops: string[] = []
   const texts: string[] = []
+  const sets: Array<[string, unknown]> = []
 
   const rec = (name: string) => (...args: unknown[]) => {
     calls.push(`${name}(${args.length})`)
@@ -31,6 +32,7 @@ export function stubCtx() {
     fillStyles,
     gradientStops,
     texts,
+    sets,
     ctx: new Proxy({} as CanvasRenderingContext2D, {
       get(_t, prop: string) {
         if (prop === 'createLinearGradient' || prop === 'createRadialGradient') {
@@ -46,6 +48,7 @@ export function stubCtx() {
         // actually filled with (F45). Only string assignments are recorded;
         // a CanvasGradient object is asserted on via `gradientStops` instead.
         if (prop === 'fillStyle' && typeof value === 'string') fillStyles.push(value)
+        if (prop === 'font' || prop === 'strokeStyle' || prop === 'fillStyle' || prop === 'lineWidth') sets.push([prop, value])
         return true
       },
     }),

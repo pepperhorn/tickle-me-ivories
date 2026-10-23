@@ -4,6 +4,7 @@ import { FLASH_MS, flashIntensity, noteColor } from './colors'
 import { barGradient, flashRgb, noteFill } from './noteStyle'
 import { drawNoteBar } from './bars'
 import { barLabelPx, drawBarLabel } from './barLabels'
+import type { BarLabelPaint } from './barLabels'
 import { isTransparent } from './theme'
 import { lowerBoundByStart } from '../model/search'
 import type { Theme } from './theme'
@@ -40,6 +41,8 @@ export interface RenderState {
   orientation?: Orientation
   /** The note-name label for a bar (null: none). Absent: no labels. */
   barLabel?: (n: NoteEvent) => string | null
+  /** Font, colours and size of bar labels; absent: the house default. */
+  barLabelPaint?: BarLabelPaint
 }
 
 /**
@@ -53,8 +56,8 @@ export function labelBar(
   if (!text) return
   const a = Math.max(top, lo)
   const b = Math.min(bottom, hi)
-  const px = barLabelPx(text, w, b - a, state.orientation)
-  if (px > 0) drawBarLabel(ctx, text, x + w / 2, (a + b) / 2, px, state.orientation)
+  const px = barLabelPx(text, w, b - a, state.orientation, state.barLabelPaint?.scale)
+  if (px > 0) drawBarLabel(ctx, text, x + w / 2, (a + b) / 2, px, state.orientation, state.barLabelPaint)
 }
 
 const FLASH_TAIL = FLASH_MS / 1000

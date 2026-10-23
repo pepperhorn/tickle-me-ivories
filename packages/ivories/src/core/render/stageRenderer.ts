@@ -4,6 +4,7 @@ import type { ResolvedTemplate } from '../template/resolve'
 import { drawStage } from './pianoRoll'
 import type { KeyboardLayout } from './geometry'
 import type { RenderState } from './pianoRoll'
+import type { BarLabelPaint } from './barLabels'
 import type { Theme } from './theme'
 import type { NoteEvent, ScoreDocument, TempoSetting, Voice } from '../model/types'
 import type { Settings, ThemeName, ZoomMode } from '../settings/types'
@@ -45,6 +46,7 @@ export interface StageInput {
   rising?: RisingInput | null
   /** The note-name label for a roll bar (null: none). Absent: no labels. */
   barLabel?: (n: NoteEvent) => string | null
+  barLabelPaint?: BarLabelPaint
   /** The resolved style template; absent or the classic look draws exactly as before. */
   template?: ResolvedTemplate
 }
@@ -98,6 +100,7 @@ export class StageRenderer {
       live: input.live,
       orientation: input.orientation,
       barLabel: input.barLabel,
+      barLabelPaint: input.barLabelPaint,
       ...(input.template && !isClassicLook(input.template) ? { template: input.template } : {}),
     }
     const dur = input.score?.durationSec ?? 0
