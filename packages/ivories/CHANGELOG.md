@@ -4,7 +4,7 @@
 
 ### Added
 
-- Style templates: one plain-data option that changes the whole look (stage, keys, key lift and lip, held keys, label plate, bars, hit flash, bar labels, pitch colours). Seven built-ins (`classic`, `classic-crf`, `chord-cards`, `chord-cards-crf`, `outline`, `contrast`, `transparent`) and a `template` prop on `<Ivories>` taking a built-in id or an inline template object.
+- Style templates: one plain-data option that changes the whole look (stage, keys, key lift and lip, held keys, key plate, bars, hit flash, bar labels, pitch colours). Seven built-ins (`classic`, `classic-crf`, `chord-cards`, `chord-cards-crf`, `outline`, `contrast`, `transparent`) and a `template` prop on `<Ivories>` taking a built-in id or an inline template object.
 - CRF pitch palette (`CRF_PITCH_PALETTE`) and a pitch colour mode that colours bars and flashes by pitch class.
 - Flat bar shading, and a note-tinted hit flash.
 - Chord cards keys: lifted raised keys with a lip, held black keys sink and their lip darkens, a key plate with ink borders and a hard shadow.
@@ -13,8 +13,11 @@
 - `ivories/template.schema.json`, the JSON Schema for templates.
 - `stage.countInInk` (`--ivories-count-in-ink`): the count-in number's colour; chord-cards sets it to ink so it reads on the paper stage.
 - Under any non-classic template on a light opaque stage, the hit flash draws normally (source-over) instead of additively, so it fades over the paper.
-- An explicit `theme` prop clears a template that came from a look.
 - `ThemeSettings.template`, saved in looks and profiles. Older saves without it load unchanged; a corrupt, unknown or oversize template is dropped and the rest of the look loads.
+
+### Changed
+
+- An explicit `theme` prop clears a template that came from a look.
 
 ## 0.2.0 - 2026-10-22
 
