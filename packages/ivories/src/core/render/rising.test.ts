@@ -161,3 +161,17 @@ describe('pitch colour mode', () => {
     expect(live.stops).toEqual([])
   })
 })
+
+describe('bar outline and shadow', () => {
+  it('bars under chord-cards-crf draw shadow + fill + outline per bar', () => {
+    const { ctx, rects } = recorder()
+    drawRisingStage(ctx, rising({ template: resolveTemplate('chord-cards-crf'), notes: [n(0, 64, 0, 0.5)] }), 1, 0)
+    const x = state([]).layout.byPitch.get(64)!.x + 1
+    const shadows = rects.filter((r) => r.x === x + 2)
+    expect(shadows).toHaveLength(1)
+    expect(shadows[0].fill).toBe('#231f20')
+    const bar = rects[rects.indexOf(shadows[0]) + 1]
+    expect(bar.x).toBe(x)
+    expect(bar.y).toBe(shadows[0].y - 2)
+  })
+})

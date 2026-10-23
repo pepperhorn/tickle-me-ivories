@@ -2,7 +2,7 @@ import { drawKeyboard } from './keyboard'
 import type { ResolvedTemplate } from '../template/resolve'
 import { FLASH_MS, flashIntensity, noteColor } from './colors'
 import { barGradient, flashRgb, noteFill } from './noteStyle'
-import { roundRect } from './shapes'
+import { drawNoteBar } from './bars'
 import { barLabelPx, drawBarLabel } from './barLabels'
 import { isTransparent } from './theme'
 import { lowerBoundByStart } from '../model/search'
@@ -91,7 +91,7 @@ export function heldNotes(visible: NoteEvent[], t: number): Map<number, NoteEven
 export function drawRoll(
   ctx: CanvasRenderingContext2D, state: RenderState, t: number, vis: NoteEvent[],
 ): void {
-  const { layout, voices, fallSeconds, theme } = state
+  const { layout, voices, fallSeconds } = state
   const pps = layout.hitY / fallSeconds
   const stageH = layout.hitY + layout.keyboardH
   const gradient = barGradient(state)
@@ -112,17 +112,18 @@ export function drawRoll(
       if (bottom <= 0) continue
       const h = Math.max(1, bottom - top)
 
+      let fill: string | CanvasGradient
       if (gradient) {
         const g = ctx.createLinearGradient(0, top, 0, top + h)
         g.addColorStop(0, noteColor(v.hue, Math.max(1, n.velocity - 14), state.velocity))
         g.addColorStop(1, noteColor(v.hue, n.velocity, state.velocity))
-        ctx.fillStyle = g
+        fill = g
       } else {
-        ctx.fillStyle = noteFill(state, v.hue, n.pitch, n.velocity)
+        fill = noteFill(state, v.hue, n.pitch, n.velocity)
       }
       const x = k.x + (k.black ? 0.5 : 1)
       const w = k.w - (k.black ? 1 : 2)
-      roundRect(ctx, x, top, w, h, theme.barRadius)
+      drawNoteBar(ctx, state, x, top, w, h, fill)
       labelBar(ctx, state, n, x, w, top, top + h, 0, layout.hitY)
     }
   }

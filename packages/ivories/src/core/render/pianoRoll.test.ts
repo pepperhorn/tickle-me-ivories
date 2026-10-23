@@ -264,3 +264,12 @@ describe('note-tinted flash cost and hand mode', () => {
     expect(flashRgb(s, 207, 60, 50)).toBe(flashRgb(s, 28, 72, 120))
   })
 })
+
+describe('bar outline and shadow', () => {
+  it('bars under chord-cards-crf draw shadow + fill + outline per bar', () => {
+    const { ctx, calls } = stubCtx()
+    drawRoll(ctx, { ...state([n(0, 60, 0, 1)]), template: resolveTemplate('chord-cards-crf') }, 0.5, [n(0, 60, 0, 1)])
+    expect(calls.filter((c) => c.startsWith('roundRect'))).toHaveLength(3)
+    expect(calls.filter((c) => c === 'stroke(0)')).toHaveLength(1)
+  })
+})
