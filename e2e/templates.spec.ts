@@ -124,18 +124,26 @@ test('chord-cards-crf, keyboard only: plate and raised keys draw', async ({ page
   await page.goto(FIXTURE)
   const { section, canvas } = await ready(page, 'tpl-cc-keyboard')
   await seek(page, 'tpl-cc-keyboard', 2)
-  // Scan up from the bottom edge for the plate's hard ink shadow.
-  const found = await canvas.evaluate((c: HTMLCanvasElement) => {
+  // The plate's hard ink shadow is a band flush with the canvas bottom: measure the run of ink pixels
+  // upward from the last row, in three columns. Black keys never reach the bottom, so only the plate can make this run.
+  const runs = await canvas.evaluate((c: HTMLCanvasElement) => {
     const px = c.width / Math.max(1, c.clientWidth)
     const ctx = c.getContext('2d')!
-    const x = Math.round(c.width * 0.5)
-    for (let y = c.height - 1; y > c.height * 0.5; y--) {
-      const d = ctx.getImageData(x, y, 1, 1).data
-      if (Math.abs(d[0] - 35) <= 8 && Math.abs(d[1] - 31) <= 8 && Math.abs(d[2] - 32) <= 8) return { y: y / px, h: c.height / px }
-    }
-    return null
+    const ink = (d: Uint8ClampedArray) => Math.abs(d[0] - 35) <= 8 && Math.abs(d[1] - 31) <= 8 && Math.abs(d[2] - 32) <= 8
+    return [0.25, 0.5, 0.75].map((f) => {
+      const x = Math.round(c.width * f)
+      let n = 0
+      for (let y = c.height - 1; y > c.height * 0.5; y--) {
+        if (!ink(ctx.getImageData(x, y, 1, 1).data)) break
+        n++
+      }
+      return n / px
+    })
   })
-  expect(found).not.toBeNull()
+  for (const cssPx of runs) {
+    expect(cssPx).toBeGreaterThanOrEqual(2)
+    expect(cssPx).toBeLessThanOrEqual(10)
+  }
   await section.screenshot({ path: `${SHOTS}/tpl-cc-keyboard.png` })
   await section.screenshot({ path: `${SUPER_SHOTS}/tpl-cc-keyboard.png` })
 })
