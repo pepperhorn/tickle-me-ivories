@@ -131,10 +131,12 @@ export function drawRoll(
 /** Default live list for drawImpact, shared so the falling roll allocates nothing per frame. */
 const NO_TRAIL: readonly TrailNote[] = []
 
+const FLASH_MIN = 0.003
+
 /** One key's hit flash at intensity i (0 = nothing). */
 function flashKey(ctx: CanvasRenderingContext2D, state: RenderState, pitch: number, i: number,
   rgb: { core: string; warm: string }): void {
-  if (i <= 0.003) return
+  if (i <= FLASH_MIN) return
   const { layout } = state
   const k = layout.byPitch.get(pitch)
   if (!k) return
@@ -181,12 +183,14 @@ export function drawImpact(
   for (const n of vis) {
     const v = voices.get(n.voiceId)
     if (!v || !v.visible || v.percussion) continue   // percussion never lights keys (§6.1)
-    flashKey(ctx, state, n.pitch, flashIntensity(t - n.startSec, n.velocity) * state.flashScale,
-      flashRgb(state, v.hue, n.pitch, n.velocity))
+    const i = flashIntensity(t - n.startSec, n.velocity) * state.flashScale
+    if (i <= FLASH_MIN) continue   // flash colour work only for notes actually flashing
+    flashKey(ctx, state, n.pitch, i, flashRgb(state, v.hue, n.pitch, n.velocity))
   }
   for (const n of live) {
-    flashKey(ctx, state, n.midi, flashIntensity(t - n.startSec, n.velocity) * state.flashScale,
-      flashRgb(state, state.theme.liveHue, n.midi, n.velocity))
+    const i = flashIntensity(t - n.startSec, n.velocity) * state.flashScale
+    if (i <= FLASH_MIN) continue
+    flashKey(ctx, state, n.midi, i, flashRgb(state, state.theme.liveHue, n.midi, n.velocity))
   }
   ctx.restore()
 }

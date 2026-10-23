@@ -17,6 +17,17 @@ export function barGradient(state: RenderState): boolean {
 }
 
 type FlashRgb = { core: string; warm: string }
+const pitchFlashCache = new WeakMap<object, FlashRgb[]>()
+
+/** Per-pitch-class flash colours, built once per resolved template. */
+function pitchFlash(t: NonNullable<RenderState['template']>): FlashRgb[] {
+  let a = pitchFlashCache.get(t)
+  if (!a) {
+    a = t.colour.paletteRgb.map((warm, i) => ({ core: t.colour.paletteCoreRgb[i], warm }))
+    pitchFlashCache.set(t, a)
+  }
+  return a
+}
 const themeFlash = new WeakMap<Theme, FlashRgb>()
 
 /** The hit flash's two rgb triples. White tint (or no template) is the theme's own. */
@@ -29,7 +40,7 @@ export function flashRgb(state: RenderState, hue: number, pitch: number, velocit
   }
   if (t.colour.mode === 'pitch') {
     const i = ((pitch % 12) + 12) % 12
-    return { core: t.colour.paletteCoreRgb[i], warm: t.colour.paletteRgb[i] }
+    return pitchFlash(t)[i]
   }
   const [r, g, b] = rgbOf(noteFill(state, hue, pitch, velocity))
   return {

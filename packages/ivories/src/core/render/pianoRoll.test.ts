@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { visibleNotes, heldNotes, drawStage, drawRoll } from './pianoRoll'
 import { drawKeyboard } from './keyboard'
-import { noteColor } from './colors'
+import { noteColor, rgbOf } from './colors'
+import { flashRgb } from './noteStyle'
 import { drawImpact } from './pianoRoll'
 import { resolveTemplate } from '../template/resolve'
 import { DEFAULT_THEME } from './theme'
@@ -228,5 +229,38 @@ describe('template colour and flash', () => {
     drawImpact(ctx, s, 0.01, s.notes)
     expect(gradientStops.length).toBeGreaterThan(0)
     expect(gradientStops.every((c) => c.startsWith(`rgba(${DEFAULT_THEME.flashCoreRgb}, `) || c.startsWith(`rgba(${DEFAULT_THEME.flashWarmRgb}, `))).toBe(true)
+  })
+})
+
+describe('note-tinted flash cost and hand mode', () => {
+  const handNote = () => ({ ...resolveTemplate('classic'), flash: { tint: 'note' as const } })
+
+  it('hand mode note tint: stops carry the note colour and its 50% white mix', () => {
+    const s = { ...state([n(0, 60, 0, 1)]), template: handNote() }
+    const { ctx, gradientStops } = stubCtx()
+    drawImpact(ctx, s, 0.01, s.notes)
+    const [r, g, b] = rgbOf(noteColor(207, 100, s.velocity))
+    const warm = `rgba(${r}, ${g}, ${b}, `
+    const core = `rgba(${Math.round((r + 255) / 2)}, ${Math.round((g + 255) / 2)}, ${Math.round((b + 255) / 2)}, `
+    expect(gradientStops.some((c) => c.startsWith(warm))).toBe(true)
+    expect(gradientStops.some((c) => c.startsWith(core))).toBe(true)
+  })
+
+  it('notes whose flash has decayed do no flash-colour work', () => {
+    let reads = 0
+    const base = { ...state([n(0, 60, 0, 1), n(1, 64, 0, 1)]), template: handNote() }
+    const s = Object.defineProperty({ ...base }, 'velocity', {
+      get() { reads++; return base.velocity }, enumerable: true,
+    })
+    const { ctx } = stubCtx()
+    drawImpact(ctx, s, 0.9, s.notes)      // 0.9s in: flash (220ms) long over
+    expect(reads).toBe(0)
+    drawImpact(ctx, s, 0.01, s.notes)
+    expect(reads).toBeGreaterThan(0)
+  })
+
+  it('pitch mode note tint returns the same precomputed object per pitch class', () => {
+    const s = { ...state([]), template: resolveTemplate('chord-cards-crf') }
+    expect(flashRgb(s, 207, 60, 50)).toBe(flashRgb(s, 28, 72, 120))
   })
 })
