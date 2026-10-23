@@ -1,4 +1,6 @@
 import { computeLayout, DEFAULT_GEOMETRY, ensureFullBlackKeyGroups, fitRange, FIRST_PITCH, LAST_PITCH } from './geometry'
+import { isClassicLook } from '../template/resolve'
+import type { ResolvedTemplate } from '../template/resolve'
 import { drawStage } from './pianoRoll'
 import type { KeyboardLayout } from './geometry'
 import type { RenderState } from './pianoRoll'
@@ -43,6 +45,8 @@ export interface StageInput {
   rising?: RisingInput | null
   /** The note-name label for a roll bar (null: none). Absent: no labels. */
   barLabel?: (n: NoteEvent) => string | null
+  /** The resolved style template; absent or the classic look draws exactly as before. */
+  template?: ResolvedTemplate
 }
 
 export interface StageFrame { layout: KeyboardLayout; held: Map<number, NoteEvent> }
@@ -64,7 +68,7 @@ export class StageRenderer {
   private rangeCache: { score: ScoreDocument | null; zoom: ZoomMode; range: [number, number] } = {
     score: null, zoom: 'full', range: [FIRST_PITCH, LAST_PITCH],
   }
-  private themeCache: { key: string; layout: KeyboardLayout | null; theme: Theme | null } = { key: '', layout: null, theme: null }
+  private themeCache: { key: string; layout: KeyboardLayout | null; template: ResolvedTemplate | undefined; theme: Theme | null } = { key: '', layout: null, template: undefined, theme: null }
   private beatCache: { score: ScoreDocument | null; tempo: TempoSetting | null; bpm: number; bpb: number; clock: BeatClock } | null = null
   private readonly readThemeFrom: () => Theme
 
@@ -90,10 +94,11 @@ export class StageRenderer {
       showFlash: st.display.showFlash,
       flashScale: st.display.flashScale,
       showMiddleC: st.display.showMiddleC,
-      theme: this.themeFor(st.theme.name, st.theme.stageBgOverride, layout),
+      theme: this.themeFor(st.theme.name, st.theme.stageBgOverride, layout, input.template),
       live: input.live,
       orientation: input.orientation,
       barLabel: input.barLabel,
+      ...(input.template && !isClassicLook(input.template) ? { template: input.template } : {}),
     }
     const dur = input.score?.durationSec ?? 0
     const progress = dur > 0 ? t / dur : 0
@@ -162,12 +167,12 @@ export class StageRenderer {
   }
 
   // getComputedStyle forces a style recalculation and must never run per frame:
-  // keyed on the theme name, the stage-background override and the layout.
-  private themeFor(name: ThemeName, override: string | null, layout: KeyboardLayout): Theme {
+  // keyed on the theme name, the stage-background override, the layout and the template.
+  private themeFor(name: ThemeName, override: string | null, layout: KeyboardLayout, template: ResolvedTemplate | undefined): Theme {
     const key = `${name}|${override ?? ''}`
     const c = this.themeCache
-    if (c.key !== key || c.layout !== layout || !c.theme) {
-      this.themeCache = { key, layout, theme: this.readThemeFrom() }
+    if (c.key !== key || c.layout !== layout || c.template !== template || !c.theme) {
+      this.themeCache = { key, layout, template, theme: this.readThemeFrom() }
     }
     return this.themeCache.theme!
   }

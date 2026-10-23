@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, waitFor } from '@testing-library/react'
 import { Midi } from '@tonejs/midi'
 import { Keyboard } from './Keyboard'
@@ -8,6 +8,8 @@ import { AudioClock } from '../../core/clock/AudioClock'
 import { parseMidi } from '../../core/io/parseMidi'
 import { fakeEngine } from '../testEngine.test-helpers'
 import { stubCtx } from '../../core/render/pianoRoll.test-helpers'
+import { DEFAULT_SETTINGS } from '../../core/settings/types'
+import { lookFromSettings } from '../../core/platform/look'
 import type { KeyboardLayout } from '../../core/render/geometry'
 
 const doc = () => {
@@ -16,7 +18,8 @@ const doc = () => {
   return parseMidi(new Uint8Array(m.toArray()).buffer as ArrayBuffer, 'a.mid', { mode: 'scale', scale: 1 })
 }
 
-afterEach(() => { vi.restoreAllMocks() })
+beforeEach(() => { vi.stubGlobal('CSS', { supports: (_p: string, v: string) => /^(#[0-9a-f]{3,8}|(rgba?|hsla?)\([^()]*\)|transparent)$/i.test(v) }) })
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('Keyboard and FallingKeys (spec §4)', () => {
   it('self-contained: a Keyboard outside a provider builds its own', async () => {
@@ -161,5 +164,63 @@ describe('Keyboard and FallingKeys (spec §4)', () => {
     expect(container.querySelector('.ivories-falling')!.getAttribute('data-orientation')).toBe('vertical')
     expect(warn.mock.calls.filter((c) => String(c[0]).includes('deprecated'))).toHaveLength(1)
     warn.mockRestore()
+  })
+})
+
+describe('StageView template (Review Focus 3, 5)', () => {
+  const rootOf = (c: HTMLElement) => c.querySelector('.ivories-view') as HTMLElement
+  const tok = (c: HTMLElement, k: string) => rootOf(c).style.getPropertyValue(k)
+
+  it('no template: no template tokens inline, classic class, no data attribute', async () => {
+    const { container } = render(<Keyboard score={doc()} engine={fakeEngine()} />)
+    await waitFor(() => expect(rootOf(container)).not.toBeNull())
+    expect(rootOf(container).classList.contains('ivories-theme-classic')).toBe(true)
+    expect(tok(container, '--ivories-key-white')).toBe('')
+    expect(rootOf(container).hasAttribute('data-ivories-template')).toBe(false)
+  })
+
+  it('template="chord-cards-crf" writes its tokens inline on the root', async () => {
+    const { container } = render(<Keyboard score={doc()} engine={fakeEngine()} template="chord-cards-crf" />)
+    await waitFor(() => expect(rootOf(container)).not.toBeNull())
+    expect(tok(container, '--ivories-stage-bg')).toBe('#fbf8f1')
+    expect(tok(container, '--ivories-key-outline')).toBe('#333333')
+    expect(rootOf(container).classList.contains('ivories-theme-classic')).toBe(true)
+    expect(rootOf(container).getAttribute('data-ivories-template')).toBe('chord-cards-crf')
+  })
+
+  it("stageBgOverride beats the template's stage.bg", async () => {
+    const { container } = render(
+      <Keyboard score={doc()} engine={fakeEngine()} template="chord-cards" settings={{ theme: { name: 'classic', stageBgOverride: '#00b140' } }} />,
+    )
+    await waitFor(() => expect(rootOf(container)).not.toBeNull())
+    expect(tok(container, '--ivories-stage-bg')).toBe('#00b140')
+  })
+
+  it('a template extending a preset keeps the preset class', async () => {
+    const tpl = { v: 1 as const, kind: 'ivories-template' as const, id: 'mine', name: 'Mine', extends: 'outline' as const }
+    const { container } = render(<Keyboard score={doc()} engine={fakeEngine()} template={tpl} />)
+    await waitFor(() => expect(rootOf(container)).not.toBeNull())
+    expect(rootOf(container).classList.contains('ivories-theme-outline')).toBe(true)
+  })
+
+  it('switching back to classic removes the tokens', async () => {
+    const { container, rerender } = render(<Keyboard score={doc()} engine={fakeEngine()} template="chord-cards-crf" />)
+    await waitFor(() => expect(tok(container, '--ivories-key-white')).not.toBe(''))
+    rerender(<Keyboard score={doc()} engine={fakeEngine()} />)
+    await waitFor(() => expect(tok(container, '--ivories-key-white')).toBe(''))
+  })
+
+  it('the template from a look applies, and a per-view theme prop overrides it', async () => {
+    const base = structuredClone(DEFAULT_SETTINGS)
+    const look = lookFromSettings({ ...base, theme: { ...base.theme, template: 'chord-cards' } }, 'roll', 3)
+    const lookProp = look as unknown as React.ComponentProps<typeof IvoriesProvider>['look']
+    const { container, rerender } = render(
+      <IvoriesProvider score={doc()} engine={fakeEngine()} look={lookProp}><Keyboard /></IvoriesProvider>,
+    )
+    await waitFor(() => expect(rootOf(container)).not.toBeNull())
+    expect(tok(container, '--ivories-key-white')).not.toBe('')
+    rerender(<IvoriesProvider score={doc()} engine={fakeEngine()} look={lookProp}><Keyboard theme="contrast" /></IvoriesProvider>)
+    await waitFor(() => expect(rootOf(container).classList.contains('ivories-theme-contrast')).toBe(true))
+    expect(tok(container, '--ivories-key-white')).toBe('')
   })
 })

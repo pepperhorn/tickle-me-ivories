@@ -1,4 +1,5 @@
 import { drawKeyboard } from './keyboard'
+import type { ResolvedTemplate } from '../template/resolve'
 import { FLASH_MS, flashIntensity, noteColor } from './colors'
 import { roundRect } from './shapes'
 import { barLabelPx, drawBarLabel } from './barLabels'
@@ -29,6 +30,8 @@ export interface RenderState {
   flashScale: number           // 0-1.5 multiplier on flash intensity
   showMiddleC: boolean
   theme: Theme
+  /** Absent: today's look. Set only when !isClassicLook. */
+  template?: ResolvedTemplate
   /** Keys held on a live MIDI input (spec §4.1); drawn in theme.liveHue over the score colour. */
   live?: ReadonlyMap<number, LiveNote>
   /** Horizontal views draw this same canonical frame under a reflection (R-H);

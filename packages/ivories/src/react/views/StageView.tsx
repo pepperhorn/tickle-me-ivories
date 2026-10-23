@@ -6,6 +6,8 @@ import { applyLabels } from './labels'
 import { StageText, samePitches } from '../text/StageText'
 import { ChordReadout } from '../text/ChordReadout'
 import { StageRenderer, rangeFromProp } from '../../core/render/stageRenderer'
+import { resolveTemplate } from '../../core/template/resolve'
+import type { TemplateRef } from '../../core/template/types'
 import { readTheme } from '../../core/render/theme'
 import { viewOrientation } from '../../core/render/orientation'
 import { ChordFeed } from '../../core/music/chordFeed'
@@ -33,6 +35,8 @@ export interface StageViewProps {
   height?: number | string
   className?: string
   theme?: ThemeName
+  /** A style template (built-in id or inline). Beats `theme` and the template of a look. */
+  template?: TemplateRef
   /** Called when the keyboard geometry changes (resize, zoom), never per frame. */
   onLayout?(layout: KeyboardLayout): void
   children?: ReactNode
@@ -136,8 +140,11 @@ export function StageView(p: StageViewProps & StageViewKindProps) {
   const barLabelRef = useRef(barLabel); barLabelRef.current = barLabel
 
   // Everything the frame callback reads, without re-subscribing per change.
-  const live = useRef({ iv, p, text })
-  live.current = { iv, p, text }
+  // An explicit per-view theme without a template shows that preset, even over a look's template.
+  const ref = p.template ?? (p.theme ? undefined : iv.settings.theme.template)
+  const tpl = useMemo(() => resolveTemplate(ref), [ref])
+  const live = useRef({ iv, p, text, tpl })
+  live.current = { iv, p, text, tpl }
   const overlayRef = useRef(overlay)
   const lastReadingRef = useRef<ChordReading | null | undefined>(undefined)
   const lastKeyRef = useRef<KeyContext | null>(null)
@@ -174,7 +181,7 @@ export function StageView(p: StageViewProps & StageViewKindProps) {
     ro?.observe(canvas)
 
     const step = (t: number) => {
-      const { iv: c, p: props, text: tx } = live.current
+      const { iv: c, p: props, text: tx, tpl: template } = live.current
       // A per-view theme goes into the renderer's settings so its theme cache
       // (keyed on the theme name) re-reads the tokens for this view's class.
       const settings = props.theme && props.theme !== c.settings.theme.name
@@ -201,6 +208,7 @@ export function StageView(p: StageViewProps & StageViewKindProps) {
             }
           : null,
         barLabel: labelCtx.current.mode === 'none' ? undefined : barLabelRef.current,
+        template,
       })
       // The last drawn time, for hosts and e2e sync checks (never read back here).
       const root = rootRef.current
@@ -269,6 +277,7 @@ export function StageView(p: StageViewProps & StageViewKindProps) {
   const override = iv.settings.theme.stageBgOverride
   const style: CSSProperties = {
     ...(p.height !== undefined ? { height: p.height } : {}),
+    ...(ref ? (tpl.tokens as CSSProperties) : {}),
     ...(override ? ({ '--ivories-stage-bg': override } as CSSProperties) : {}),
   }
   const keyContext = keys.get(iv.score, text.keyOverride)
@@ -277,8 +286,9 @@ export function StageView(p: StageViewProps & StageViewKindProps) {
   return (
     <div
       ref={rootRef}
-      className={cx('ivories', 'ivories-view', `ivories-${p.kind}`, `ivories-theme-${themeName}`, p.className)}
+      className={cx('ivories', 'ivories-view', `ivories-${p.kind}`, `ivories-theme-${ref ? tpl.cssTheme : themeName}`, p.className)}
       data-ivories-view={p.kind}
+      data-ivories-template={ref ? tpl.id : undefined}
       data-orientation={orientation ?? 'vertical'}
       data-bpm={p.kind === 'rising' ? iv.bpm : undefined}
       style={style}
