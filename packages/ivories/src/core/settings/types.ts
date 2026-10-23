@@ -1,3 +1,4 @@
+import type { TemplateRef } from '../template/types'
 import type { DisplayMode, ScoreDocument, TempoSetting, Voice } from '../model/types'
 
 export type ThemeName = 'classic' | 'outline' | 'contrast' | 'transparent'
@@ -67,6 +68,8 @@ export interface ThemeSettings {
   name: ThemeName
   /** Flat matte colour for keyed workflows (§13.2). `null` = use the theme token. */
   stageBgOverride: string | null
+  /** A built-in template id or an inline template object. Wins over `name` when set. */
+  template?: TemplateRef
 }
 
 export interface Settings {

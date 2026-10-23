@@ -1,7 +1,10 @@
 import { drawKeyboard } from './keyboard'
+import type { ResolvedTemplate } from '../template/resolve'
 import { FLASH_MS, flashIntensity, noteColor } from './colors'
-import { roundRect } from './shapes'
+import { barGradient, flashComposite, flashRgb, noteFill } from './noteStyle'
+import { drawNoteBar } from './bars'
 import { barLabelPx, drawBarLabel } from './barLabels'
+import type { BarLabelPaint } from './barLabels'
 import { isTransparent } from './theme'
 import { lowerBoundByStart } from '../model/search'
 import type { Theme } from './theme'
@@ -29,6 +32,8 @@ export interface RenderState {
   flashScale: number           // 0-1.5 multiplier on flash intensity
   showMiddleC: boolean
   theme: Theme
+  /** Absent: today's look. Set only when !isClassicLook. */
+  template?: ResolvedTemplate
   /** Keys held on a live MIDI input (spec §4.1); drawn in theme.liveHue over the score colour. */
   live?: ReadonlyMap<number, LiveNote>
   /** Horizontal views draw this same canonical frame under a reflection (R-H);
@@ -36,6 +41,8 @@ export interface RenderState {
   orientation?: Orientation
   /** The note-name label for a bar (null: none). Absent: no labels. */
   barLabel?: (n: NoteEvent) => string | null
+  /** Font, colours and size of bar labels; absent: the house default. */
+  barLabelPaint?: BarLabelPaint
 }
 
 /**
@@ -49,8 +56,8 @@ export function labelBar(
   if (!text) return
   const a = Math.max(top, lo)
   const b = Math.min(bottom, hi)
-  const px = barLabelPx(text, w, b - a, state.orientation)
-  if (px > 0) drawBarLabel(ctx, text, x + w / 2, (a + b) / 2, px, state.orientation)
+  const px = barLabelPx(text, w, b - a, state.orientation, state.barLabelPaint?.scale)
+  if (px > 0) drawBarLabel(ctx, text, x + w / 2, (a + b) / 2, px, state.orientation, state.barLabelPaint)
 }
 
 const FLASH_TAIL = FLASH_MS / 1000
@@ -87,9 +94,10 @@ export function heldNotes(visible: NoteEvent[], t: number): Map<number, NoteEven
 export function drawRoll(
   ctx: CanvasRenderingContext2D, state: RenderState, t: number, vis: NoteEvent[],
 ): void {
-  const { layout, voices, fallSeconds, theme } = state
+  const { layout, voices, fallSeconds } = state
   const pps = layout.hitY / fallSeconds
   const stageH = layout.hitY + layout.keyboardH
+  const gradient = barGradient(state)
 
   // White-key bars first, then black-key bars on top, so accidentals are never
   // hidden behind the naturals beside them.
@@ -107,13 +115,18 @@ export function drawRoll(
       if (bottom <= 0) continue
       const h = Math.max(1, bottom - top)
 
-      const g = ctx.createLinearGradient(0, top, 0, top + h)
-      g.addColorStop(0, noteColor(v.hue, Math.max(1, n.velocity - 14), state.velocity))
-      g.addColorStop(1, noteColor(v.hue, n.velocity, state.velocity))
-      ctx.fillStyle = g
+      let fill: string | CanvasGradient
+      if (gradient) {
+        const g = ctx.createLinearGradient(0, top, 0, top + h)
+        g.addColorStop(0, noteColor(v.hue, Math.max(1, n.velocity - 14), state.velocity))
+        g.addColorStop(1, noteColor(v.hue, n.velocity, state.velocity))
+        fill = g
+      } else {
+        fill = noteFill(state, v.hue, n.pitch, n.velocity)
+      }
       const x = k.x + (k.black ? 0.5 : 1)
       const w = k.w - (k.black ? 1 : 2)
-      roundRect(ctx, x, top, w, h, theme.barRadius)
+      drawNoteBar(ctx, state, x, top, w, h, fill)
       labelBar(ctx, state, n, x, w, top, top + h, 0, layout.hitY)
     }
   }
@@ -122,10 +135,13 @@ export function drawRoll(
 /** Default live list for drawImpact, shared so the falling roll allocates nothing per frame. */
 const NO_TRAIL: readonly TrailNote[] = []
 
+const FLASH_MIN = 0.003
+
 /** One key's hit flash at intensity i (0 = nothing). */
-function flashKey(ctx: CanvasRenderingContext2D, state: RenderState, pitch: number, i: number): void {
-  if (i <= 0.003) return
-  const { layout, theme } = state
+function flashKey(ctx: CanvasRenderingContext2D, state: RenderState, pitch: number, i: number,
+  rgb: { core: string; warm: string }): void {
+  if (i <= FLASH_MIN) return
+  const { layout } = state
   const k = layout.byPitch.get(pitch)
   if (!k) return
 
@@ -134,21 +150,21 @@ function flashKey(ctx: CanvasRenderingContext2D, state: RenderState, pitch: numb
   const R = Math.max(2, 2.2 * layout.whiteW * i)
 
   const rg = ctx.createRadialGradient(cx, cy, 0, cx, cy, R)
-  rg.addColorStop(0, `rgba(${theme.flashCoreRgb}, ${(0.9 * i).toFixed(3)})`)
-  rg.addColorStop(0.35, `rgba(${theme.flashWarmRgb}, ${(0.34 * i).toFixed(3)})`)
-  rg.addColorStop(1, `rgba(${theme.flashCoreRgb}, 0)`)
+  rg.addColorStop(0, `rgba(${rgb.core}, ${(0.9 * i).toFixed(3)})`)
+  rg.addColorStop(0.35, `rgba(${rgb.warm}, ${(0.34 * i).toFixed(3)})`)
+  rg.addColorStop(1, `rgba(${rgb.core}, 0)`)
   ctx.fillStyle = rg
   ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill()
 
   const bg = ctx.createLinearGradient(0, cy - 26, 0, cy + 20)
-  bg.addColorStop(0, `rgba(${theme.flashCoreRgb}, 0)`)
-  bg.addColorStop(0.5, `rgba(${theme.flashCoreRgb}, ${(0.85 * i).toFixed(3)})`)
-  bg.addColorStop(1, `rgba(${theme.flashCoreRgb}, 0)`)
+  bg.addColorStop(0, `rgba(${rgb.core}, 0)`)
+  bg.addColorStop(0.5, `rgba(${rgb.core}, ${(0.85 * i).toFixed(3)})`)
+  bg.addColorStop(1, `rgba(${rgb.core}, 0)`)
   ctx.fillStyle = bg
   ctx.fillRect(cx - k.w * 0.45, cy - 26, k.w * 0.9, 46)
 
   const len = 1.6 * layout.whiteW * i
-  ctx.strokeStyle = `rgba(${theme.flashCoreRgb}, ${(0.7 * i).toFixed(3)})`
+  ctx.strokeStyle = `rgba(${rgb.core}, ${(0.7 * i).toFixed(3)})`
   ctx.lineWidth = 1
   ctx.lineCap = 'round'
   ctx.beginPath()
@@ -167,13 +183,19 @@ export function drawImpact(
 ): void {
   const { voices } = state
   ctx.save()
-  ctx.globalCompositeOperation = 'lighter'
+  ctx.globalCompositeOperation = flashComposite(state)   // 'lighter' unless a template sits on a light stage
   for (const n of vis) {
     const v = voices.get(n.voiceId)
     if (!v || !v.visible || v.percussion) continue   // percussion never lights keys (§6.1)
-    flashKey(ctx, state, n.pitch, flashIntensity(t - n.startSec, n.velocity) * state.flashScale)
+    const i = flashIntensity(t - n.startSec, n.velocity) * state.flashScale
+    if (i <= FLASH_MIN) continue   // flash colour work only for notes actually flashing
+    flashKey(ctx, state, n.pitch, i, flashRgb(state, v.hue, n.pitch, n.velocity))
   }
-  for (const n of live) flashKey(ctx, state, n.midi, flashIntensity(t - n.startSec, n.velocity) * state.flashScale)
+  for (const n of live) {
+    const i = flashIntensity(t - n.startSec, n.velocity) * state.flashScale
+    if (i <= FLASH_MIN) continue
+    flashKey(ctx, state, n.midi, i, flashRgb(state, state.theme.liveHue, n.midi, n.velocity))
+  }
   ctx.restore()
 }
 

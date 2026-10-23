@@ -21,6 +21,16 @@ export const FIXTURE_CASES: { id: string; title: string; props: IvoriesProps }[]
   { id: 'rising-horizontal', title: 'rising, horizontal (tiles emanate from the keys)', props: { view: 'rising', orientation: 'horizontal', scoreUrl: '/fixtures/demo.mid' } },
 ]
 
+/** Style-template cases (?templates): the default look next to classic, and chord-cards-crf in falling, rising (both orientations) and keyboard. */
+export const TEMPLATE_CASES: { id: string; title: string; props: IvoriesProps }[] = [
+  { id: 'tpl-default', title: 'falling, no template', props: { view: 'falling', scoreUrl: '/fixtures/demo.mid', chrome: 'none' } },
+  { id: 'tpl-classic', title: "falling, template 'classic'", props: { view: 'falling', scoreUrl: '/fixtures/demo.mid', chrome: 'none', template: 'classic' } },
+  { id: 'tpl-cc-falling', title: 'falling, chord-cards-crf', props: { view: 'falling', scoreUrl: '/fixtures/demo.mid', chrome: 'none', template: 'chord-cards-crf' } },
+  { id: 'tpl-cc-rising', title: 'rising, chord-cards-crf', props: { view: 'rising', scoreUrl: '/fixtures/demo.mid', chrome: 'none', template: 'chord-cards-crf' } },
+  { id: 'tpl-cc-rising-h', title: 'rising, horizontal, chord-cards-crf', props: { view: 'rising', orientation: 'horizontal', scoreUrl: '/fixtures/demo.mid', chrome: 'none', template: 'chord-cards-crf' } },
+  { id: 'tpl-cc-keyboard', title: 'keyboard, chord-cards-crf', props: { view: 'keyboard', scoreUrl: '/fixtures/demo.mid', chrome: 'none', template: 'chord-cards-crf' } },
+]
+
 interface FixtureRegistry {
   handles: Partial<Record<IvoriesPreset, IvoriesHandle>>
   notation: Partial<Record<IvoriesPreset, PepperScoreClockHandle>>
@@ -33,6 +43,7 @@ const registry: FixtureRegistry = { handles: {}, notation: {}, cases: {} }
 /**
  * /embed-fixture: every preset embedded the way a host site would (spec §9 Playwright smoke).
  * Opt-in sections keep the default page light: `?rising` adds FIXTURE_CASES.
+ * `?templates` adds TEMPLATE_CASES (the style-template cases, data-case tpl-*).
  * `?notation-themes` adds keyboard+notation with notationTheme="ink-on-dark" (the presets show the default paper card).
  * `?audio` renders only two keyboard-only players on FIXTURE_SOUNDS_BASE (no presets, so the request log stays clean):
  * `audio-a` without a count-in, `audio-b` with the default one-bar count-in.
@@ -63,6 +74,14 @@ export function EmbedFixture({ search = typeof location === 'undefined' ? '' : l
       ))}
       {flags.has('rising') && FIXTURE_CASES.map((c) => (
         <section key={c.id} className="fixture-case flex flex-col gap-2" data-case={c.id}>
+          <h2 className="fixture-case-title text-sm text-[var(--ink-dim)]">{c.title}</h2>
+          <div className="fixture-case-frame h-[360px] overflow-hidden rounded-lg border border-[var(--line)]">
+            <Ivories {...c.props} ref={(h) => { if (h) registry.cases[c.id] = h }} />
+          </div>
+        </section>
+      ))}
+      {flags.has('templates') && TEMPLATE_CASES.map((c) => (
+        <section key={c.id} className="fixture-case fixture-template-case flex flex-col gap-2" data-case={c.id}>
           <h2 className="fixture-case-title text-sm text-[var(--ink-dim)]">{c.title}</h2>
           <div className="fixture-case-frame h-[360px] overflow-hidden rounded-lg border border-[var(--line)]">
             <Ivories {...c.props} ref={(h) => { if (h) registry.cases[c.id] = h }} />

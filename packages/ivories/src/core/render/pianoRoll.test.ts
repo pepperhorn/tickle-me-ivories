@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import { visibleNotes, heldNotes, drawStage, drawRoll } from './pianoRoll'
 import { drawKeyboard } from './keyboard'
-import { noteColor } from './colors'
+import { noteColor, rgbOf } from './colors'
+import { flashRgb } from './noteStyle'
+import { drawImpact } from './pianoRoll'
+import { resolveTemplate } from '../template/resolve'
 import { DEFAULT_THEME } from './theme'
 import { stubCtx, state } from './pianoRoll.test-helpers'
 import type { NoteEvent } from '../model/types'
@@ -198,5 +201,97 @@ describe('fill colours', () => {
     drawKeyboard(ctx, { ...state([]), theme }, new Map())
     expect(fillStyles).toContain('#111111')
     expect(fillStyles).toContain('#222222')
+  })
+})
+
+describe('template colour and flash', () => {
+  const pitchState = () => ({ ...state([n(0, 60, 0, 1)]), template: resolveTemplate('chord-cards-crf') })
+
+  it('pitch mode bars are solid palette fills with no gradient stops', () => {
+    const s = pitchState()
+    const { ctx, fillStyles, gradientStops } = stubCtx()
+    drawRoll(ctx, s, 0.5, s.notes)
+    expect(fillStyles).toContain('#f86e6e')
+    expect(gradientStops).toEqual([])
+  })
+
+  it('the note-tinted flash uses the pitch colour in its stops', () => {
+    const s = pitchState()
+    const { ctx, gradientStops } = stubCtx()
+    drawImpact(ctx, s, 0.01, s.notes)
+    expect(gradientStops.some((c) => c.startsWith('rgba(252, 183, 183, '))).toBe(true)
+    expect(gradientStops.some((c) => c.startsWith('rgba(248, 110, 110, '))).toBe(true)
+  })
+
+  it('the white flash is unchanged', () => {
+    const s = state([n(0, 60, 0, 1)])
+    const { ctx, gradientStops } = stubCtx()
+    drawImpact(ctx, s, 0.01, s.notes)
+    expect(gradientStops.length).toBeGreaterThan(0)
+    expect(gradientStops.every((c) => c.startsWith(`rgba(${DEFAULT_THEME.flashCoreRgb}, `) || c.startsWith(`rgba(${DEFAULT_THEME.flashWarmRgb}, `))).toBe(true)
+  })
+})
+
+describe('note-tinted flash cost and hand mode', () => {
+  const handNote = () => ({ ...resolveTemplate('classic'), flash: { tint: 'note' as const } })
+
+  it('hand mode note tint: stops carry the note colour and its 50% white mix', () => {
+    const s = { ...state([n(0, 60, 0, 1)]), template: handNote() }
+    const { ctx, gradientStops } = stubCtx()
+    drawImpact(ctx, s, 0.01, s.notes)
+    const [r, g, b] = rgbOf(noteColor(207, 100, s.velocity))
+    const warm = `rgba(${r}, ${g}, ${b}, `
+    const core = `rgba(${Math.round((r + 255) / 2)}, ${Math.round((g + 255) / 2)}, ${Math.round((b + 255) / 2)}, `
+    expect(gradientStops.some((c) => c.startsWith(warm))).toBe(true)
+    expect(gradientStops.some((c) => c.startsWith(core))).toBe(true)
+  })
+
+  it('notes whose flash has decayed do no flash-colour work', () => {
+    let reads = 0
+    const base = { ...state([n(0, 60, 0, 1), n(1, 64, 0, 1)]), template: handNote() }
+    const s = Object.defineProperty({ ...base }, 'velocity', {
+      get() { reads++; return base.velocity }, enumerable: true,
+    })
+    const { ctx } = stubCtx()
+    drawImpact(ctx, s, 0.9, s.notes)      // 0.9s in: flash (220ms) long over
+    expect(reads).toBe(0)
+    drawImpact(ctx, s, 0.01, s.notes)
+    expect(reads).toBeGreaterThan(0)
+  })
+
+  it('pitch mode note tint returns the same precomputed object per pitch class', () => {
+    const s = { ...state([]), template: resolveTemplate('chord-cards-crf') }
+    expect(flashRgb(s, 207, 60, 50)).toBe(flashRgb(s, 28, 72, 120))
+  })
+})
+
+describe('flash composite on a light stage', () => {
+  // Additive 'lighter' over a paper stage (#fbf8f1) clamps even a faint flash
+  // to pure white: the beam rectangle showed as a stray white box above the
+  // keys in the chord-cards-crf e2e shots.
+  const paper = { ...DEFAULT_THEME, stageBg: '#fbf8f1' }
+  const ops = (s: ReturnType<typeof state>) => {
+    const { ctx, sets } = stubCtx()
+    drawImpact(ctx, s, 0.01, s.notes)
+    return sets.filter(([k]) => k === 'globalCompositeOperation').map(([, v]) => v)
+  }
+
+  it('chord-cards-crf on its paper stage draws the flash source-over, never lighter', () => {
+    const s = { ...state([n(0, 60, 0, 1)]), theme: paper, template: resolveTemplate('chord-cards-crf') }
+    expect(ops(s)).toEqual(['source-over'])
+  })
+
+  it('no template keeps lighter, even on a light stage; a template on a dark stage keeps lighter', () => {
+    expect(ops({ ...state([n(0, 60, 0, 1)]), theme: paper })).toEqual(['lighter'])
+    expect(ops({ ...state([n(0, 60, 0, 1)]), template: resolveTemplate('chord-cards-crf') })).toEqual(['lighter'])
+  })
+})
+
+describe('bar outline and shadow', () => {
+  it('bars under chord-cards-crf draw shadow + fill + outline per bar', () => {
+    const { ctx, calls } = stubCtx()
+    drawRoll(ctx, { ...state([n(0, 60, 0, 1)]), template: resolveTemplate('chord-cards-crf') }, 0.5, [n(0, 60, 0, 1)])
+    expect(calls.filter((c) => c.startsWith('roundRect'))).toHaveLength(3)
+    expect(calls.filter((c) => c === 'stroke(0)')).toHaveLength(1)
   })
 })

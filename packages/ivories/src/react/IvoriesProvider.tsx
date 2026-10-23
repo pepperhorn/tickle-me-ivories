@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import type { ReactNode, Ref } from 'react'
+import type { TemplateRef } from '../core/template/types'
 import { AudioEngine } from '../core/audio/engine'
 import type { SoundsOption } from '../core/audio/sounds'
 import { validMetronomeVoice } from '../core/audio/metronome'
@@ -69,6 +70,8 @@ export interface IvoriesProviderProps extends ScoreSource, IvoriesEvents {
       Describes the given score only: a provider never retimes a score it loads (R1). */
   tempo?: TempoSetting
   theme?: ThemeName
+  /** A style template: a built-in id or an inline template. Beats `theme` and a look's template. */
+  template?: TemplateRef
   look?: LookV1
   settings?: Partial<Settings>
   fallSeconds?: number
@@ -208,9 +211,9 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   // ---- settings ----
   const [audioPatch, setAudioPatch] = useState<Partial<AudioSettings>>({})
   const settings = useMemo(() => {
-    const s = resolveSettings({ settings: props.settings, look: props.look, theme: props.theme })
+    const s = resolveSettings({ settings: props.settings, look: props.look, theme: props.theme, template: props.template })
     return { ...s, audio: { ...s.audio, ...audioPatch } }
-  }, [props.settings, props.look, props.theme, audioPatch])
+  }, [props.settings, props.look, props.theme, props.template, audioPatch])
   const fallSeconds = props.fallSeconds ?? props.look?.display.fallSeconds ?? 3
   const notes = score?.notes
   const maxNoteDur = useMemo(() => (score ? longestNoteSec(score) : 0), [notes]) // eslint-disable-line react-hooks/exhaustive-deps

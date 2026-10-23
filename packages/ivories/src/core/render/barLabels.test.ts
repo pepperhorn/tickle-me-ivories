@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { NoteBarLabelCache, barLabelPx, displayAccidentals, noteBarLabel, noteBarLabelsOf } from './barLabels'
+import { NoteBarLabelCache, barLabelPx, displayAccidentals, drawBarLabel, noteBarLabel, noteBarLabelsOf } from './barLabels'
+import { DEFAULT_BAR_LABEL_STYLE } from '../template/resolve'
+import { stubCtx } from './pianoRoll.test-helpers'
 import { parseMusicXml } from '../io/parseMusicXml'
 import type { NoteEvent } from '../model/types'
 
@@ -84,5 +86,84 @@ describe('MusicXML spelling reaches NoteEvent.spelling', () => {
   it('leaves it off a transposing part (the written name is not the sounding one)', () => {
     const s = parseMusicXml(xml(`<attributes><divisions>1</divisions><transpose><diatonic>-1</diatonic><chromatic>-2</chromatic></transpose></attributes>${note('D', null, 5)}`), 'x.musicxml', { mode: 'scale', scale: 1 })
     expect(s.notes[0].spelling).toBeUndefined()
+  })
+})
+
+const style = (over: Record<string, unknown> = {}, font: Record<string, unknown> = {}) =>
+  ({ ...DEFAULT_BAR_LABEL_STYLE, ...over, font: { ...DEFAULT_BAR_LABEL_STYLE.font, ...font } }) as typeof DEFAULT_BAR_LABEL_STYLE
+
+describe('bar label style formats', () => {
+  it("the default style formats exactly as 'pitch' and 'pitch-octave' did", () => {
+    for (const n of [{ pitch: 60 }, { pitch: 66 }, { pitch: 70 }, { pitch: 66, spelling: 'Gb' }]) {
+      for (const k of [C, F]) {
+        expect(noteBarLabel(n, k, style())).toBe(noteBarLabel(n, k, 'pitch'))
+        expect(noteBarLabel(n, k, style({ format: 'pitch-octave' }))).toBe(noteBarLabel(n, k, 'pitch-octave'))
+      }
+    }
+  })
+
+  it('solfège is fixed do with the glyph/ascii accidental rule', () => {
+    const f = (o: Record<string, unknown>) => style({ format: 'solfege', ...o })
+    expect(noteBarLabel({ pitch: 60 }, C, f({}))).toBe('Do')
+    expect(noteBarLabel({ pitch: 67 }, C, f({}))).toBe('Sol')
+    expect(noteBarLabel({ pitch: 71 }, C, f({}))).toBe('Si')
+    expect(noteBarLabel({ pitch: 66 }, C, f({}))).toBe('Fa♯')
+    expect(noteBarLabel({ pitch: 70 }, F, f({}))).toBe('Si♭')
+    expect(noteBarLabel({ pitch: 66 }, C, f({ accidentals: 'ascii' }))).toBe('Fa#')
+    expect(noteBarLabel({ pitch: 70 }, F, f({ accidentals: 'ascii' }))).toBe('Sib')
+    expect(noteBarLabel({ pitch: 60 }, C, f({ format: 'solfege-octave' }))).toBe('Do4')
+    expect(noteBarLabel({ pitch: 59, spelling: 'Cb' }, C, f({ format: 'solfege-octave' }))).toBe('Do♭4')
+  })
+
+  it("accidentals: 'ascii' keeps tonal's spelling", () => {
+    expect(noteBarLabel({ pitch: 66 }, C, style({ accidentals: 'ascii' }))).toBe('F#')
+    expect(noteBarLabel({ pitch: 62, spelling: 'C##' }, C, style({ accidentals: 'ascii' }))).toBe('C##')
+  })
+
+  it('case: lower', () => {
+    expect(noteBarLabel({ pitch: 66 }, C, style({}, { case: 'lower' }))).toBe('f♯')
+    expect(noteBarLabel({ pitch: 70 }, F, style({ format: 'pitch-octave' }, { case: 'lower' }))).toBe('b♭4')
+    expect(noteBarLabel({ pitch: 60 }, C, style({ format: 'solfege' }, { case: 'lower' }))).toBe('do')
+    expect(noteBarLabel({ pitch: 67 }, C, style({ format: 'solfege' }))).toBe('Sol')
+  })
+
+  it('show: false gives no label', () => {
+    expect(noteBarLabel({ pitch: 60 }, C, style({ show: false }))).toBeNull()
+  })
+
+  it('the cache re-labels when the style object changes', () => {
+    const cache = new NoteBarLabelCache()
+    const n = { id: 1, pitch: 60, startTicks: 0, durTicks: 1, startSec: 0, endSec: 1, velocity: 90, voiceId: 'v' } as NoteEvent
+    expect(cache.get(n, C, style())).toBe('C')
+    expect(cache.get(n, C, style({ format: 'solfege' }))).toBe('Do')
+  })
+})
+
+describe('bar label size and paint', () => {
+  it('barLabelPx multiplies by scale and fits with the scaled size', () => {
+    expect(barLabelPx('C', 20, 200, undefined, 1)).toBeCloseTo(14, 6)
+    expect(barLabelPx('C', 20, 200, undefined, 1.5)).toBeCloseTo(21, 6)
+    expect(barLabelPx('C', 20, 200, undefined, 0.5)).toBeCloseTo(7, 6)
+    expect(barLabelPx('C', 18, 200, undefined, 0.5)).toBe(0)
+    expect(barLabelPx('C', 20, 18, undefined, 1)).toBeCloseTo(14, 6)
+    expect(barLabelPx('C', 20, 18, undefined, 1.5)).toBe(0)
+  })
+
+  it("drawBarLabel with the default paint sets today's font and colours", () => {
+    const { ctx, sets } = stubCtx()
+    drawBarLabel(ctx, 'C', 0, 0, 14, undefined)
+    expect(sets).toContainEqual(['font', '600 14.0px Poppins, sans-serif'])
+    expect(sets).toContainEqual(['strokeStyle', 'rgba(0, 0, 0, 0.35)'])
+    expect(sets).toContainEqual(['fillStyle', '#ffffff'])
+    expect(sets).toContainEqual(['lineWidth', 3])
+  })
+
+  it('a custom paint: family, weight, colours, no stroke at strokeWidth 0', () => {
+    const { ctx, sets, calls } = stubCtx()
+    drawBarLabel(ctx, 'C', 0, 0, 14, undefined, { family: 'Georgia, serif', weight: 700, scale: 1, color: '#123456', strokeColor: '#000', strokeWidth: 0 })
+    expect(sets).toContainEqual(['font', '700 14.0px Georgia, serif'])
+    expect(sets).toContainEqual(['fillStyle', '#123456'])
+    expect(calls.some((c) => c.startsWith('strokeText'))).toBe(false)
+    expect(calls.some((c) => c.startsWith('fillText'))).toBe(true)
   })
 })

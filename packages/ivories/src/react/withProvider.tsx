@@ -7,7 +7,7 @@ import type { IvoriesProviderProps } from './IvoriesProvider'
 /** Props a self-contained component hands to the provider it creates (spec §3.2). */
 export const PROVIDER_KEYS = [
   'score', 'scoreUrl', 'file', 'musicXml', 'midi', 'clock', 'engine', 'audio', 'tempo',
-  'theme', 'look', 'settings', 'fallSeconds', 'liveAudio', 'midiDeviceId', 'sounds',
+  'theme', 'template', 'look', 'settings', 'fallSeconds', 'liveAudio', 'midiDeviceId', 'sounds',
   'bpm', 'liveClock', 'autoStart',
   'onReady', 'onNoteOn', 'onNoteOff', 'onTimeUpdate', 'onError', 'onBpmChange',
 ] as const
@@ -23,7 +23,7 @@ export function withProvider<P extends object>(View: ComponentType<P>, displayNa
     const viewProps: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(props)) {
       if ((PROVIDER_KEYS as readonly string[]).includes(k)) providerProps[k] = v
-      if (!(PROVIDER_KEYS as readonly string[]).includes(k) || k === 'theme') viewProps[k] = v
+      if (!(PROVIDER_KEYS as readonly string[]).includes(k) || k === 'theme' || k === 'template') viewProps[k] = v
     }
     return (
       <IvoriesProvider {...(providerProps as IvoriesProviderProps)}>
