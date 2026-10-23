@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { visibleNotes, heldNotes, drawStage, drawRoll } from './pianoRoll'
 import { drawKeyboard } from './keyboard'
 import { noteColor } from './colors'
+import { drawImpact } from './pianoRoll'
+import { resolveTemplate } from '../template/resolve'
 import { DEFAULT_THEME } from './theme'
 import { stubCtx, state } from './pianoRoll.test-helpers'
 import type { NoteEvent } from '../model/types'
@@ -198,5 +200,33 @@ describe('fill colours', () => {
     drawKeyboard(ctx, { ...state([]), theme }, new Map())
     expect(fillStyles).toContain('#111111')
     expect(fillStyles).toContain('#222222')
+  })
+})
+
+describe('template colour and flash', () => {
+  const pitchState = () => ({ ...state([n(0, 60, 0, 1)]), template: resolveTemplate('chord-cards-crf') })
+
+  it('pitch mode bars are solid palette fills with no gradient stops', () => {
+    const s = pitchState()
+    const { ctx, fillStyles, gradientStops } = stubCtx()
+    drawRoll(ctx, s, 0.5, s.notes)
+    expect(fillStyles).toContain('#f86e6e')
+    expect(gradientStops).toEqual([])
+  })
+
+  it('the note-tinted flash uses the pitch colour in its stops', () => {
+    const s = pitchState()
+    const { ctx, gradientStops } = stubCtx()
+    drawImpact(ctx, s, 0.01, s.notes)
+    expect(gradientStops.some((c) => c.startsWith('rgba(252, 183, 183, '))).toBe(true)
+    expect(gradientStops.some((c) => c.startsWith('rgba(248, 110, 110, '))).toBe(true)
+  })
+
+  it('the white flash is unchanged', () => {
+    const s = state([n(0, 60, 0, 1)])
+    const { ctx, gradientStops } = stubCtx()
+    drawImpact(ctx, s, 0.01, s.notes)
+    expect(gradientStops.length).toBeGreaterThan(0)
+    expect(gradientStops.every((c) => c.startsWith(`rgba(${DEFAULT_THEME.flashCoreRgb}, `) || c.startsWith(`rgba(${DEFAULT_THEME.flashWarmRgb}, `))).toBe(true)
   })
 })

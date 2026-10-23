@@ -1,6 +1,7 @@
 import { drawKeyboard } from './keyboard'
 import { drawBackground, drawImpact, drawProgress, heldNotes, labelBar } from './pianoRoll'
 import { noteColor } from './colors'
+import { barGradient, noteFill } from './noteStyle'
 import { roundRect } from './shapes'
 import { lowerBoundByStart } from '../model/search'
 import type { RenderState } from './pianoRoll'
@@ -48,14 +49,19 @@ export function risingNotes(notes: NoteEvent[], fromSec: number, t: number, maxN
 }
 
 function drawBar(
-  ctx: CanvasRenderingContext2D, k: KeyRect, span: BarSpan, onset: string, tail: string, radius: number,
+  ctx: CanvasRenderingContext2D, state: RenderState, k: KeyRect, span: BarSpan,
+  hue: number, pitch: number, velocity: number, radius: number, gradient: boolean,
 ): void {
   const h = Math.max(1, span.bottom - span.top)
-  const g = ctx.createLinearGradient(0, span.top, 0, span.top + h)
-  // The onset edge is the far (top) edge here, so the full colour sits there.
-  g.addColorStop(0, onset)
-  g.addColorStop(1, tail)
-  ctx.fillStyle = g
+  if (gradient) {
+    const g = ctx.createLinearGradient(0, span.top, 0, span.top + h)
+    // The onset edge is the far (top) edge here, so the full colour sits there.
+    g.addColorStop(0, noteColor(hue, velocity, state.velocity))
+    g.addColorStop(1, noteColor(hue, Math.max(1, velocity - 14), state.velocity))
+    ctx.fillStyle = g
+  } else {
+    ctx.fillStyle = noteFill(state, hue, pitch, velocity)
+  }
   roundRect(ctx, k.x + (k.black ? 0.5 : 1), span.top, k.w - (k.black ? 1 : 2), h, radius)
 }
 
@@ -92,6 +98,7 @@ export function drawRisingStage(
   const vis = risingNotes(state.notes, beats.secAt(nowBeat - visibleBeats), t, state.maxNoteDur)
 
   if (state.showRoll) {
+    const gradient = barGradient(state)
     // White-key bars first, then black-key bars on top (as on the falling roll).
     for (let pass = 0; pass < 2; pass++) {
       for (const n of vis) {
@@ -101,8 +108,7 @@ export function drawRisingStage(
         if ((k.black ? 0 : 1) === pass) continue
         const span = risingSpan(t, nowBeat, beats, n.startSec, n.endSec, hitY, beatPx)
         if (span) {
-          drawBar(ctx, k, span, noteColor(v.hue, n.velocity, state.velocity),
-            noteColor(v.hue, Math.max(1, n.velocity - 14), state.velocity), theme.barRadius)
+          drawBar(ctx, state, k, span, v.hue, n.pitch, n.velocity, theme.barRadius, gradient)
           labelBar(ctx, state, n, k.x + (k.black ? 0.5 : 1), k.w - (k.black ? 1 : 2), span.top, span.bottom, 0, hitY)
         }
       }
@@ -111,8 +117,7 @@ export function drawRisingStage(
         if (!k || (k.black ? 0 : 1) === pass) continue
         const span = risingSpan(t, nowBeat, beats, n.startSec, n.endSec, hitY, beatPx)
         if (span) {
-          drawBar(ctx, k, span, noteColor(theme.liveHue, n.velocity, state.velocity),
-            noteColor(theme.liveHue, Math.max(1, n.velocity - 14), state.velocity), theme.barRadius)
+          drawBar(ctx, state, k, span, theme.liveHue, n.midi, n.velocity, theme.barRadius, gradient)
         }
       }
     }

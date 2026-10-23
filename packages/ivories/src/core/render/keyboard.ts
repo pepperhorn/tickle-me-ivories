@@ -1,4 +1,4 @@
-import { noteColor } from './colors'
+import { noteFill } from './noteStyle'
 import { roundRect, strokeRoundRect } from './shapes'
 import { isTransparent } from './theme'
 import type { NoteEvent } from '../model/types'
@@ -27,8 +27,8 @@ export function drawKeyboard(
     const v = h ? voices.get(h.voiceId) : undefined
     const lv = state.live?.get(k.pitch)
     ctx.fillStyle = lv
-      ? noteColor(theme.liveHue, lv.velocity, state.velocity)
-      : h && v ? noteColor(v.hue, h.velocity, state.velocity) : theme.keyWhite
+      ? noteFill(state, theme.liveHue, k.pitch, lv.velocity)
+      : h && v ? noteFill(state, v.hue, k.pitch, h.velocity) : theme.keyWhite
     const w = Math.max(1, k.w - theme.keyGap)
     roundRect(ctx, k.x, hitY, w, keyboardH, theme.keyRadius)
     if (outlined) {
@@ -71,8 +71,8 @@ export function drawKeyboard(
     const v = h ? voices.get(h.voiceId) : undefined
     const lv = state.live?.get(k.pitch)
     ctx.fillStyle = lv
-      ? noteColor(theme.liveHue, lv.velocity, state.velocity)
-      : h && v ? noteColor(v.hue, h.velocity, state.velocity) : theme.keyBlack
+      ? noteFill(state, theme.liveHue, k.pitch, lv.velocity)
+      : h && v ? noteFill(state, v.hue, k.pitch, h.velocity) : theme.keyBlack
     roundRect(ctx, k.x, hitY, k.w, blackH, theme.keyRadius)
     if (outlined) {
       ctx.strokeStyle = theme.keyOutline

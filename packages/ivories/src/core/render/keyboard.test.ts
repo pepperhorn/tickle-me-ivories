@@ -4,6 +4,7 @@ import { computeLayout } from './geometry'
 import { DEFAULT_THEME } from './theme'
 import { DEFAULT_SCHEME, noteColor } from './colors'
 import { stubCtx, state } from './pianoRoll.test-helpers'
+import { resolveTemplate } from '../template/resolve'
 
 describe('the middle C label', () => {
   it('is drawn when white keys are wide enough to read it', () => {
@@ -83,5 +84,24 @@ describe('drawKeyboard in a horizontal view (R-H)', () => {
     const { ctx, calls } = stubCtx()
     drawKeyboard(ctx, state([]), new Map())
     expect(calls).not.toContain('transform(6)')
+  })
+})
+
+describe('pitch colour mode on the keys', () => {
+  it('pressed and live keys take the pitch colour in pitch mode', () => {
+    const template = resolveTemplate('chord-cards-crf')
+    const held = { pitch: 62, startSec: 0, endSec: 1, velocity: 80, voiceId: 'v' } as never
+    const s = { ...state([]), template, live: new Map([[64, { midi: 64, velocity: 100, time: 0 }]]) }
+    const { ctx, fillStyles } = stubCtx()
+    drawKeyboard(ctx, s, new Map([[62, held]]))
+    expect(fillStyles).toContain('#ffbc57')
+    expect(fillStyles).toContain('#fff56d')
+  })
+
+  it('with no template, live keys still use noteColor(theme.liveHue, ...)', () => {
+    const s = { ...state([]), live: new Map([[64, { midi: 64, velocity: 100, time: 0 }]]) }
+    const { ctx, fillStyles } = stubCtx()
+    drawKeyboard(ctx, s, new Map())
+    expect(fillStyles).toContain(noteColor(s.theme.liveHue, 100, s.velocity))
   })
 })

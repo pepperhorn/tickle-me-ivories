@@ -1,6 +1,7 @@
 import { drawKeyboard } from './keyboard'
 import type { ResolvedTemplate } from '../template/resolve'
 import { FLASH_MS, flashIntensity, noteColor } from './colors'
+import { barGradient, flashRgb, noteFill } from './noteStyle'
 import { roundRect } from './shapes'
 import { barLabelPx, drawBarLabel } from './barLabels'
 import { isTransparent } from './theme'
@@ -93,6 +94,7 @@ export function drawRoll(
   const { layout, voices, fallSeconds, theme } = state
   const pps = layout.hitY / fallSeconds
   const stageH = layout.hitY + layout.keyboardH
+  const gradient = barGradient(state)
 
   // White-key bars first, then black-key bars on top, so accidentals are never
   // hidden behind the naturals beside them.
@@ -110,10 +112,14 @@ export function drawRoll(
       if (bottom <= 0) continue
       const h = Math.max(1, bottom - top)
 
-      const g = ctx.createLinearGradient(0, top, 0, top + h)
-      g.addColorStop(0, noteColor(v.hue, Math.max(1, n.velocity - 14), state.velocity))
-      g.addColorStop(1, noteColor(v.hue, n.velocity, state.velocity))
-      ctx.fillStyle = g
+      if (gradient) {
+        const g = ctx.createLinearGradient(0, top, 0, top + h)
+        g.addColorStop(0, noteColor(v.hue, Math.max(1, n.velocity - 14), state.velocity))
+        g.addColorStop(1, noteColor(v.hue, n.velocity, state.velocity))
+        ctx.fillStyle = g
+      } else {
+        ctx.fillStyle = noteFill(state, v.hue, n.pitch, n.velocity)
+      }
       const x = k.x + (k.black ? 0.5 : 1)
       const w = k.w - (k.black ? 1 : 2)
       roundRect(ctx, x, top, w, h, theme.barRadius)
@@ -126,9 +132,10 @@ export function drawRoll(
 const NO_TRAIL: readonly TrailNote[] = []
 
 /** One key's hit flash at intensity i (0 = nothing). */
-function flashKey(ctx: CanvasRenderingContext2D, state: RenderState, pitch: number, i: number): void {
+function flashKey(ctx: CanvasRenderingContext2D, state: RenderState, pitch: number, i: number,
+  rgb: { core: string; warm: string }): void {
   if (i <= 0.003) return
-  const { layout, theme } = state
+  const { layout } = state
   const k = layout.byPitch.get(pitch)
   if (!k) return
 
@@ -137,21 +144,21 @@ function flashKey(ctx: CanvasRenderingContext2D, state: RenderState, pitch: numb
   const R = Math.max(2, 2.2 * layout.whiteW * i)
 
   const rg = ctx.createRadialGradient(cx, cy, 0, cx, cy, R)
-  rg.addColorStop(0, `rgba(${theme.flashCoreRgb}, ${(0.9 * i).toFixed(3)})`)
-  rg.addColorStop(0.35, `rgba(${theme.flashWarmRgb}, ${(0.34 * i).toFixed(3)})`)
-  rg.addColorStop(1, `rgba(${theme.flashCoreRgb}, 0)`)
+  rg.addColorStop(0, `rgba(${rgb.core}, ${(0.9 * i).toFixed(3)})`)
+  rg.addColorStop(0.35, `rgba(${rgb.warm}, ${(0.34 * i).toFixed(3)})`)
+  rg.addColorStop(1, `rgba(${rgb.core}, 0)`)
   ctx.fillStyle = rg
   ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill()
 
   const bg = ctx.createLinearGradient(0, cy - 26, 0, cy + 20)
-  bg.addColorStop(0, `rgba(${theme.flashCoreRgb}, 0)`)
-  bg.addColorStop(0.5, `rgba(${theme.flashCoreRgb}, ${(0.85 * i).toFixed(3)})`)
-  bg.addColorStop(1, `rgba(${theme.flashCoreRgb}, 0)`)
+  bg.addColorStop(0, `rgba(${rgb.core}, 0)`)
+  bg.addColorStop(0.5, `rgba(${rgb.core}, ${(0.85 * i).toFixed(3)})`)
+  bg.addColorStop(1, `rgba(${rgb.core}, 0)`)
   ctx.fillStyle = bg
   ctx.fillRect(cx - k.w * 0.45, cy - 26, k.w * 0.9, 46)
 
   const len = 1.6 * layout.whiteW * i
-  ctx.strokeStyle = `rgba(${theme.flashCoreRgb}, ${(0.7 * i).toFixed(3)})`
+  ctx.strokeStyle = `rgba(${rgb.core}, ${(0.7 * i).toFixed(3)})`
   ctx.lineWidth = 1
   ctx.lineCap = 'round'
   ctx.beginPath()
@@ -174,9 +181,13 @@ export function drawImpact(
   for (const n of vis) {
     const v = voices.get(n.voiceId)
     if (!v || !v.visible || v.percussion) continue   // percussion never lights keys (§6.1)
-    flashKey(ctx, state, n.pitch, flashIntensity(t - n.startSec, n.velocity) * state.flashScale)
+    flashKey(ctx, state, n.pitch, flashIntensity(t - n.startSec, n.velocity) * state.flashScale,
+      flashRgb(state, v.hue, n.pitch, n.velocity))
   }
-  for (const n of live) flashKey(ctx, state, n.midi, flashIntensity(t - n.startSec, n.velocity) * state.flashScale)
+  for (const n of live) {
+    flashKey(ctx, state, n.midi, flashIntensity(t - n.startSec, n.velocity) * state.flashScale,
+      flashRgb(state, state.theme.liveHue, n.midi, n.velocity))
+  }
   ctx.restore()
 }
 

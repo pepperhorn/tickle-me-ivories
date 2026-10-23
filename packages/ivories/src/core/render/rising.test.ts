@@ -3,6 +3,7 @@ import { drawRisingStage, risingNotes, risingSpan } from './rising'
 import { liveBeatClock, scoreBeatClock } from './beats'
 import { noteColor } from './colors'
 import { DEFAULT_THEME } from './theme'
+import { resolveTemplate } from '../template/resolve'
 import { state } from './pianoRoll.test-helpers'
 import { buildTempoMap } from '../model/tempoMap'
 import type { RisingState } from './rising'
@@ -14,7 +15,7 @@ const n = (id: number, pitch: number, startSec: number, dur: number): NoteEvent 
 
 /** Records bars (roundRect with the gradient stops in force) and grid lines (moveTo). */
 function recorder() {
-  const rects: { x: number; y: number; w: number; h: number; stops: string[] }[] = []
+  const rects: { x: number; y: number; w: number; h: number; stops: string[]; fill: string }[] = []
   const moves: { x: number; y: number; stroke: string }[] = []
   let fill: unknown = null
   let stroke = ''
@@ -25,7 +26,7 @@ function recorder() {
       }
       if (p === 'roundRect') {
         return (x: number, y: number, w: number, h: number) => {
-          rects.push({ x, y, w, h, stops: (fill as { stops?: string[] } | null)?.stops ?? [] })
+          rects.push({ x, y, w, h, stops: (fill as { stops?: string[] } | null)?.stops ?? [], fill: typeof fill === 'string' ? fill : '' })
         }
       }
       if (p === 'moveTo') return (x: number, y: number) => { moves.push({ x, y, stroke }) }
@@ -143,5 +144,20 @@ describe('drawRisingStage', () => {
     const { ctx } = recorder()
     const held = drawRisingStage(ctx, rising({ notes: [n(0, 60, 0, 2)] }), 1, 0)
     expect([...held.keys()]).toEqual([60])
+  })
+})
+
+describe('pitch colour mode', () => {
+  it('pitch mode: score and trail bars are flat palette fills', () => {
+    const { ctx, rects } = recorder()
+    const trail = [{ midi: 62, velocity: 100, startSec: 0, endSec: null }]
+    drawRisingStage(ctx, rising({ template: resolveTemplate('chord-cards-crf'), trail, notes: [n(0, 64, 0, 0.5)] }), 1, 0)
+    const { byPitch } = state([]).layout
+    const score = rects.find((r) => r.x === byPitch.get(64)!.x + 1)!
+    const live = rects.find((r) => r.x === byPitch.get(62)!.x + 1)!
+    expect(score.fill).toBe('#fff56d')
+    expect(score.stops).toEqual([])
+    expect(live.fill).toBe('#ffbc57')
+    expect(live.stops).toEqual([])
   })
 })

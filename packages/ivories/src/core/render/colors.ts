@@ -125,3 +125,27 @@ export function hueForVoiceIndex(i: number, total: number): number {
   if (i < VOICE_HUES.length) return VOICE_HUES[i]
   return Math.round((207 + (i * 360) / Math.max(total, 1)) % 360)
 }
+
+/** `#hex`, `rgb(r, g, b)` and `hsl(h s% l%)` (noteColor's output) to 0-255 channels.
+    Junk gives white rather than NaN. */
+export function rgbOf(color: string): [number, number, number] {
+  const s = color.trim()
+  if (s.startsWith('#')) {
+    return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(s) ? hexToRgb(s) : [255, 255, 255]
+  }
+  const rgb = /^rgba?\(\s*(\d+(?:\.\d+)?)[\s,]+(\d+(?:\.\d+)?)[\s,]+(\d+(?:\.\d+)?)/i.exec(s)
+  if (rgb) return [clamp(Math.round(+rgb[1]), 0, 255), clamp(Math.round(+rgb[2]), 0, 255), clamp(Math.round(+rgb[3]), 0, 255)]
+  const hsl = /^hsla?\(\s*(-?\d+(?:\.\d+)?)(?:deg)?[\s,]+(\d+(?:\.\d+)?)%[\s,]+(\d+(?:\.\d+)?)%/i.exec(s)
+  if (hsl) {
+    const h = (((+hsl[1] % 360) + 360) % 360)
+    const sat = clamp(+hsl[2], 0, 100) / 100
+    const l = clamp(+hsl[3], 0, 100) / 100
+    const a = sat * Math.min(l, 1 - l)
+    const f = (n: number) => {
+      const k = (n + h / 30) % 12
+      return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))))
+    }
+    return [f(0), f(8), f(4)]
+  }
+  return [255, 255, 255]
+}
