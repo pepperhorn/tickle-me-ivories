@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   velocityLightness, noteColor, flashIntensity,
   hueForVoiceIndex, DEFAULT_COLORS, FLASH_MS,
-  gradientColor, hexToRgb, DEFAULT_SCHEME, rgbOf,
+  gradientColor, hexToRgb, DEFAULT_SCHEME, rgbOf, parseRgb,
 } from './colors'
 
 describe('velocityLightness', () => {
@@ -161,6 +161,13 @@ describe('noteColor scheme dispatch', () => {
       expect(Number(m[1])).toBeGreaterThanOrEqual(prev)
       prev = Number(m[1])
     }
+  })
+})
+
+describe('parseRgb', () => {
+  it('returns null for what it cannot parse', () => {
+    expect(parseRgb('#f86e6e')).toEqual([248, 110, 110])
+    for (const c of ['black', 'oklch(0.2 0.1 250)', '#12', '']) expect(parseRgb(c), c).toBeNull()
   })
 })
 

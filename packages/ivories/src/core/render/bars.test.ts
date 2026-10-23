@@ -1,16 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { screenShadowOffset, drawNoteBar } from './bars'
+import { screenShadowSign, drawNoteBar } from './bars'
 import { toScreen } from './orientation'
 import { resolveTemplate } from '../template/resolve'
 import { stubCtx, state } from './pianoRoll.test-helpers'
 
-describe('screenShadowOffset', () => {
+describe('screenShadowSign', () => {
   it('is down-right on screen in both orientations', () => {
-    expect(screenShadowOffset(undefined, 2)).toEqual({ dx: 2, dy: 2 })
-    expect(screenShadowOffset('vertical', 2)).toEqual({ dx: 2, dy: 2 })
-    expect(screenShadowOffset('horizontal', 2)).toEqual({ dx: -2, dy: -2 })
+    expect(screenShadowSign(undefined, 2)).toBe(2)
+    expect(screenShadowSign('vertical', 2)).toBe(2)
+    expect(screenShadowSign('horizontal', 2)).toBe(-2)
     const L = state([]).layout
-    const { dx, dy } = screenShadowOffset('horizontal', 2)
+    const dx = screenShadowSign('horizontal', 2), dy = dx
     const a = toScreen('horizontal', L, 100 + dx, 50 + dy)
     const b = toScreen('horizontal', L, 100, 50)
     expect({ x: a.x - b.x, y: a.y - b.y }).toEqual({ x: 2, y: 2 })
@@ -18,6 +18,22 @@ describe('screenShadowOffset', () => {
 })
 
 describe('drawNoteBar', () => {
+  it('horizontal: the shadow rect is offset (-d, -d) in canonical coords, down-right on screen', () => {
+    const rects: number[][] = []
+    const ctx = {
+      beginPath() {}, fill() {}, stroke() {}, fillRect() {}, strokeRect() {},
+      roundRect(...a: number[]) { rects.push(a) },
+    } as unknown as CanvasRenderingContext2D
+    const s = { ...state([]), orientation: 'horizontal' as const, template: resolveTemplate('chord-cards') }
+    drawNoteBar(ctx, s, 100, 50, 8, 30, '#abcdef')
+    const d = s.template.bars.shadowDepth
+    expect(rects[0].slice(0, 2)).toEqual([100 - d, 50 - d])
+    expect(rects[1].slice(0, 2)).toEqual([100, 50])
+    const a = toScreen('horizontal', s.layout, rects[0][0], rects[0][1])
+    const b = toScreen('horizontal', s.layout, 100, 50)
+    expect({ x: a.x - b.x, y: a.y - b.y }).toEqual({ x: d, y: d })
+  })
+
   it('no template: one fill and one roundRect, nothing else', () => {
     const { ctx, calls, fillStyles } = stubCtx()
     drawNoteBar(ctx, state([]), 10, 20, 8, 30, '#123456')

@@ -76,6 +76,8 @@ A style template restyles the stage, keys, note bars, note colours and labels in
 <Ivories template="chord-cards-crf" />
 ```
 
+The stage text overlays (chord readout, note names) take their colour from the text settings, not the template: on a light-stage template such as `chord-cards`, set the `labels` text colour to something dark. The count-in number follows the template (`stage.countInInk`).
+
 `template` is accepted by `<Ivories>`, `<IvoriesProvider>` and every view (`<Keyboard>`, `<FallingKeys>`, `<RisingKeys>`). Its tokens are written inline on each view's root, so a non-classic template needs no stylesheet from you.
 
 A custom template extends a built-in and overrides only what it names:

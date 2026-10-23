@@ -6,7 +6,7 @@ export type BuiltinTemplateId =
 
 export interface TemplateStage {
   bg?: string; gridLine?: string; gridLineC4?: string; beatLine?: string; barLine?: string
-  middleCMark?: string; progressTrack?: string; progressFill?: string
+  middleCMark?: string; progressTrack?: string; progressFill?: string; countInInk?: string
 }
 
 export interface TemplateRaisedKeys { enabled: boolean; shadowColor: string; shadowDepth: number; lipColor: string; lipDepth: number }

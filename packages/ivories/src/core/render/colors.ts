@@ -127,11 +127,11 @@ export function hueForVoiceIndex(i: number, total: number): number {
 }
 
 /** `#hex`, `rgb(r, g, b)` and `hsl(h s% l%)` (noteColor's output) to 0-255 channels.
-    Junk gives white rather than NaN. */
-export function rgbOf(color: string): [number, number, number] {
+    Anything else (named colours, oklch, junk) gives null. */
+export function parseRgb(color: string): [number, number, number] | null {
   const s = color.trim()
   if (s.startsWith('#')) {
-    return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(s) ? hexToRgb(s) : [255, 255, 255]
+    return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(s) ? hexToRgb(s) : null
   }
   const rgb = /^rgba?\(\s*(\d+(?:\.\d+)?)[\s,]+(\d+(?:\.\d+)?)[\s,]+(\d+(?:\.\d+)?)/i.exec(s)
   if (rgb) return [clamp(Math.round(+rgb[1]), 0, 255), clamp(Math.round(+rgb[2]), 0, 255), clamp(Math.round(+rgb[3]), 0, 255)]
@@ -147,5 +147,10 @@ export function rgbOf(color: string): [number, number, number] {
     }
     return [f(0), f(8), f(4)]
   }
-  return [255, 255, 255]
+  return null
+}
+
+/** parseRgb, but junk gives white rather than NaN. */
+export function rgbOf(color: string): [number, number, number] {
+  return parseRgb(color) ?? [255, 255, 255]
 }

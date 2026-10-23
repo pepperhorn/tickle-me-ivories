@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { noteFill, barGradient, flashRgb } from './noteStyle'
+import { noteFill, barGradient, flashRgb, flashComposite } from './noteStyle'
 import { noteColor, DEFAULT_SCHEME } from './colors'
 import { DEFAULT_THEME } from './theme'
 import { state } from './pianoRoll.test-helpers'
@@ -41,5 +41,16 @@ describe('noteStyle', () => {
     const f = flashRgb(s, 0, 60, 64)
     const [r, g, b] = f.warm.split(', ').map(Number)
     expect(f.core).toBe(`${Math.round((r + 255) / 2)}, ${Math.round((g + 255) / 2)}, ${Math.round((b + 255) / 2)}`)
+  })
+})
+
+describe('flashComposite light-stage detection', () => {
+  const on = (stageBg: string): RenderState => {
+    const s = crf()
+    return { ...s, theme: { ...s.theme, stageBg } }
+  }
+  it('a light parsed stage is source-over; unparsed colours count as dark', () => {
+    expect(flashComposite(on('#fbf8f1'))).toBe('source-over')
+    for (const c of ['black', 'navy', 'oklch(0.2 0.1 250)', 'white']) expect(flashComposite(on(c)), c).toBe('lighter')
   })
 })

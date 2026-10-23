@@ -44,7 +44,7 @@ const DEFAULT_PLATE: TemplateKeyPlate = { ...(CC.plate as TemplateKeyPlate), ena
 const STAGE_TOKENS: Record<string, string> = {
   bg: '--ivories-stage-bg', gridLine: '--ivories-grid-line', gridLineC4: '--ivories-grid-line-c4',
   beatLine: '--ivories-beat-line', barLine: '--ivories-bar-line', middleCMark: '--ivories-middle-c-mark',
-  progressTrack: '--ivories-progress-track', progressFill: '--ivories-progress-fill',
+  progressTrack: '--ivories-progress-track', progressFill: '--ivories-progress-fill', countInInk: '--ivories-count-in-ink',
 }
 const KEY_TOKENS: Record<string, string> = {
   white: '--ivories-key-white', black: '--ivories-key-black', border: '--ivories-key-border',
@@ -77,7 +77,7 @@ function chainOf(t: IvoriesTemplateV1): IvoriesTemplateV1[] {
 function build(t: IvoriesTemplateV1): ResolvedTemplate {
   const chain = chainOf(t)
   // The root of the chain decides the CSS class (a built-in id, or the object's own extends).
-  const rootId: BuiltinTemplateId = t.extends ?? (isBuiltinTemplateId(t.id) && BUILTIN_TEMPLATES[t.id] === t ? t.id : 'classic')
+  const rootId: BuiltinTemplateId = t.extends ?? (isBuiltinTemplateId(t.id) ? t.id : 'classic')
   const cssTheme = CSS_THEME_OF[rootId]
   const tokens: Record<string, string> = {}
   let whiteRadius: number | null = null

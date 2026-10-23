@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { resolveTemplate, isClassicLook, resolveBarLabels, DEFAULT_BAR_LABEL_STYLE } from './resolve'
 import { CRF_PITCH_PALETTE } from './palette'
+import { BUILTIN_TEMPLATES } from './builtins'
 
 const fakeSupports = (_p: string, v: string) => /^(#[0-9a-f]{3,8}|(rgba?|hsla?)\([^()]*\)|transparent)$/i.test(v)
 beforeEach(() => { vi.stubGlobal('CSS', { supports: fakeSupports }) })
@@ -12,12 +13,23 @@ const CARD_TOKENS = {
   '--ivories-stage-bg': '#fbf8f1', '--ivories-grid-line': 'rgba(35,31,32,0.08)', '--ivories-grid-line-c4': 'rgba(35,31,32,0.18)',
   '--ivories-beat-line': 'rgba(35,31,32,0.08)', '--ivories-bar-line': 'rgba(35,31,32,0.2)',
   '--ivories-middle-c-mark': 'rgba(35,31,32,0.55)', '--ivories-progress-track': 'rgba(35,31,32,0.08)',
-  '--ivories-progress-fill': '#231f20', '--ivories-key-white': '#fafafa', '--ivories-key-black': '#222222',
+  '--ivories-progress-fill': '#231f20', '--ivories-count-in-ink': 'rgba(35,31,32,0.3)', '--ivories-key-white': '#fafafa', '--ivories-key-black': '#222222',
   '--ivories-key-border': 'transparent', '--ivories-key-border-width': '1px', '--ivories-key-gap': '1px',
   '--ivories-key-outline': '#333333', '--ivories-bar-radius': '4px',
 }
 
 describe('resolveTemplate', () => {
+  it('a built-in passed as an object (or a JSON copy) resolves like its id', () => {
+    for (const id of ['outline', 'contrast', 'chord-cards'] as const) {
+      for (const obj of [BUILTIN_TEMPLATES[id], JSON.parse(JSON.stringify(BUILTIN_TEMPLATES[id]))]) {
+        const r = resolveTemplate(obj)
+        expect(r.cssTheme, id).toBe(resolveTemplate(id).cssTheme)
+        expect(r.tokens, id).toEqual(resolveTemplate(id).tokens)
+      }
+    }
+    expect(resolveTemplate(BUILTIN_TEMPLATES.outline).cssTheme).toBe('outline')
+  })
+
   it('no template and classic resolve to the same frozen object with no tokens', () => {
     const c = resolveTemplate()
     expect(resolveTemplate(null)).toBe(c)

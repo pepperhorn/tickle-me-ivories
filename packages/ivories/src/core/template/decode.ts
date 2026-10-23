@@ -65,6 +65,7 @@ function decodeStage(u: unknown): TemplateStage | undefined {
   put(s, 'middleCMark', colour(u.middleCMark))
   put(s, 'progressTrack', colour(u.progressTrack))
   put(s, 'progressFill', colour(u.progressFill))
+  put(s, 'countInInk', colour(u.countInInk))
   return s
 }
 

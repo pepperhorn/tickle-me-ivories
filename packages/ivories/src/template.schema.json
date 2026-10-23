@@ -32,7 +32,8 @@
         "barLine": { "$ref": "#/$defs/colour" },
         "middleCMark": { "$ref": "#/$defs/colour" },
         "progressTrack": { "$ref": "#/$defs/colour" },
-        "progressFill": { "$ref": "#/$defs/colour" }
+        "progressFill": { "$ref": "#/$defs/colour" },
+        "countInInk": { "$ref": "#/$defs/colour" }
       }
     },
     "keys": {
@@ -128,7 +129,7 @@
     },
     "chrome": {
       "type": "object",
-      "description": "Extra --ivories-* colour tokens for the surrounding chrome, at most 32.",
+      "description": "Reserved; not applied in v1. Extra --ivories-* colour tokens for the surrounding chrome, at most 32.",
       "maxProperties": 32,
       "additionalProperties": { "$ref": "#/$defs/colour" }
     }

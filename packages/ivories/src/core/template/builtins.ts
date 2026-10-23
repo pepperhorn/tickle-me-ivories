@@ -34,6 +34,7 @@ export const BUILTIN_TEMPLATES: Readonly<Record<BuiltinTemplateId, IvoriesTempla
       middleCMark: 'rgba(35,31,32,0.55)',
       progressTrack: 'rgba(35,31,32,0.08)',
       progressFill: INK,
+      countInInk: 'rgba(35,31,32,0.3)',
     },
     keys: {
       white: '#fafafa', black: '#222222', border: 'transparent', borderWidth: 1, gap: 1,

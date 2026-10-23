@@ -1,4 +1,4 @@
-import { noteColor, rgbOf } from './colors'
+import { noteColor, parseRgb, rgbOf } from './colors'
 import type { RenderState } from './pianoRoll'
 import { isTransparent, type Theme } from './theme'
 
@@ -57,8 +57,9 @@ function lightStage(theme: Theme): boolean {
   if (v === undefined) {
     if (isTransparent(theme.stageBg)) v = false
     else {
-      const [r, g, b] = rgbOf(theme.stageBg)
-      v = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.5
+      // An unparseable colour (named, oklch...) counts as dark: keep 'lighter'.
+      const c = parseRgb(theme.stageBg)
+      v = c !== null && (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255 > 0.5
     }
     lightStageCache.set(theme, v)
   }
