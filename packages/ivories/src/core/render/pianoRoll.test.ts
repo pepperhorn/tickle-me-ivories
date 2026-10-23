@@ -265,6 +265,28 @@ describe('note-tinted flash cost and hand mode', () => {
   })
 })
 
+describe('flash composite on a light stage', () => {
+  // Additive 'lighter' over a paper stage (#fbf8f1) clamps even a faint flash
+  // to pure white: the beam rectangle showed as a stray white box above the
+  // keys in the chord-cards-crf e2e shots.
+  const paper = { ...DEFAULT_THEME, stageBg: '#fbf8f1' }
+  const ops = (s: ReturnType<typeof state>) => {
+    const { ctx, sets } = stubCtx()
+    drawImpact(ctx, s, 0.01, s.notes)
+    return sets.filter(([k]) => k === 'globalCompositeOperation').map(([, v]) => v)
+  }
+
+  it('chord-cards-crf on its paper stage draws the flash source-over, never lighter', () => {
+    const s = { ...state([n(0, 60, 0, 1)]), theme: paper, template: resolveTemplate('chord-cards-crf') }
+    expect(ops(s)).toEqual(['source-over'])
+  })
+
+  it('no template keeps lighter, even on a light stage; a template on a dark stage keeps lighter', () => {
+    expect(ops({ ...state([n(0, 60, 0, 1)]), theme: paper })).toEqual(['lighter'])
+    expect(ops({ ...state([n(0, 60, 0, 1)]), template: resolveTemplate('chord-cards-crf') })).toEqual(['lighter'])
+  })
+})
+
 describe('bar outline and shadow', () => {
   it('bars under chord-cards-crf draw shadow + fill + outline per bar', () => {
     const { ctx, calls } = stubCtx()

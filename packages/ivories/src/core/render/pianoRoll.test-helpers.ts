@@ -48,7 +48,8 @@ export function stubCtx() {
         // actually filled with (F45). Only string assignments are recorded;
         // a CanvasGradient object is asserted on via `gradientStops` instead.
         if (prop === 'fillStyle' && typeof value === 'string') fillStyles.push(value)
-        if (prop === 'font' || prop === 'strokeStyle' || prop === 'fillStyle' || prop === 'lineWidth') sets.push([prop, value])
+        if (prop === 'font' || prop === 'strokeStyle' || prop === 'fillStyle' || prop === 'lineWidth' ||
+          prop === 'globalCompositeOperation') sets.push([prop, value])
         return true
       },
     }),

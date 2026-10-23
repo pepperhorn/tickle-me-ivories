@@ -1,7 +1,7 @@
 import { drawKeyboard } from './keyboard'
 import type { ResolvedTemplate } from '../template/resolve'
 import { FLASH_MS, flashIntensity, noteColor } from './colors'
-import { barGradient, flashRgb, noteFill } from './noteStyle'
+import { barGradient, flashComposite, flashRgb, noteFill } from './noteStyle'
 import { drawNoteBar } from './bars'
 import { barLabelPx, drawBarLabel } from './barLabels'
 import type { BarLabelPaint } from './barLabels'
@@ -183,7 +183,7 @@ export function drawImpact(
 ): void {
   const { voices } = state
   ctx.save()
-  ctx.globalCompositeOperation = 'lighter'
+  ctx.globalCompositeOperation = flashComposite(state)   // 'lighter' unless a template sits on a light stage
   for (const n of vis) {
     const v = voices.get(n.voiceId)
     if (!v || !v.visible || v.percussion) continue   // percussion never lights keys (§6.1)

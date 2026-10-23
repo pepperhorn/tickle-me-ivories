@@ -1,6 +1,6 @@
 import { noteColor, rgbOf } from './colors'
 import type { RenderState } from './pianoRoll'
-import type { Theme } from './theme'
+import { isTransparent, type Theme } from './theme'
 
 /** The colour of a note bar or lit key. Pitch mode is a palette lookup by pitch
     class (flat, whatever the velocity); otherwise exactly today's noteColor. */
@@ -47,4 +47,34 @@ export function flashRgb(state: RenderState, hue: number, pitch: number, velocit
     warm: `${r}, ${g}, ${b}`,
     core: `${Math.round((r + 255) / 2)}, ${Math.round((g + 255) / 2)}, ${Math.round((b + 255) / 2)}`,
   }
+}
+
+const lightStageCache = new WeakMap<Theme, boolean>()
+
+/** True when the theme's stage is opaque and light (luma above half). Cached per theme. */
+function lightStage(theme: Theme): boolean {
+  let v = lightStageCache.get(theme)
+  if (v === undefined) {
+    if (isTransparent(theme.stageBg)) v = false
+    else {
+      const [r, g, b] = rgbOf(theme.stageBg)
+      v = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.5
+    }
+    lightStageCache.set(theme, v)
+  }
+  return v
+}
+
+/**
+ * The hit flash's composite op. 'lighter' (additive) is today's look and only
+ * reads on a dark stage: on a light one (chord-cards' #fbf8f1 paper) any flash,
+ * however faint, adds past 255 and clamps to pure white, so the flash's beam
+ * rectangle showed as a hard-edged white box above the keys. Under a template
+ * on a light stage the flash paints 'source-over' instead, so its tint and
+ * alpha fade over the paper. No template (and the classic template, which never
+ * reaches here) keeps 'lighter' whatever the stage, so the default look is
+ * pixel-identical; a transparent stage keeps 'lighter' too (OBS compositing).
+ */
+export function flashComposite(state: RenderState): GlobalCompositeOperation {
+  return state.template && lightStage(state.theme) ? 'source-over' : 'lighter'
 }
