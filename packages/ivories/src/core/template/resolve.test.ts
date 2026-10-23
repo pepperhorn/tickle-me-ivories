@@ -50,6 +50,8 @@ describe('resolveTemplate', () => {
     expect(r.tokens).toEqual(CARD_TOKENS)
     expect(r.cssTheme).toBe('classic')
     expect(r.keys.whiteRadius).toBe(3)
+    expect(r.colour.mode).toBe('hand')
+    expect(r.flash.tint).toBe('note')
     expect(isClassicLook(r)).toBe(false)
   })
 

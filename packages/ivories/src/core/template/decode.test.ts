@@ -43,6 +43,7 @@ describe('built-in templates', () => {
     expect(cc.keys?.plate).toEqual({ enabled: true, fill: '#ffffff', borderColor: '#231f20', borderWidth: 2, shadowColor: '#231f20', shadowDepth: 4, padding: 6 })
     expect(cc.bars).toEqual({ radius: 4, outlineColor: '#231f20', outlineWidth: 1.5, shadowColor: '#231f20', shadowDepth: 2, shading: 'flat' })
     expect(cc.stage?.bg).toBe('#fbf8f1')
+    expect(cc.flash).toEqual({ tint: 'note' })   // the flash must stay visible on the paper stage
     expect(BUILTIN_TEMPLATES['chord-cards-crf']).toEqual({
       v: 1, kind: 'ivories-template', id: 'chord-cards-crf', name: 'Chord cards + CRF colours',
       extends: 'chord-cards', colour: { mode: 'pitch' }, flash: { tint: 'note' },

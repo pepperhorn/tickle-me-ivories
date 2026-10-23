@@ -43,7 +43,7 @@ export const BUILTIN_TEMPLATES: Readonly<Record<BuiltinTemplateId, IvoriesTempla
     },
     bars: { radius: 4, outlineColor: INK, outlineWidth: 1.5, shadowColor: INK, shadowDepth: 2, shading: 'flat' },
     colour: { mode: 'hand' },
-    flash: { tint: 'white' },
+    flash: { tint: 'note' },
   }),
   'chord-cards-crf': base('chord-cards-crf', 'Chord cards + CRF colours', {
     extends: 'chord-cards', colour: { mode: 'pitch' }, flash: { tint: 'note' },

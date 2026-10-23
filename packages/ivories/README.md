@@ -66,7 +66,7 @@ A style template restyles the stage, keys, note bars, note colours and labels in
 | --- | --- |
 | `classic` | the default dark stage |
 | `classic-crf` | classic, notes coloured by pitch class (CRF palette) |
-| `chord-cards` | cream stage, outlined raised keys on an ink plate, flat outlined bars with a hard shadow |
+| `chord-cards` | cream stage, outlined raised keys on an ink plate, flat outlined bars with a hard shadow, key flash tinted by the hand colour |
 | `chord-cards-crf` | chord cards with pitch-class colours |
 | `outline` | the outline preset |
 | `contrast` | the high-contrast preset |
