@@ -140,7 +140,13 @@ export function StageView(p: StageViewProps & StageViewKindProps) {
 
   // Everything the frame callback reads, without re-subscribing per change.
   // An explicit per-view theme without a template shows that preset, even over a look's template.
-  const ref = p.template ?? (p.theme ? undefined : iv.settings.theme.template)
+  // An object template is keyed by its JSON: settings recomputes (a volume drag)
+  // clone it, and a new identity would re-decode it and reset the label cache.
+  const refIn = p.template ?? (p.theme ? undefined : iv.settings.theme.template)
+  const refKey = typeof refIn === 'object' && refIn !== null ? JSON.stringify(refIn) : refIn
+  const refInput = useRef(refIn); refInput.current = refIn
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const ref = useMemo(() => refInput.current, [refKey])
   const tpl = useMemo(() => resolveTemplate(ref), [ref])
   // The label cache resets on the identity of `labels`, and the renderer re-reads `paint` by
   // identity: both are memoised on primitives (the style input is keyed by its JSON, so an

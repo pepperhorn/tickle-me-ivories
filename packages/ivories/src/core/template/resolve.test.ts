@@ -30,6 +30,13 @@ describe('resolveTemplate', () => {
     expect(resolveTemplate(BUILTIN_TEMPLATES.outline).cssTheme).toBe('outline')
   })
 
+  it("a user template that only borrows a built-in's id does not inherit that preset", () => {
+    const r = resolveTemplate(t({ id: 'outline', name: 'Mine', stage: { bg: '#123456' } }))
+    expect(r.cssTheme).toBe('classic')
+    expect(r.tokens).toEqual({ '--ivories-stage-bg': '#123456' })
+    expect(resolveTemplate(t({ id: 'outline', extends: 'outline' })).cssTheme).toBe('outline')
+  })
+
   it('no template and classic resolve to the same frozen object with no tokens', () => {
     const c = resolveTemplate()
     expect(resolveTemplate(null)).toBe(c)

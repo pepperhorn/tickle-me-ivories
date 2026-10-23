@@ -76,8 +76,9 @@ function chainOf(t: IvoriesTemplateV1): IvoriesTemplateV1[] {
 
 function build(t: IvoriesTemplateV1): ResolvedTemplate {
   const chain = chainOf(t)
-  // The root of the chain decides the CSS class (a built-in id, or the object's own extends).
-  const rootId: BuiltinTemplateId = t.extends ?? (isBuiltinTemplateId(t.id) ? t.id : 'classic')
+  // The root of the chain decides the CSS class: a built-in's own id, else the
+  // object's extends. A user object that only borrows a built-in id is not that preset.
+  const rootId: BuiltinTemplateId = t.extends ?? (isBuiltinTemplateId(t.id) && t === BUILTIN_TEMPLATES[t.id] ? t.id : 'classic')
   const cssTheme = CSS_THEME_OF[rootId]
   const tokens: Record<string, string> = {}
   let whiteRadius: number | null = null
@@ -146,6 +147,10 @@ export function resolveTemplate(ref?: TemplateRef | null): ResolvedTemplate {
     return r
   }
   if (typeof ref !== 'object') return classic()
+  // A built-in passed as an object, or an exact copy of one, resolves as its id.
+  const id = (ref as { id?: unknown }).id
+  if (typeof id === 'string' && isBuiltinTemplateId(id) &&
+    (ref === BUILTIN_TEMPLATES[id] || JSON.stringify(ref) === JSON.stringify(BUILTIN_TEMPLATES[id]))) return resolveTemplate(id)
   const hit = objectCache.get(ref)
   if (hit) return hit
   let r: ResolvedTemplate

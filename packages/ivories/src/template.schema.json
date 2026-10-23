@@ -2,17 +2,19 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://unpkg.com/ivories/dist/template.schema.json",
   "title": "Ivories style template v1",
-  "description": "A style template for ivories. Unknown keys are ignored when loaded; invalid colours and fonts are dropped and numbers are clamped to the ranges below. Serialized size is at most 16 KiB.",
+  "description": "A style template for ivories. This schema is strict: every block is closed, so an unknown key fails validation (the loader is lenient and drops it). When loaded, invalid colours and fonts are dropped and numbers are clamped to the ranges below. Serialized size is at most 16 KiB.",
   "type": "object",
   "required": ["v", "kind", "id", "name"],
   "additionalProperties": false,
   "$defs": {
     "colour": {
       "type": "string",
+      "maxLength": 64,
       "description": "A CSS colour: hex, rgb()/rgba(), hsl()/hsla(), a named colour or transparent. Anything the browser rejects is dropped."
     }
   },
   "properties": {
+    "$schema": { "type": "string" },
     "v": { "const": 1 },
     "kind": { "const": "ivories-template" },
     "id": { "type": "string", "pattern": "^[a-z0-9-]{1,48}$" },
@@ -116,7 +118,7 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "family": { "type": "string", "description": "A font family name; unsafe names are dropped." },
+            "family": { "type": "string", "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9 ]{0,63}$", "description": "A Google Fonts family name: letters, digits and spaces. Unsafe names are dropped." },
             "weight": { "type": "number", "minimum": 100, "maximum": 900 },
             "scale": { "type": "number", "minimum": 0.5, "maximum": 1.5 },
             "color": { "$ref": "#/$defs/colour" },

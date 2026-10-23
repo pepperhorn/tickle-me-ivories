@@ -3,9 +3,11 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { BUILTIN_TEMPLATE_IDS, BUILTIN_TEMPLATES } from './builtins'
 import { TEMPLATE_RANGES } from './decode'
+import { FONT_FAMILY_RE } from '../settings/safeValues'
 
 type Node = { type?: string; properties?: Record<string, Node>; additionalProperties?: unknown; required?: string[]
-  enum?: unknown[]; pattern?: string; minItems?: number; maxItems?: number; minimum?: number; maximum?: number }
+  enum?: unknown[]; pattern?: string; minItems?: number; maxItems?: number; minimum?: number; maximum?: number
+  maxLength?: number; description?: string; $defs?: Record<string, Node> }
 const schema = JSON.parse(readFileSync(new URL('../../template.schema.json', import.meta.url), 'utf8')) as Node
 const props = schema.properties!
 
@@ -48,5 +50,21 @@ describe('template.schema.json', () => {
     check(props.keys.properties!.plate, R.plate, 'plate')
     check(props.bars, R.bars, 'bars')
     check(props.labels.properties!.font, R.labels, 'labels')
+  })
+
+  it('allows the $schema key the README example uses (the root is closed)', () => {
+    expect(schema.additionalProperties).toBe(false)
+    expect(props.$schema).toEqual({ type: 'string' })
+  })
+
+  it('caps colours and font families like the codec', () => {
+    expect(schema.$defs!.colour.maxLength).toBe(64)
+    const family = props.labels.properties!.font.properties!.family
+    expect(family.pattern).toBe(FONT_FAMILY_RE.source)
+    expect(family.maxLength).toBe(64)
+  })
+
+  it('does not claim unknown keys are accepted, since every block is closed', () => {
+    expect(schema.description).not.toMatch(/unknown keys are ignored/i)
   })
 })

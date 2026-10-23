@@ -8,7 +8,15 @@ const MAX_COLOR_CHARS = 64
     parentheses, or a bare keyword. Only the fallback where the browser cannot
     be asked (jsdom has no CSS.supports); it is a shape check, not a parser. */
 const COLOR_SYNTAX =
-  /^(#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})|(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\([^()]*\)|[a-z]+)$/i
+  /^(#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})|(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\([^();:{}"'\\<>]*\)|[a-z]+)$/i
+
+/** Characters no colour contains that could end the CSS declaration (or the
+    style attribute) a colour is spread into. Refused before either check. */
+const UNSAFE_CHARS = /[;{}"'\\<>:]/
+
+/** CSS-wide keywords and substitution functions: valid for `color` in CSS,
+    but the canvas ignores them (keeping its previous fill). */
+const NOT_PAINTABLE = /^(inherit|initial|unset|revert|revert-layer)$|(var|env|attr)\(/i
 
 /**
  * Whether a string is a colour the browser will actually paint. A string that
@@ -21,6 +29,7 @@ export function isCssColor(v: string): boolean {
   // Spec §8.5 caps colours at 64 characters; nothing a colour picker makes
   // comes close, and it bounds what an untrusted payload can hand the browser.
   if (v.length > MAX_COLOR_CHARS) return false
+  if (UNSAFE_CHARS.test(v) || NOT_PAINTABLE.test(v.trim())) return false
   const css = (globalThis as { CSS?: { supports?: (prop: string, value: string) => boolean } }).CSS
   if (typeof css?.supports === 'function') return css.supports('color', v)
   return COLOR_SYNTAX.test(v.trim())

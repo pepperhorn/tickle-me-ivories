@@ -406,6 +406,31 @@ describe('isCssColor', () => {
     for (const v of ['', ' ', '#12345', '#ggg', 'not a colour!', 'url(javascript:1)', 'red; background: x', 'rgb(1,2'])
       expect(isCssColor(v), v).toBe(false)
   })
+
+  const INJECTIONS = [
+    'rgb(0;position:fixed;inset:0;z-index:9;x:)', 'rgb(0:0)', 'rgb(0{}0)', 'rgb("0")', "rgb('0')",
+    'rgb(0\\0)', 'rgb(<b>)', 'red;x', 'a:b',
+  ]
+
+  it('refuses a declaration break-out in the fallback (SSR: no CSS.supports)', () => {
+    vi.stubGlobal('CSS', undefined)
+    for (const v of INJECTIONS) expect(isCssColor(v), v).toBe(false)
+  })
+
+  it('refuses a declaration break-out even when the browser would accept it', () => {
+    vi.stubGlobal('CSS', { supports: () => true })
+    for (const v of INJECTIONS) expect(isCssColor(v), v).toBe(false)
+  })
+
+  it('refuses CSS-wide keywords and substitution functions the canvas ignores, keeps currentcolor', () => {
+    for (const css of [undefined, { supports: () => true }]) {
+      vi.stubGlobal('CSS', css)
+      for (const v of ['inherit', 'initial', 'unset', 'revert', 'revert-layer', 'INHERIT', ' unset ',
+        'var(--x)', 'env(safe-area-inset-top)', 'attr(data-c)', 'rgb(var(--r) 0 0)', 'VAR(--x)'])
+        expect(isCssColor(v), v).toBe(false)
+      expect(isCssColor('currentcolor')).toBe(true)
+    }
+  })
 })
 
 // spec §8.5 requires at least 2 gradient stops; more than 16 keeps the

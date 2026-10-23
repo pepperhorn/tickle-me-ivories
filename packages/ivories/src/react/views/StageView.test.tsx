@@ -227,6 +227,24 @@ describe('StageView template (Review Focus 3, 5)', () => {
   })
 })
 
+describe('StageView template identity', () => {
+  it('an equal template object with a new identity keeps the resolved template (no re-decode)', async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
+      (() => stubCtx().ctx) as unknown as typeof HTMLCanvasElement.prototype.getContext,
+    )
+    const spy = vi.spyOn(StageRenderer.prototype, 'draw')
+    const tplOf = () => ({ v: 1 as const, kind: 'ivories-template' as const, id: 'mine', name: 'Mine', stage: { bg: '#123456' } })
+    const score = doc(); const engine = fakeEngine()
+    const { rerender } = render(<FallingKeys score={score} engine={engine} template={tplOf()} />)
+    await waitFor(() => expect(spy).toHaveBeenCalled())
+    const first = (spy.mock.calls[spy.mock.calls.length - 1][4] as { template: unknown }).template
+    spy.mockClear()
+    rerender(<FallingKeys score={score} engine={engine} template={tplOf()} />)
+    await waitFor(() => expect(spy).toHaveBeenCalled())
+    expect((spy.mock.calls[spy.mock.calls.length - 1][4] as { template: unknown }).template).toBe(first)
+  })
+})
+
 describe('StageView note bar labels', () => {
   const drawn = async (ui: React.ReactElement) => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
