@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.0 - 2026-10-23
+
+### Added
+
+- Style templates: one plain-data option that changes the whole look (stage, keys, key lift and lip, held keys, label plate, bars, hit flash, bar labels, pitch colours). Seven built-ins (`classic`, `classic-crf`, `chord-cards`, `chord-cards-crf`, `outline`, `contrast`, `transparent`) and a `template` prop on `<Ivories>` taking a built-in id or an inline template object.
+- CRF pitch palette (`CRF_PITCH_PALETTE`) and a pitch colour mode that colours bars and flashes by pitch class.
+- Flat bar shading, and a note-tinted hit flash.
+- Chord cards keys: lifted raised keys with a lip, darker held keys, a label plate with ink borders and a hard shadow.
+- `noteBarLabelStyle` (type `BarLabelStyleInput`): font family, weight, scale and format for bar labels, including solfège (`'solfege'`, `'solfege-octave'`).
+- `decodeTemplate`, `resolveTemplate`, `BUILTIN_TEMPLATES` and `CRF_PITCH_PALETTE` from `ivories/core`.
+- `ivories/template.schema.json`, the JSON Schema for templates.
+- `ThemeSettings.template`, saved in looks and profiles. Older saves without it load unchanged; a corrupt, unknown or oversize template is dropped and the rest of the look loads.
+
+### Changed
+
+- An explicit `theme` prop now clears a template that came from a look.
+- Under the chord-cards template, the hit flash takes the note colour and draws normally (source-over) on light stages.
+
 ## 0.2.0 - 2026-10-22
 
 0.1.1 was never published; its changes are folded in here.

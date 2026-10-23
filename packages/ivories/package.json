@@ -1,6 +1,6 @@
 {
   "name": "ivories",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Falling keys, keyboard, notation and stage layouts for React, on one shared clock.",
   "license": "MIT",
   "repository": {
