@@ -1,3 +1,6 @@
+/* ivories sits above Tailwind's preflight (base) so its buttons and inputs keep their
+ * styles, and below components/utilities so utilities still win. */
+@layer theme, base, ivories, components, utilities;
 @import "tailwindcss";
 /* The Weight slider (TextSettings) offers 300-900 in steps of 100; every
  * weight it can select must be bundled here, or StageText's "Poppins is

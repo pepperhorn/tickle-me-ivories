@@ -26,7 +26,7 @@ describe('Notation without pepperscore (spec §4.3, §8)', () => {
         <Keyboard />
       </IvoriesProvider>,
     )
-    expect((await screen.findByRole('alert')).textContent).toMatch(/pepperscore 0.2/)
+    expect((await screen.findByRole('alert')).textContent).toMatch(/pepperscore 0\.3 or later/)
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'notation-unavailable' }))
     expect(container.querySelector('.ivories-keyboard')).not.toBeNull()
   })

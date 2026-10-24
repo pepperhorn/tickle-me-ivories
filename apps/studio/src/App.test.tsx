@@ -19,7 +19,7 @@ import { sceneFromState } from 'ivories/core'
 import { lookFromSettings } from 'ivories/core'
 import type { SceneV2 } from 'ivories/core'
 
-// The engine owns an AudioContext and smplr, neither of which jsdom has. The
+// The engine owns an AudioContext and pepperscore/audio instruments, neither of which jsdom has. The
 // fake records what App asks of it; everything App decides is still real.
 const clicks = vi.hoisted(() => [] as { time: number; accent: boolean }[])
 const engine = vi.hoisted(() => ({
@@ -35,6 +35,8 @@ const engine = vi.hoisted(() => ({
   noteOn: vi.fn(),
   noteOff: vi.fn(),
   prepareLive: vi.fn(async () => {}),
+  setMetronomeVoice: vi.fn(),
+  prepareMetronome: vi.fn(async () => {}),
   // Records the metronome's clicks instead of building oscillators.
   metronome: () => ({ click: (time: number, accent: boolean) => { clicks.push({ time, accent }) }, stop: () => {} }),
 }))

@@ -19,11 +19,15 @@ export function fakeEngine(src = { currentTime: 0 }) {
     noteOff: vi.fn(),
     prepareLive: vi.fn(async () => {}),
     setSounds: vi.fn(async () => {}),
+    setMetronomeVoice: vi.fn(),
+    prepareMetronome: vi.fn(async () => {}),
   } as unknown as AudioEngine & {
     play: ReturnType<typeof vi.fn>
     noteOn: ReturnType<typeof vi.fn>
     noteOff: ReturnType<typeof vi.fn>
     prepareLive: ReturnType<typeof vi.fn>
     setSounds: ReturnType<typeof vi.fn>
+    setMetronomeVoice: ReturnType<typeof vi.fn>
+    prepareMetronome: ReturnType<typeof vi.fn>
   }
 }

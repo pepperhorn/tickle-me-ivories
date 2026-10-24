@@ -17,10 +17,12 @@ export function canonicalSize(o: Orientation | undefined, w: number, h: number):
   return o === 'horizontal' ? [h, w] : [w, h]
 }
 
-/** The orientation a view actually draws in: only the falling and rising rolls
-    turn (R-H); the keyboard-only view (and anything else) is always vertical. */
+/** The orientation a view actually draws in: only the rising roll turns (R-H).
+    Falling is vertical only (user ruling 2026-10-22: a horizontal roll's tiles
+    emanate from the keys, which is the rising roll), so a horizontal falling
+    view -- deprecated -- draws vertical; so do the keyboard and anything else. */
 export function viewOrientation(view: string, o: Orientation | undefined): Orientation | undefined {
-  return view === 'falling' || view === 'rising' ? o : undefined
+  return view === 'rising' ? o : undefined
 }
 
 /** The canonical frame a layout was computed for. */

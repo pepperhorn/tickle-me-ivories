@@ -41,12 +41,75 @@ describe('Transport (spec §4)', () => {
     expect(clock.playing).toBe(false)
   })
 
-  it('the seek bar seeks and the tempo slider sets the clock rate', async () => {
+  it('the seek bar seeks and the tempo slider, in BPM, scales the clock rate', async () => {
     const { clock } = setup()
     fireEvent.change(await screen.findByLabelText('Seek'), { target: { value: '2.5' } })
     expect(clock.now()).toBeCloseTo(2.5, 9)
-    fireEvent.change(screen.getByLabelText('Tempo'), { target: { value: '0.5' } })
+    // The score is at 120 BPM: 60 BPM is half speed.
+    fireEvent.change(screen.getByLabelText('Tempo'), { target: { value: '60' } })
     expect(clock.rate).toBe(0.5)
+  })
+
+  it('shows the tempo as "♩ = BPM" at the playhead, rate applied; the field sets it', async () => {
+    const { clock } = setup()
+    const field = await screen.findByLabelText('Tempo in BPM') as HTMLInputElement
+    expect(field.value).toBe('120')
+    expect(document.querySelector('.ivories-tempo-note')!.textContent).toBe('\u2669 =')
+    act(() => clock.setRate(0.8))
+    await waitFor(() => expect(field.value).toBe('96'))
+    fireEvent.focus(field)
+    fireEvent.change(field, { target: { value: '180' } })
+    expect(clock.rate).toBeCloseTo(1.5, 9)
+    fireEvent.change(field, { target: { value: '9' } })   // half-typed / out of range: not committed
+    expect(clock.rate).toBeCloseTo(1.5, 9)
+    fireEvent.blur(field)
+    await waitFor(() => expect(field.value).toBe('180'))
+  })
+
+  it('follows the tempo map: the BPM shown is the one at the playhead, and the control scales the whole map', async () => {
+    const m = new Midi()
+    m.header.tempos.push({ ticks: 0, bpm: 120 }, { ticks: m.header.ppq * 4, bpm: 60 })
+    m.header.update()
+    m.addTrack().addNote({ midi: 60, ticks: 0, durationTicks: m.header.ppq * 8, velocity: 0.8 })
+    const score = parseMidi(new Uint8Array(m.toArray()).buffer as ArrayBuffer, 'rit.mid', { mode: 'scale', scale: 1 })
+    const clock = new AudioClock({ currentTime: 0 })
+    render(<IvoriesProvider score={score} clock={clock} engine={fakeEngine()}><Transport /></IvoriesProvider>)
+    const field = await screen.findByLabelText('Tempo in BPM') as HTMLInputElement
+    expect(field.value).toBe('120')
+    act(() => clock.seek(3))   // bar 2: 60 BPM
+    await waitFor(() => expect(field.value).toBe('60'))
+    fireEvent.change(screen.getByLabelText('Tempo'), { target: { value: '90' } })
+    expect(clock.rate).toBeCloseTo(1.5, 9)
+    act(() => clock.seek(1))   // back in bar 1: 120 x 1.5
+    await waitFor(() => expect(field.value).toBe('180'))
+  })
+
+  it('shows the time signature at the playhead and follows a change', async () => {
+    const m = new Midi()
+    m.header.setTempo(120)
+    m.header.timeSignatures.push({ ticks: 0, timeSignature: [3, 4] }, { ticks: m.header.ppq * 3, timeSignature: [6, 8] })
+    m.header.update()
+    m.addTrack().addNote({ midi: 60, ticks: 0, durationTicks: m.header.ppq * 9, velocity: 0.8 })
+    const score = parseMidi(new Uint8Array(m.toArray()).buffer as ArrayBuffer, 'ts.mid', { mode: 'scale', scale: 1 })
+    const clock = new AudioClock({ currentTime: 0 })
+    render(<IvoriesProvider score={score} clock={clock} engine={fakeEngine()}><Transport /></IvoriesProvider>)
+    const meter = await screen.findByRole('img', { name: 'Time signature 3/4' })
+    expect(meter.querySelector('.ivories-meter-value')!.textContent).toBe('3/4')
+    act(() => clock.seek(2))   // bar 2: 6/8
+    await screen.findByRole('img', { name: 'Time signature 6/8' })
+  })
+
+  it('the metronome sound select defaults to Woodblock and sets the setting', async () => {
+    let iv: ReturnType<typeof useIvories> | null = null
+    function Probe() { iv = useIvories(); return null }
+    const engine = fakeEngine()
+    render(<IvoriesProvider score={doc()} clock={new AudioClock({ currentTime: 0 })} engine={engine}><Transport /><Probe /></IvoriesProvider>)
+    const select = await screen.findByLabelText('Metronome sound') as HTMLSelectElement
+    expect(select.value).toBe('woodblock')
+    expect([...select.options].map((o) => o.textContent)).toEqual(['Woodblock', 'Drum machine', 'Click'])
+    fireEvent.change(select, { target: { value: 'drum-machine' } })
+    await waitFor(() => expect(iv!.settings.audio.metronomeVoice).toBe('drum-machine'))
+    expect(engine.setMetronomeVoice).toHaveBeenLastCalledWith('drum-machine')
   })
 
   it('controls overrides hide pieces', async () => {
@@ -55,6 +118,7 @@ describe('Transport (spec §4)', () => {
     expect(screen.queryByLabelText('Seek')).toBeNull()
     expect(screen.queryByLabelText('Tempo')).toBeNull()
     expect(screen.queryByLabelText('Metronome')).toBeNull()
+    expect(screen.queryByLabelText('Metronome sound')).toBeNull()
   })
 
   it('offers "Tap to enable sound" while the clock runs silently', async () => {
@@ -144,5 +208,44 @@ describe('Transport time display in live mode (final review 5)', () => {
     await waitFor(() => expect(iv!.clock.playing).toBe(true))
     fireEvent.click(await screen.findByRole('button', { name: 'Pause' }))
     expect(iv!.clock.playing).toBe(false)
+  })
+})
+
+describe('Transport controls look (0.1.1 pepperscore restyle)', () => {
+  it('the play button is an icon button whose accessible name tracks Play/Pause', async () => {
+    const { clock } = setup()
+    const play = await screen.findByRole('button', { name: 'Play' })
+    expect(play.classList.contains('ivories-transport-play')).toBe(true)
+    expect(play.classList.contains('ivories-btn-play')).toBe(true)
+    const icon = play.querySelector('svg')!
+    expect(icon.getAttribute('aria-hidden')).toBe('true')
+    fireEvent.click(play)
+    await waitFor(() => expect(clock.playing).toBe(true))
+    const pause = await screen.findByRole('button', { name: 'Pause' })
+    expect(pause.querySelector('svg')).not.toBeNull()
+    expect(pause.closest('.ivories-transport')!.hasAttribute('data-playing')).toBe(true)
+  })
+
+  it('metronome is a switch that reflects and sets the audio setting', async () => {
+    let iv: ReturnType<typeof useIvories> | null = null
+    function Grab() { iv = useIvories(); return null }
+    render(<IvoriesProvider score={doc()} clock={new AudioClock({ currentTime: 0 })} engine={fakeEngine()}><Transport /><Grab /></IvoriesProvider>)
+    const sw = await screen.findByRole('switch', { name: 'Metronome' }) as HTMLInputElement
+    expect(sw.checked).toBe(iv!.settings.audio.metronome)
+    const before = sw.checked
+    fireEvent.click(sw)
+    await waitFor(() => expect(iv!.settings.audio.metronome).toBe(!before))
+    expect(sw.checked).toBe(!before)
+  })
+
+  it('range inputs carry their filled share for the styled track', async () => {
+    const { clock } = setup()
+    const seek = await screen.findByRole('slider', { name: 'Seek' }) as HTMLInputElement
+    const tempo = screen.getByRole('slider', { name: 'Tempo' }) as HTMLInputElement
+    expect(seek.style.getPropertyValue('--ivories-range-progress')).toBe('0%')
+    act(() => clock.seek(2))
+    await waitFor(() => expect(seek.style.getPropertyValue('--ivories-range-progress')).toBe('50%'))
+    fireEvent.change(tempo, { target: { value: '240' } })   // 2x the score's 120 BPM: the top of the range
+    await waitFor(() => expect(tempo.style.getPropertyValue('--ivories-range-progress')).toBe('100%'))
   })
 })

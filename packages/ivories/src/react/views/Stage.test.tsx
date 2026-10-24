@@ -216,7 +216,7 @@ describe('Stage (spec §5.2)', () => {
     expect(shared).not.toHaveBeenCalled()
   })
 
-  it('a rising slot renders RisingKeys; orientation reaches falling and rising views', async () => {
+  it('a rising slot renders RisingKeys; orientation reaches the rising view, a falling view stays vertical', async () => {
     const layout: Layout = {
       kind: 'split', ratio: 0.5,
       top: { kind: 'ivories', view: 'rising', orientation: 'horizontal' },
@@ -225,6 +225,6 @@ describe('Stage (spec §5.2)', () => {
     const { container } = inProvider(<Stage layout={layout} />)
     await waitFor(() => expect(slots(container)).toEqual(['top:rising', 'bottom:falling']))
     expect(container.querySelector('.ivories-slot-top .ivories-rising')!.getAttribute('data-orientation')).toBe('horizontal')
-    expect(container.querySelector('.ivories-slot-bottom .ivories-falling')!.getAttribute('data-orientation')).toBe('horizontal')
+    expect(container.querySelector('.ivories-slot-bottom .ivories-falling')!.getAttribute('data-orientation')).toBe('vertical')
   })
 })

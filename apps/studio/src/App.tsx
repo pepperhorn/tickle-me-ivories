@@ -200,6 +200,8 @@ export default function App() {
           liveAudio={liveMidi.audio}
           midiDeviceId={liveMidi.deviceId}
           onError={onProviderError}
+          // The studio draws its own count-in (with the start gate) over the stage.
+          showCountIn={false}
         >
           <Stage
             className="studio-stage"

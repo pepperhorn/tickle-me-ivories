@@ -13,13 +13,17 @@ export interface NoteEvent {
   endSec: number
   velocity: number       // 0-127
   voiceId: string
+  /** MusicXML only: the pitch class as written in the score, in tonal's form
+      ("C", "F#", "Bb", "Cb", "E##"), when the written pitch is the sounding one
+      (no transposition). Note-name labels prefer it to a key-based guess. */
+  spelling?: string
 }
 
 export interface Voice {
   id: string
   label: string
   hue: number            // 0-360
-  instrument: string     // smplr instrument id
+  instrument: string     // GM sound name (pepperscore/audio loadInstrument), or 'drums'
   /** Where the voice came from (spec §4). Set for MusicXML voices; absent otherwise. */
   source?: { kind: 'midi-track'; index: number; channel: number } | { kind: 'xml-part'; partId: string; staff: number }
   visible: boolean

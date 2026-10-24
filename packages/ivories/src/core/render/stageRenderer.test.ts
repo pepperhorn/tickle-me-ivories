@@ -7,6 +7,7 @@ import { DEFAULT_SETTINGS } from '../settings/types'
 import type { StageInput } from './stageRenderer'
 import { buildTempoMap } from '../model/tempoMap'
 import type { ScoreDocument } from '../model/types'
+import { resolveTemplate } from '../template/resolve'
 
 const input = (patch: Partial<StageInput> = {}): StageInput => ({
   score: null, settings: structuredClone(DEFAULT_SETTINGS), fallSeconds: 3, maxNoteDur: 0,
@@ -129,5 +130,41 @@ describe('StageRenderer rising input', () => {
     expect(calls).toContain('transform(6)')
     // The falling path's octave grid uses setLineDash; the rising path never does.
     expect(calls).not.toContain('setLineDash(1)')
+  })
+})
+
+describe('StageRenderer template (Review Focus 5)', () => {
+  it('re-reads the theme when the template changes, never per frame', () => {
+    let reads = 0
+    const r = new StageRenderer(() => { reads++; return DEFAULT_THEME })
+    const { ctx } = stubCtx()
+    const classic = resolveTemplate('classic')
+    const cards = resolveTemplate('chord-cards')
+    for (let i = 0; i < 5; i++) r.draw(ctx, 800, 400, i, input({ template: classic }))
+    for (let i = 0; i < 5; i++) r.draw(ctx, 800, 400, i, input({ template: cards }))
+    for (let i = 0; i < 5; i++) r.draw(ctx, 800, 400, i, input({ template: classic }))
+    expect(reads).toBe(3)
+  })
+
+  it('the default template draws exactly as no template', () => {
+    const score: ScoreDocument = {
+      id: 's', name: 's', ppq: 480, tempoMap: buildTempoMap([{ ticks: 0, bpm: 120 }], 480),
+      voices: [{ id: 'v', name: 'v', hand: 'right' } as unknown as ScoreDocument['voices'][number]],
+      notes: [{ id: 1, pitch: 60, startTicks: 0, durTicks: 960, startSec: 0, endSec: 2, velocity: 90, voiceId: 'v' }],
+      durationSec: 4, sourceFormat: 'midi', timeSignatures: [], keySignature: null,
+    }
+    const rising = { bpm: 120, beatsPerBar: 4, tempo: { mode: 'scale', scale: 1 } as const, visibleBeats: 8, trail: [], grid: true }
+    const variants: Partial<StageInput>[] = [
+      {}, { showRoll: false }, { rising }, { orientation: 'horizontal' }, { rising, orientation: 'horizontal' },
+    ]
+    for (const v of variants) {
+      const run = (template: ReturnType<typeof resolveTemplate> | undefined) => {
+        const r = new StageRenderer(() => DEFAULT_THEME)
+        const s = stubCtx()
+        r.draw(s.ctx, 800, 400, 1, input({ score, barLabel: () => 'C', ...v, template }))
+        return { calls: s.calls, fillStyles: s.fillStyles, gradientStops: s.gradientStops, texts: s.texts }
+      }
+      expect(run(resolveTemplate('classic'))).toEqual(run(undefined))
+    }
   })
 })

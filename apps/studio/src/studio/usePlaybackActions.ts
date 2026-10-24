@@ -17,7 +17,7 @@ export function usePlaybackActions(o: { engine: AudioEngine; onSeek(): void }) {
   }, [engine])
 
   // setTempo replaces score.notes, so App's notes effect rebuilds the
-  // driver's cursors. The notes already handed to smplr at their old times are
+  // driver's cursors. The notes already handed to the instruments at their old times are
   // cancelled by the driver on the clock's seek event, exactly as seek and pause.
   // A setting equal to the current one is a no-op: retiming to it would change
   // nothing but still cut every sustained note.

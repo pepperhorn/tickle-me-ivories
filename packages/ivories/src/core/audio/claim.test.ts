@@ -13,3 +13,25 @@ describe('page-wide playback claim', () => {
     releasePlayback(a)
   })
 })
+
+describe('the slot is pepperscore/audio\'s (one engine on the page)', () => {
+  it('an ivories claim stops a playing PepperScore reader, and a reader starting pauses ivories', async () => {
+    const shared = await import('pepperscore/audio')
+    const reader = { stop: vi.fn() }
+    const iv = { pause: vi.fn() }
+    shared.claimPlayback(reader)
+    claimPlayback(iv)
+    expect(reader.stop).toHaveBeenCalledTimes(1)
+    shared.claimPlayback(reader)
+    expect(iv.pause).toHaveBeenCalledTimes(1)
+    shared.releasePlayback(reader)
+  })
+
+  it('claiming again with the same owner does not pause it', () => {
+    const iv = { pause: vi.fn() }
+    claimPlayback(iv)
+    claimPlayback(iv)
+    expect(iv.pause).not.toHaveBeenCalled()
+    releasePlayback(iv)
+  })
+})

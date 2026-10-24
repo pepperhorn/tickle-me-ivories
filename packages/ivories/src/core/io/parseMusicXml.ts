@@ -25,6 +25,7 @@ import { Key } from 'tonal'
 import { buildTempoMap } from '../model/tempoMap'
 import { normaliseTimeSignatures } from '../model/timeSignatures'
 import { makeVoice, retimeScore } from './parseMidi'
+import { GM_DRUMS, instrumentForProgram } from '../audio/sounds'
 import type { NoteEvent, ScoreDocument, TempoSetting, TimeSigEvent, Voice } from '../model/types'
 
 /** Fixed tick resolution; each part's <divisions> are scaled into it. */
@@ -74,6 +75,13 @@ function attrNum(el: Element | null, name: string): number | null {
 // ---- pitch, tempo ----
 
 const STEP: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }
+
+/** "F" + 1 -> "F#", "B" + -1 -> "Bb"; undefined for a quarter-tone or an alter beyond a double. */
+function spellingOf(step: string, alter: number): string | undefined {
+  const s = step.toUpperCase()
+  if (!(s in STEP) || !Number.isInteger(alter) || Math.abs(alter) > 2) return undefined
+  return s + (alter > 0 ? '#'.repeat(alter) : 'b'.repeat(-alter))
+}
 
 function midiOf(step: string, octave: number | null, alter: number): number | null {
   const s = STEP[step.toUpperCase()]
@@ -135,6 +143,8 @@ interface RawNote {
   velocity: number
   tieStart: boolean
   tieStop: boolean
+  /** Written pitch class ("F#", "Bb"), untransposed parts only. */
+  spelling?: string
 }
 interface Timed { measure: number; off: number }
 interface RawTempo extends Timed { bpm: number; rank: number }  // rank: <sound> 0, <metronome> 1
@@ -144,6 +154,8 @@ interface PartInfo {
   channel10: boolean
   /** <midi-unpitched> (1-based) by midi-instrument id. */
   unpitched: Map<string, number>
+  /** The part's GM program (<midi-program>, 1-based) from its first midi-instrument that has one. */
+  program: number | null
 }
 
 /**
@@ -174,8 +186,9 @@ export function parseMusicXml(
       const u = num(kid(mi, 'midi-unpitched'))
       if (u !== null && u >= 1 && u <= 128) unpitched.set(mi.getAttribute('id') ?? '', Math.round(u))
     }
+    const programs = mis.map((mi) => num(kid(mi, 'midi-program'))).filter((p): p is number => p !== null)
     partInfo.set(id, {
-      id, name: partName, unpitched,
+      id, name: partName, unpitched, program: programs[0] ?? null,
       channel10: channels.length > 0 && channels.every((c) => c === 10),
     })
   }
@@ -267,11 +280,16 @@ export function parseMusicXml(
             const staff = Math.max(1, Math.floor(num(kid(el, 'staff')) ?? 1))
             const voice = text(kid(el, 'voice')) || '1'
             let pitch: number | null = null
+            let spelling: string | undefined
             const p = kid(el, 'pitch')
             const u = kid(el, 'unpitched')
             if (p) {
-              const written = midiOf(text(kid(p, 'step')), num(kid(p, 'octave')), num(kid(p, 'alter')) ?? 0)
-              if (written !== null) pitch = written + (transpose.get(staff) ?? transpose.get(0) ?? 0)
+              const alter = num(kid(p, 'alter')) ?? 0
+              const written = midiOf(text(kid(p, 'step')), num(kid(p, 'octave')), alter)
+              const shift = transpose.get(staff) ?? transpose.get(0) ?? 0
+              if (written !== null) pitch = written + shift
+              // The written name is only the sounding name in an untransposed part.
+              if (written !== null && shift === 0) spelling = spellingOf(text(kid(p, 'step')), alter)
             } else if (u) {
               percussion = true
               // A GM drum key from the note's instrument (or the part's only
@@ -286,7 +304,7 @@ export function parseMusicXml(
             const ties = kids(el, 'tie').map((t) => t.getAttribute('type'))
             const noteDyn = attrNum(el, 'dynamics')
             notes.push({
-              measure: mi, off: start, dur, pitch, staff, voice,
+              measure: mi, off: start, dur, pitch, staff, voice, spelling,
               velocity: noteDyn !== null && noteDyn >= 0 ? clampVel(noteDyn) : velocity,
               tieStart: ties.includes('start'), tieStop: ties.includes('stop'),
             })
@@ -342,7 +360,7 @@ export function parseMusicXml(
 
   // Notes, ties merged, grouped into part+staff voices.
   const notes: NoteEvent[] = []
-  const voiceDefs: { id: string; label: string; partId: string; staff: number; percussion: boolean }[] = []
+  const voiceDefs: { id: string; label: string; partId: string; staff: number; percussion: boolean; program: number | null }[] = []
   const multiPart = perPart.length > 1
   let nextId = 0
   for (const pp of perPart) {
@@ -357,7 +375,7 @@ export function parseMusicXml(
       if (!used.has(staff)) continue
       const id = `xml-${pp.id}-staff${staff}`
       voiceDefs.push({
-        id, partId: pp.id, staff, percussion: pp.percussion,
+        id, partId: pp.id, staff, percussion: pp.percussion, program: info?.program ?? null,
         label: voiceLabel(partName, staff, staves, multiPart) + (pp.percussion ? ' (percussion)' : ''),
       })
       for (const n of merged) {
@@ -366,6 +384,7 @@ export function parseMusicXml(
           id: nextId++, pitch: n.pitch,
           startTicks: n.start, durTicks: Math.max(1, Math.round(n.end) - n.start),
           startSec: 0, endSec: 0, velocity: n.velocity, voiceId: id,
+          ...(n.spelling ? { spelling: n.spelling } : {}),
         })
       }
     }
@@ -374,6 +393,8 @@ export function parseMusicXml(
     const v = makeVoice(d.id, d.label, i, voiceDefs.length)
     v.source = { kind: 'xml-part', partId: d.partId, staff: d.staff }
     if (d.percussion) v.percussion = true
+    // The part's sound: the drum kit for percussion, else its GM program (piano without one).
+    v.instrument = d.percussion ? GM_DRUMS : instrumentForProgram(d.program)
     return v
   })
   notes.sort((a, b) => a.startTicks - b.startTicks || a.pitch - b.pitch)

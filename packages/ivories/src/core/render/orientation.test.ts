@@ -72,8 +72,8 @@ describe('horizontal orientation (rising-roll spec §2 Orientation, R-H)', () =>
 })
 
 describe('viewOrientation', () => {
-  it('rolls keep their orientation; the keyboard-only view is always vertical', () => {
-    expect(viewOrientation('falling', 'horizontal')).toBe('horizontal')
+  it('the rising roll keeps its orientation; falling (horizontal deprecated) and the keyboard are always vertical', () => {
+    expect(viewOrientation('falling', 'horizontal')).toBeUndefined()
     expect(viewOrientation('rising', 'horizontal')).toBe('horizontal')
     expect(viewOrientation('keyboard', 'horizontal')).toBeUndefined()
     expect(viewOrientation('notation', 'horizontal')).toBeUndefined()

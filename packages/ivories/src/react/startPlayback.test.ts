@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { startPlayback, cancelPendingStart, RESUME_WAIT_MS } from './startPlayback'
+import { startPlayback, cancelPendingStart, RESUME_WAIT_MS, WARM_WAIT_MS } from './startPlayback'
 import { ManualClock } from '../core/clock/ManualClock'
 
 afterEach(() => { vi.useRealTimers() })
@@ -83,6 +83,32 @@ describe('startPlayback (audio resumes before the clock starts)', () => {
     engine.resume.mockImplementation(async () => {})
     startPlayback({ clock, engine, audio: true, reportError: vi.fn() })
     await vi.advanceTimersByTimeAsync(0)
+    expect(clock.playing).toBe(true)
+  })
+})
+
+describe('startPlayback warm step (the metronome for a count-in)', () => {
+  it('starts inside the gesture and holds the clock until it is ready', async () => {
+    vi.useFakeTimers()
+    const clock = new ManualClock({ nowMs: () => 0 })
+    let ready!: () => void
+    const warm = vi.fn(() => new Promise<void>((r) => { ready = r }))
+    startPlayback({ clock, engine: { resume: vi.fn(async () => {}) }, audio: true, reportError: vi.fn(), warm })
+    expect(warm).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(RESUME_WAIT_MS + 10)
+    expect(clock.playing).toBe(false)
+    ready()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(clock.playing).toBe(true)
+  })
+
+  it('never holds Play past WARM_WAIT_MS (a slow kit clicks the synth fallback meanwhile)', async () => {
+    vi.useFakeTimers()
+    const clock = new ManualClock({ nowMs: () => 0 })
+    startPlayback({ clock, engine: { resume: vi.fn(async () => {}) }, audio: true, reportError: vi.fn(), warm: () => new Promise<void>(() => {}) })
+    await vi.advanceTimersByTimeAsync(WARM_WAIT_MS - 1)
+    expect(clock.playing).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
     expect(clock.playing).toBe(true)
   })
 })

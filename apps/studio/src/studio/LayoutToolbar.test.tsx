@@ -125,7 +125,7 @@ describe('LayoutToolbar (spec §6)', () => {
     }
   })
 
-  it('offers rising notes and an orientation for roll slots, kept across falling <-> rising (R-M)', () => {
+  it('offers rising notes and an orientation for rising slots only (falling is vertical only); kept across falling <-> rising (R-M)', () => {
     render(<LayoutToolbar />)
     fireEvent.change(screen.getByLabelText('Main source'), { target: { value: 'rising' } })
     expect(useStudioStage.getState().layout).toEqual({ kind: 'single', main: { kind: 'ivories', view: 'rising' } })
@@ -133,6 +133,7 @@ describe('LayoutToolbar (spec §6)', () => {
     expect(useStudioStage.getState().layout).toEqual({ kind: 'single', main: { kind: 'ivories', view: 'rising', orientation: 'horizontal' } })
     fireEvent.change(screen.getByLabelText('Main source'), { target: { value: 'falling' } })
     expect(useStudioStage.getState().layout).toEqual({ kind: 'single', main: { kind: 'ivories', view: 'falling', orientation: 'horizontal' } })
+    expect(screen.queryByLabelText('Main orientation')).toBeNull()
     fireEvent.change(screen.getByLabelText('Main source'), { target: { value: 'keyboard' } })
     expect(screen.queryByLabelText('Main orientation')).toBeNull()
   })

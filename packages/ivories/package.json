@@ -1,6 +1,6 @@
 {
   "name": "ivories",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Falling keys, keyboard, notation and stage layouts for React, on one shared clock.",
   "license": "MIT",
   "repository": {
@@ -40,11 +40,13 @@
       "source": "./src/style.css",
       "default": "./dist/style.css"
     },
+    "./template.schema.json": "./dist/template.schema.json",
     "./package.json": "./package.json"
   },
   "files": [
     "dist",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
@@ -54,23 +56,18 @@
     "prepack": "npm run build"
   },
   "peerDependencies": {
+    "pepperscore": "^0.3.0",
     "react": ">=19",
-    "react-dom": ">=19",
-    "pepperscore": ">=0.2"
-  },
-  "peerDependenciesMeta": {
-    "pepperscore": {
-      "optional": true
-    }
+    "react-dom": ">=19"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",
     "@tonejs/midi": "^2.0.28",
     "fflate": "^0.8.3",
-    "smplr": "^1.0.0",
     "tonal": "~6.4.3"
   },
   "devDependencies": {
+    "pepperscore": "file:../../../../../tmp/pepperscore-pack/pepperscore-0.3.0.tgz",
     "postcss": "^8.5.29",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"

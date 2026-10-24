@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import type { ReactNode, Ref } from 'react'
+import type { TemplateRef } from '../core/template/types'
 import { AudioEngine } from '../core/audio/engine'
-import type { SoundsOption } from '../core/audio/gmSounds'
+import type { SoundsOption } from '../core/audio/sounds'
+import { validMetronomeVoice } from '../core/audio/metronome'
 import { AudioClock } from '../core/clock/AudioClock'
 import { ManualClock } from '../core/clock/ManualClock'
 import { DEFAULT_LIVE_BPM, clampBpm } from '../core/render/beats'
@@ -10,11 +12,13 @@ import type { TrailNote } from '../core/midi/trail'
 import { MediaClock } from '../core/clock/MediaClock'
 import { PlaybackDriver } from '../core/audio/playback'
 import { claimPlayback, releasePlayback } from '../core/audio/claim'
-import { sharedAudioContext } from '../core/audio/sharedContext'
 import { FrameLoop } from '../core/render/frameLoop'
 import { EMPTY_HELD, diffHeld, heldScoreNotes } from '../core/render/activeNotes'
 import { SCALE_1, loadScoreSource } from '../core/io/loadScoreSource'
 import { longestNoteSec } from '../core/model/score'
+import { NO_LEAD_IN, clampCountIn, countInBeatsPerBar, playLeadIn } from '../core/model/countIn'
+import type { CountInBars } from '../core/model/countIn'
+import { LOOKAHEAD_SEC } from '../core/audio/scheduler'
 import { resolveSettings } from '../core/settings/resolve'
 import { IvoriesError, isIvoriesError } from '../core/errors'
 import { MidiInput } from '../core/midi/MidiInput'
@@ -56,7 +60,8 @@ export interface IvoriesProviderProps extends ScoreSource, IvoriesEvents {
   clock?: Clock
   /** Advanced/test seam; the provider builds one on the page-wide AudioContext otherwise. */
   engine?: AudioEngine
-  /** Piano samples from the pepperscore-sounds GM pack for the provider's own engine (R-G). Unset: smplr's grand piano. */
+  /** Where the provider's own engine loads its sounds (pepperscore/audio): `assetBaseUrl`, `soundPack`, `sources`,
+      and `instrument` for the piano voices and live keys. Unset: pepperscore's pinned pepperscore-sounds-core on jsDelivr. */
   sounds?: SoundsOption
   /** Schedule audio. Default true with the provider's own clock or an AudioClock; false for a
       ManualClock or MediaClock (the host carries the sound). */
@@ -65,6 +70,8 @@ export interface IvoriesProviderProps extends ScoreSource, IvoriesEvents {
       Describes the given score only: a provider never retimes a score it loads (R1). */
   tempo?: TempoSetting
   theme?: ThemeName
+  /** A style template: a built-in id or an inline template. Beats `theme` and a look's template. */
+  template?: TemplateRef
   look?: LookV1
   settings?: Partial<Settings>
   fallSeconds?: number
@@ -78,6 +85,18 @@ export interface IvoriesProviderProps extends ScoreSource, IvoriesEvents {
   liveClock?: boolean
   /** The live clock starts at mount instead of on the first live note. */
   autoStart?: boolean
+  /**
+   * Bars of count-in before the score's first beat when Play starts from the top
+   * (0:00, or after the end): 0, 1 (default) or 2. Clicks (accent on 1) sound
+   * whether or not the metronome is on, and the falling/rising views show the
+   * count. With 0 a silent beat still runs first, so no falling bar starts on the
+   * keys. A seek or a resume never replays it. Applies to the provider's own clock
+   * (or a host AudioClock); a MediaClock or ManualClock is left where the host put it.
+   */
+  countIn?: CountInBars
+  /** The falling, rising and keyboard views show the count ("1 2 3 4") during the lead-in. Default true;
+      a host drawing its own count (the studio) turns it off. */
+  showCountIn?: boolean
   children?: ReactNode
   ref?: Ref<IvoriesHandle>
 }
@@ -126,7 +145,7 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   const soundsKey = props.sounds ? JSON.stringify(props.sounds) : ''
   const soundsRef = useRef(props.sounds); soundsRef.current = props.sounds
   const ownEngine = useDisposable(
-    () => (props.engine ? null : new AudioEngine({ makeContext: sharedAudioContext, sounds: soundsRef.current })),
+    () => (props.engine ? null : new AudioEngine({ sounds: soundsRef.current })),
     (e) => e.dispose(), [!props.engine],
   )
   useEffect(() => { void ownEngine?.setSounds(soundsRef.current) }, [ownEngine, soundsKey])
@@ -192,9 +211,9 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   // ---- settings ----
   const [audioPatch, setAudioPatch] = useState<Partial<AudioSettings>>({})
   const settings = useMemo(() => {
-    const s = resolveSettings({ settings: props.settings, look: props.look, theme: props.theme })
+    const s = resolveSettings({ settings: props.settings, look: props.look, theme: props.theme, template: props.template })
     return { ...s, audio: { ...s.audio, ...audioPatch } }
-  }, [props.settings, props.look, props.theme, audioPatch])
+  }, [props.settings, props.look, props.theme, props.template, audioPatch])
   const fallSeconds = props.fallSeconds ?? props.look?.display.fallSeconds ?? 3
   const notes = score?.notes
   const maxNoteDur = useMemo(() => (score ? longestNoteSec(score) : 0), [notes]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -218,6 +237,24 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
     if (cb) safeCall(cb, v)
   }, [])
 
+  // ---- count-in (user ruling 2026-10-22): the prop seeds and overrides; setCountIn changes it in between ----
+  const countInDefault: CountInBars = props.countIn !== undefined ? clampCountIn(props.countIn)
+    : settings.audio.countIn === false ? 0 : 1
+  const [countIn, setCountInState] = useState<CountInBars>(countInDefault)
+  useEffect(() => { setCountInState(countInDefault) }, [countInDefault])
+  const setCountIn = useCallback((bars: CountInBars) => setCountInState(clampCountIn(bars)), [])
+  // Keyed on what it reads, not the score object (a voice edit replaces that).
+  const tempoMap = score?.tempoMap
+  const timeSigs = score?.timeSignatures
+  const lead = useMemo(
+    () => (score ? playLeadIn(score, tempo, countIn) : NO_LEAD_IN),
+    [tempoMap, timeSigs, notes, tempo, countIn], // eslint-disable-line react-hooks/exhaustive-deps
+  )
+  const countInPerBar = useMemo(() => (score ? countInBeatsPerBar(score) : 4), [timeSigs]) // eslint-disable-line react-hooks/exhaustive-deps
+  const leadRef = useRef(lead); leadRef.current = lead
+  const showCountIn = props.showCountIn !== false
+  const countInRef = useRef(countIn); countInRef.current = countIn
+
   // Read by the driver and the frame loop without re-subscribing.
   const scoreRef = useRef(score); scoreRef.current = score
   const settingsRef = useRef(settings); settingsRef.current = settings
@@ -227,12 +264,15 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
 
   // ---- scheduler ----
   const driverRef = useRef<PlaybackDriver | null>(null)
+  /** The note array the driver's scheduler was last built from. */
+  const drivenNotes = useRef(notes)
   useEffect(() => {
     if (!clock || !engine) return
     const d = new PlaybackDriver({
       clock, engine,
       getScore: () => scoreRef.current,
-      getAudio: () => settingsRef.current.audio,
+      // The Count-in select, not only settings.audio.countIn, decides the count-in clicks.
+      getAudio: () => ({ ...settingsRef.current.audio, countIn: countInRef.current > 0 }),
       // Only a running engine is handed notes: while the context is suspended
       // (autoplay blocked) the cursors stay level with the playhead, so the
       // "enable sound" tap does not release every note since Play at once.
@@ -243,14 +283,28 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
       onAudioError: markAudioDead,
       // The media decides where it ends (it may run past the score).
       stopAtEnd: !(clock instanceof MediaClock),
+      // The ivories components count in whether or not the metronome is on.
+      countInClicks: 'always',
     })
-    d.setScore(scoreRef.current, tempoRef.current)
+    d.setScore(scoreRef.current, tempoRef.current, leadRef.current)
+    drivenNotes.current = scoreRef.current?.notes
     d.start()
     driverRef.current = d
     return () => { d.dispose(); driverRef.current = null }
   }, [clock, engine, markAudioDead])
-  // Rebuilt only when the note array is replaced (a voice edit keeps it).
-  useEffect(() => { driverRef.current?.setScore(scoreRef.current, tempoRef.current) }, [notes])
+  // Rebuilt only when the note array is replaced (a voice edit keeps it). A lead-in change
+  // alone (the Count-in select, allowed mid-play) rebuilds just the beat cursor, from where
+  // it had handed clicks up to: a full setScore would hand the lookahead's notes over again.
+  useEffect(() => {
+    const d = driverRef.current
+    if (!d) return
+    if (drivenNotes.current !== notes) {
+      drivenNotes.current = notes
+      d.setScore(scoreRef.current, tempoRef.current, leadRef.current)
+    } else {
+      d.setLeadIn(scoreRef.current, tempoRef.current, leadRef.current)
+    }
+  }, [notes, lead])
 
   // ---- our own engine loads its instruments ----
   const voices = score?.voices
@@ -265,12 +319,29 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   }, [ownEngine, voices, report])
   useEffect(() => { ownEngine?.setMasterVolume(settings.audio.masterVolume) }, [ownEngine, settings.audio.masterVolume])
 
+  // ---- metronome: its voice always follows the settings; it LOADS only once it is on (or a count-in plays) ----
+  const metronomeVoice = validMetronomeVoice(settings.audio.metronomeVoice)
+  useEffect(() => { engine?.setMetronomeVoice(metronomeVoice) }, [engine, metronomeVoice])
+  const metronomeOn = settings.audio.metronome
+  useEffect(() => {
+    if (!engine || !audio || !metronomeOn || audioDead.current) return
+    void engine.prepareMetronome()
+  }, [engine, audio, metronomeOn, metronomeVoice])
+
   // ---- only one provider on the page sounds at a time ----
+  // Claimed on the Play press itself (play() below), so another player stops at once rather
+  // than after this one's resume/metronome wait; and on every clock 'play' (a host's own play()).
+  const playOwner = useRef<{ pause(): void } | null>(null)
   useEffect(() => {
     if (!clock || !audio) return
-    const owner = { pause: () => clock.pause() }
+    const owner = { pause: () => { cancelPendingStart(clock); clock.pause() } }
+    playOwner.current = owner
     const off = clock.subscribe((e) => { if (e.type === 'play') claimPlayback(owner) })
-    return () => { off(); releasePlayback(owner) }
+    return () => {
+      off()
+      releasePlayback(owner)
+      if (playOwner.current === owner) playOwner.current = null
+    }
   }, [clock, audio])
 
   // ---- the shared frame loop: time updates and score note on/off ----
@@ -391,18 +462,89 @@ export function IvoriesProvider(props: IvoriesProviderProps) {
   // A Play still waiting on resume() never starts a clock this provider has let go of.
   useEffect(() => () => { if (clock) cancelPendingStart(clock) }, [clock])
 
+  // ---- idle park (user ruling 2026-10-22): the falling roll never idles with a bar on the keys ----
+  // While the provider's OWN clock is paused at the top (score load, a seek to 0),
+  // it waits at the start of the lead-in (-lead.sec), so the idle frame already
+  // shows every bar above the key line; readouts clamp to 0:00. Host clocks
+  // (AudioClock, MediaClock, ManualClock) stay where the host puts them.
+  const parkedAt = useRef<number | null>(null)
+  const parkable = clock !== null && clock === ownClock
+  const parked = useCallback(() => {
+    const at = parkedAt.current
+    const c = clockRef.current
+    return parkable && at !== null && c !== null && !c.playing && Math.abs(c.now() - at) < 1e-9
+  }, [parkable])
+  const parkedRef = useRef(parked); parkedRef.current = parked
+  useEffect(() => {
+    if (!clock || !parkable) { parkedAt.current = null; return }
+    const tryPark = () => {
+      const l = leadRef.current
+      if (!scoreRef.current || clock.playing || !(l.sec > 0)) return
+      const pos = clock.now()
+      const prev = parkedAt.current
+      const atTop = Math.abs(pos) < 1e-9 || (prev !== null && Math.abs(pos - prev) < 1e-9)
+      if (!atTop) return
+      parkedAt.current = -l.sec
+      if (Math.abs(pos + l.sec) > 1e-9) clock.seek(-l.sec)
+    }
+    tryPark()
+    let pending = false
+    let live = true
+    const off = clock.subscribe((e) => {
+      if (e.type === 'play') parkedAt.current = null
+      // Deferred: re-seeking inside a seek event would reach later subscribers
+      // (the scheduler) out of order. Re-checked when it runs.
+      if (e.type === 'seek' && Math.abs(e.time) < 1e-9 && !pending) {
+        pending = true
+        queueMicrotask(() => { pending = false; if (live) tryPark() })
+      }
+    })
+    return () => { live = false; off() }
+  }, [clock, parkable, lead, score])
+
+  // Play: from the top (0:00, the idle park, or after the end) the clock first
+  // steps back to the start of the lead-in -- plus one scheduler lookahead when
+  // audio is on, so the first click is handed to Web Audio ahead of its time --
+  // then runs. Anywhere else (a resume, a seek, a pause mid-count) it simply runs on.
+  const play = useCallback(() => {
+    if (!clock || !engine) return
+    // Where Play starts: from the top (0:00, the idle park, or after the end) or right here.
+    const startsAtTop = (): { top: boolean; atEnd: boolean } => {
+      const s = scoreRef.current
+      if (!s || clock instanceof MediaClock || clock instanceof ManualClock) return { top: false, atEnd: false }
+      const pos = clock.now()
+      const atEnd = s.durationSec > 0 && pos >= s.durationSec - 1e-6
+      return { top: Math.abs(pos) <= 1e-9 || atEnd || parkedRef.current(), atEnd }
+    }
+    const countInPlays = startsAtTop().top && leadRef.current.beats > 0
+    if (audio && playOwner.current) claimPlayback(playOwner.current)
+    startPlayback({
+      clock, engine, audio, reportError: report,
+      // The metronome loads lazily: on Play, only when its clicks are about to be needed.
+      warm: audio && !audioDead.current && (countInPlays || settingsRef.current.audio.metronome)
+        ? () => engine.prepareMetronome() : undefined,
+      prepare: () => {
+        const { top, atEnd } = startsAtTop()
+        if (!top) return
+        const l = leadRef.current
+        if (l.sec > 0) clock.seek(-(l.sec + (audio && l.beats > 0 ? LOOKAHEAD_SEC : 0)))
+        else if (atEnd) clock.seek(0)
+      },
+    })
+  }, [clock, engine, audio, report])
+
   useImperativeHandle(props.ref, () => ({
-    play: () => { if (clock && engine) startPlayback({ clock, engine, audio, reportError: report }) },
+    play,
     pause: () => { if (clock) { cancelPendingStart(clock); clock.pause() } },
     seek: (t: number) => clock?.seek(t),
     setRate: (r: number) => clock?.setRate(r),
     get clock() { return clock as Clock },
-  }), [clock, engine, audio, report])
+  }), [clock, play])
 
   const setAudio = useCallback((p: Partial<AudioSettings>) => setAudioPatch((cur) => ({ ...cur, ...p })), [])
   const value = useMemo<IvoriesContextValue | null>(() => (clock && engine && frames
-    ? { score, tempo, clock, engine, settings, fallSeconds, maxNoteDur, audio, frames, active, status, setAudio, reportError: report, live: liveHub, bpm, setBpm, requestLiveClock, liveClockActive }
-    : null), [score, tempo, clock, engine, settings, fallSeconds, maxNoteDur, audio, frames, active, status, setAudio, report, liveHub, bpm, setBpm, requestLiveClock, liveClockActive])
+    ? { score, tempo, clock, engine, settings, fallSeconds, maxNoteDur, audio, frames, active, status, setAudio, reportError: report, live: liveHub, bpm, setBpm, requestLiveClock, liveClockActive, play, countIn, setCountIn, lead, countInPerBar, showCountIn, parked }
+    : null), [score, tempo, clock, engine, settings, fallSeconds, maxNoteDur, audio, frames, active, status, setAudio, report, liveHub, bpm, setBpm, requestLiveClock, liveClockActive, play, countIn, setCountIn, lead, countInPerBar, showCountIn, parked])
 
   // Children render once the clock, engine and frame loop exist (after the
   // first effect; never on the server), so a view always finds a context.

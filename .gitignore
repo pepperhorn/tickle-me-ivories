@@ -10,3 +10,4 @@ playwright-report/
 apps/studio/public/tickle.config.json
 apps/studio/public/plugins/
 deploy/local-plugin/
+.superpowers/

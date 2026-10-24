@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   FONT_FAMILY_RE, PROFILE_SCHEMA_VERSION, buildProfile, decodeProfile, encodeProfile,
   isCssColor, isSafeFontFamily, loadGlobals, loadProfile, mergeVoices, saveGlobals, saveProfile,
-  validDisplayMode, validFallSeconds, validText, validTextStyle, validVelocity,
+  validDisplayMode, validFallSeconds, validText, validTextStyle, validTheme, validVelocity,
 } from './profile'
 import { DEFAULT_SETTINGS, DEFAULT_TEXT_STYLE, MAX_GRADIENT_STOPS } from './types'
 import { MAX_TEMPO_SCALE, MIN_TEMPO_SCALE } from '../model/tempoMap'
@@ -186,7 +186,7 @@ describe('decodeProfile validation of untrusted input', () => {
     expect(mergeVoices([voice('l')], p.voices)[0]).toEqual(voice('l'))
   })
 
-  it('drops an instrument name getSoundfontNames() does not recognise, keeping the parsed value', () => {
+  it('drops an instrument that is not a GM sound name (or drums), keeping the parsed value', () => {
     const p = decodeProfile(tampered((x) => {
       x.voices = [{ id: 'l', instrument: 'not_a_real_instrument' }]
     }))
@@ -406,6 +406,31 @@ describe('isCssColor', () => {
     for (const v of ['', ' ', '#12345', '#ggg', 'not a colour!', 'url(javascript:1)', 'red; background: x', 'rgb(1,2'])
       expect(isCssColor(v), v).toBe(false)
   })
+
+  const INJECTIONS = [
+    'rgb(0;position:fixed;inset:0;z-index:9;x:)', 'rgb(0:0)', 'rgb(0{}0)', 'rgb("0")', "rgb('0')",
+    'rgb(0\\0)', 'rgb(<b>)', 'red;x', 'a:b',
+  ]
+
+  it('refuses a declaration break-out in the fallback (SSR: no CSS.supports)', () => {
+    vi.stubGlobal('CSS', undefined)
+    for (const v of INJECTIONS) expect(isCssColor(v), v).toBe(false)
+  })
+
+  it('refuses a declaration break-out even when the browser would accept it', () => {
+    vi.stubGlobal('CSS', { supports: () => true })
+    for (const v of INJECTIONS) expect(isCssColor(v), v).toBe(false)
+  })
+
+  it('refuses CSS-wide keywords and substitution functions the canvas ignores, keeps currentcolor', () => {
+    for (const css of [undefined, { supports: () => true }]) {
+      vi.stubGlobal('CSS', css)
+      for (const v of ['inherit', 'initial', 'unset', 'revert', 'revert-layer', 'INHERIT', ' unset ',
+        'var(--x)', 'env(safe-area-inset-top)', 'attr(data-c)', 'rgb(var(--r) 0 0)', 'VAR(--x)'])
+        expect(isCssColor(v), v).toBe(false)
+      expect(isCssColor('currentcolor')).toBe(true)
+    }
+  })
 })
 
 // spec §8.5 requires at least 2 gradient stops; more than 16 keeps the
@@ -563,5 +588,31 @@ describe('count-in setting (audio.countIn)', () => {
       settings: { ...DEFAULT_SETTINGS, audio: { ...DEFAULT_SETTINGS.audio, countIn: false } },
     })
     expect(decodeProfile(encodeProfile(p)).global.audio.countIn).toBe(false)
+  })
+})
+
+describe('template in the theme', () => {
+  beforeEach(() => { vi.stubGlobal('CSS', { supports: (_p: string, v: string) => /^(#[0-9a-f]{3,8}|(rgba?|hsla?)\([^()]*\)|transparent)$/i.test(v) }) })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('validTheme keeps a valid template and drops a bad one', () => {
+    expect(validTheme({ name: 'classic', stageBgOverride: null })).toEqual({ name: 'classic', stageBgOverride: null })
+    expect(validTheme({ name: 'classic', stageBgOverride: null })).not.toHaveProperty('template')
+    expect(validTheme({ name: 'classic', stageBgOverride: null, template: 'chord-cards-crf' }))
+      .toEqual({ name: 'classic', stageBgOverride: null, template: 'chord-cards-crf' })
+    const bare = { name: 'classic', stageBgOverride: null }
+    expect(validTheme({ ...bare, template: 'nope' })).toEqual(bare)
+    expect(validTheme({ ...bare, template: { v: 1, kind: 'look' } })).toEqual(bare)
+    expect(validTheme({ ...bare, template: { v: 1, kind: 'ivories-template', id: 'x'.repeat(17 * 1024) } })).toEqual(bare)
+  })
+
+  it('a profile round-trips an inline template', () => {
+    const template = { v: 1, kind: 'ivories-template', id: 'my-tpl', name: 'Mine' } as const
+    const p = buildProfile({
+      song: { id: 'sha-1', name: 'demo.mid', format: 'midi' },
+      voices: [], tempo: { mode: 'scale', scale: 1 }, mode: 'roll', fallSeconds: 3,
+      settings: { ...DEFAULT_SETTINGS, theme: { name: 'classic', stageBgOverride: null, template: template as any } },
+    })
+    expect(decodeProfile(encodeProfile(p)).theme.template).toEqual(template)
   })
 })

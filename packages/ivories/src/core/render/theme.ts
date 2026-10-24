@@ -29,10 +29,10 @@ export interface Theme {
 }
 
 export const DEFAULT_THEME: Theme = {
-  stageBg: '#000000',
+  stageBg: '#0e1511',
   keyWhite: '#f6f2e4',
-  keyBlack: '#0c0c10',
-  keyBorder: 'rgba(255,255,255,0.16)',
+  keyBlack: '#151d18',
+  keyBorder: 'rgba(143,184,154,0.55)',
   keyBorderWidth: 1,
   keyOutline: 'transparent',
   keyRadius: 0,
@@ -49,7 +49,7 @@ export const DEFAULT_THEME: Theme = {
   flashCoreRgb: '255, 255, 255',
   flashWarmRgb: '255, 242, 214',
   progressTrack: 'rgba(255,255,255,0.06)',
-  progressFill: '#e8384f',
+  progressFill: '#8fb89a',
   liveHue: 35,
 }
 

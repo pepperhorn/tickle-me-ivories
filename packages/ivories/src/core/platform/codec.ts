@@ -21,11 +21,17 @@ export const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== nu
 /** The default (look) payload envelope version; scenes pass their own maxVersion. */
 export const PAYLOAD_VERSION = 1
 
+/** What a payload envelope can be. */
+export type PayloadKind = 'scene' | 'look' | 'ivories-template'
+
+/** The word the messages use for a kind. */
+const noun = (kind: PayloadKind): string => (kind === 'ivories-template' ? 'template' : kind)
+
 export class PayloadVersionError extends PlatformError {
   readonly version: number
 
-  constructor(kind: 'scene' | 'look', version: number) {
-    super('invalid', `This ${kind} was made with a newer version of the app (format v${version}). Update the app to open it.`)
+  constructor(kind: PayloadKind, version: number) {
+    super('invalid', `This ${noun(kind)} was made with a newer version of the app (format v${version}). Update the app to open it.`)
     this.name = 'PayloadVersionError'
     this.version = version
   }
@@ -52,8 +58,8 @@ export function utf8Bytes(s: string): number {
 }
 
 /** The 'invalid' PlatformError every structural refusal uses. */
-export function invalidPayload(kind: 'scene' | 'look', why: string): PlatformError {
-  return new PlatformError('invalid', `This ${kind} is not valid: ${why}.`)
+export function invalidPayload(kind: PayloadKind, why: string): PlatformError {
+  return new PlatformError('invalid', `This ${noun(kind)} is not valid: ${why}.`)
 }
 const invalid = invalidPayload
 
@@ -64,7 +70,7 @@ const invalid = invalidPayload
  * JSON round-tripped copy means no getter, prototype or shared reference from
  * the caller's object can reach the field validators.
  */
-export function readEnvelope(u: unknown, kind: 'scene' | 'look', maxBytes: number, maxVersion = PAYLOAD_VERSION): Obj {
+export function readEnvelope(u: unknown, kind: PayloadKind, maxBytes: number, maxVersion = PAYLOAD_VERSION): Obj {
   let json: string | undefined
   if (typeof u === 'string') {
     json = u
@@ -73,7 +79,7 @@ export function readEnvelope(u: unknown, kind: 'scene' | 'look', maxBytes: numbe
     if (json === undefined) throw invalid(kind, 'it is empty')
   }
   if (utf8Bytes(json) > maxBytes) {
-    throw new PlatformError('too_large', `This ${kind} is too large (over ${Math.round(maxBytes / 1024)} KiB).`)
+    throw new PlatformError('too_large', `This ${noun(kind)} is too large (over ${Math.round(maxBytes / 1024)} KiB).`)
   }
   let o: unknown
   try { o = JSON.parse(json) } catch { throw invalid(kind, 'it is not JSON') }
@@ -84,6 +90,6 @@ export function readEnvelope(u: unknown, kind: 'scene' | 'look', maxBytes: numbe
     if (typeof v === 'number' && Number.isInteger(v) && v > maxVersion) throw new PayloadVersionError(kind, v)
     throw invalid(kind, 'unknown format version')
   }
-  if (o.kind !== kind) throw invalid(kind, `expected a ${kind}`)
+  if (o.kind !== kind) throw invalid(kind, `expected a ${noun(kind)}`)
   return o
 }

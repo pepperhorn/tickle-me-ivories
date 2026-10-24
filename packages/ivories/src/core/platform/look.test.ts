@@ -144,3 +144,20 @@ describe('applyLook', () => {
     expect(l.text.style.family).toBe('Poppins')
   })
 })
+
+describe('template in a look', () => {
+  it('lookFromSettings carries the template and decodeLook keeps it', () => {
+    const l = lookFromSettings({ ...DEFAULT_SETTINGS, theme: { name: 'classic', stageBgOverride: null, template: 'chord-cards' } }, 'roll', 3)
+    expect(decodeLook(l).theme.template).toBe('chord-cards')
+  })
+
+  it('a 0.2.0 look and a look with a corrupt template both load', () => {
+    const old = raw()
+    expect(decodeLook(old).theme).toEqual({ name: 'contrast', stageBgOverride: '#00b140' })
+    const bad = raw()
+    bad.theme.template = { v: 1, kind: 'ivories-template', id: 'BAD' }
+    const d = decodeLook(bad)
+    expect(d.theme).toEqual({ name: 'contrast', stageBgOverride: '#00b140' })
+    expect(d.theme).not.toHaveProperty('template')
+  })
+})

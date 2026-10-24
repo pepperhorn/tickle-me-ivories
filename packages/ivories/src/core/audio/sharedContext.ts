@@ -1,7 +1,12 @@
-let shared: AudioContext | null = null
+import { getSharedAudio } from 'pepperscore/audio'
 
-/** One AudioContext for every provider on the page. Created on first use, never at import. */
+/**
+ * The page's one AudioContext, shared with every PepperScore reader and any other
+ * pepperscore/audio user (pepperscore's getSharedAudio). Created on first use, never
+ * at import. Throws when the device has no Web Audio.
+ */
 export function sharedAudioContext(): AudioContext {
-  if (!shared || shared.state === 'closed') shared = new AudioContext()
-  return shared
+  const shared = getSharedAudio()
+  if (!shared) throw new Error('Web Audio is not available on this device.')
+  return shared.context
 }

@@ -8,9 +8,17 @@ import { buildTempoMap, ticksToSec } from '../model/tempoMap'
 import { normaliseTimeSignatures } from '../model/timeSignatures'
 import { hueForVoiceIndex } from '../render/colors'
 import { DEFAULT_SPLIT_PITCH, LEFT_VOICE, RIGHT_VOICE, splitHands } from './handSplit'
+import { GM_DRUMS, GM_PIANO, instrumentForProgram } from '../audio/sounds'
 import type { NoteEvent, ScoreDocument, TempoSetting, Voice } from '../model/types'
 
-const DEFAULT_INSTRUMENT = 'acoustic_grand_piano'
+/** A track's sound: the drum kit on channel 10, else its GM program (@tonejs/midi numbers them 0-127). */
+function trackInstrument(t: { channel?: number; instrument?: { number?: number; percussion?: boolean } }): string {
+  if (t.instrument?.percussion || t.channel === 9) return GM_DRUMS
+  const n = t.instrument?.number
+  return typeof n === 'number' ? instrumentForProgram(n + 1) : GM_PIANO
+}
+
+const DEFAULT_INSTRUMENT = GM_PIANO
 
 // Extension-only `accept` values (".mid,.midi") let Chrome on Android filter
 // by MIME type internally, and it has no mapping from those extensions to a
@@ -71,9 +79,10 @@ export function parseMidi(
   // of the piano track, and that must not stop the hand split from firing.
   if (played.length === 1) {
     // One pitched track: split into two hands so the roll is legible.
+    const instrument = trackInstrument(played[0])
     voices = [
-      makeVoice(LEFT_VOICE, 'Left hand', 0, 2),
-      makeVoice(RIGHT_VOICE, 'Right hand', 1, 2),
+      { ...makeVoice(LEFT_VOICE, 'Left hand', 0, 2), instrument },
+      { ...makeVoice(RIGHT_VOICE, 'Right hand', 1, 2), instrument },
     ]
     const raw = played[0].notes.map((n) => ({
       id: id++, pitch: n.midi, startTicks: n.ticks, durTicks: n.durationTicks,
@@ -83,8 +92,10 @@ export function parseMidi(
     raw.forEach((n, i) => { n.voiceId = assign[i].voiceId })
     notes.push(...raw)
   } else {
-    voices = played.map((t, i) =>
-      makeVoice(`track-${i}`, t.name?.trim() || `Track ${i + 1}`, i, played.length))
+    voices = played.map((t, i) => ({
+      ...makeVoice(`track-${i}`, t.name?.trim() || `Track ${i + 1}`, i, played.length),
+      instrument: trackInstrument(t),
+    }))
     played.forEach((t, i) => {
       for (const n of t.notes) {
         notes.push({

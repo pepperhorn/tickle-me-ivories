@@ -3,6 +3,7 @@ import { Scheduler, TICK_MS } from './scheduler'
 import { BeatCursor, beatTimes, countInBeats } from './metronome'
 import { leadInFor } from '../model/countIn'
 import type { Clock, ClockEvent } from '../clock/types'
+import type { LeadIn } from '../model/countIn'
 import type { ScheduledNote } from './scheduler'
 import type { AudioSettings } from '../settings/types'
 import type { ScoreDocument, TempoSetting, Voice } from '../model/types'
@@ -35,18 +36,25 @@ export interface PlaybackDriverOptions {
    * engine again; nothing ever throws out of the interval.
    */
   onAudioError?(e: unknown): void
+  /**
+   * When the count-in clicks sound. 'with-metronome' (default, the studio): only
+   * while the metronome is on. 'always' (the ivories components): whenever the
+   * count-in is on, metronome or not -- the player needs the count either way.
+   */
+  countInClicks?: 'with-metronome' | 'always'
 }
 
 /**
  * The scheduler tick that used to live in App.tsx, driven by any Clock.
- * Audio timing comes from the exact `time` handed to smplr, not from when
+ * Audio timing comes from the exact `time` handed to the instruments, not from when
  * the interval fires. Every seek, rate change and pause silences what was
  * already scheduled and re-seats the cursors (Global Constraints).
  */
 export class PlaybackDriver {
   private scheduler: Scheduler | null = null
   private beats: BeatCursor | null = null
-  private metronome: MetronomeLike | null = null
+  /** Set once a click has gone to the engine's metronome, so silence() only touches it then. */
+  private metronomeUsed = false
   private timer: ReturnType<typeof setInterval> | null = null
   private audioFailed = false
   private readonly off: () => void
@@ -59,17 +67,33 @@ export class PlaybackDriver {
 
   /**
    * Rebuild the cursors. Call when score.notes is REPLACED (load or retime),
-   * never on a voice edit: rebuilding re-hands notes smplr already has.
+   * never on a voice edit: rebuilding re-hands notes the instruments already have.
    * The count-in clicks sit before t = 0 in the same beat cursor.
    */
-  setScore(score: ScoreDocument | null, tempo: TempoSetting): void {
+  setScore(score: ScoreDocument | null, tempo: TempoSetting, lead: LeadIn = score ? leadInFor(score, tempo) : { sec: 0, beats: 0, beatSec: 0 }): void {
     if (!score) { this.scheduler = null; this.beats = null; return }
     const head = this.o.clock.now()
     const s = new Scheduler(score.notes)
     s.seek(head)
     this.scheduler = s
-    const b = new BeatCursor([...countInBeats(leadInFor(score, tempo)), ...beatTimes(score, tempo)])
+    const b = new BeatCursor([...countInBeats(lead), ...beatTimes(score, tempo)])
     b.seek(head)
+    this.beats = b
+  }
+
+  /**
+   * Rebuild only the beat cursor for a new lead-in (the Count-in select), keeping the note
+   * scheduler. While playing, the new cursor resumes where the old one had handed clicks up
+   * to, so no click (and no note) already given to Web Audio is handed over twice; paused, it
+   * sits at the playhead, ready for the next Play.
+   */
+  setLeadIn(score: ScoreDocument | null, tempo: TempoSetting, lead: LeadIn): void {
+    if (!score) { this.beats = null; return }
+    const { clock } = this.o
+    const head = clock.now()
+    const from = clock.playing && this.beats ? Math.max(head, this.beats.horizon) : head
+    const b = new BeatCursor([...countInBeats(lead), ...beatTimes(score, tempo)])
+    b.seek(from)
     this.beats = b
   }
 
@@ -89,7 +113,8 @@ export class PlaybackDriver {
   /** Cancels everything already handed to the engine, notes and clicks. */
   silence(): void {
     this.o.engine.stopAll()
-    this.metronome?.stop()
+    // Asked of the engine each time, never cached: the engine may have rebuilt it (a sounds change).
+    if (this.metronomeUsed) this.o.engine.metronome().stop()
   }
 
   tick(): void {
@@ -139,12 +164,14 @@ export class PlaybackDriver {
     }
 
     const audio = this.o.getAudio()
-    if (audio.metronome && this.beats) {
-      this.metronome ??= engine.metronome()
+    const countInAlways = this.o.countInClicks === 'always' && audio.countIn !== false
+    if ((audio.metronome || countInAlways) && this.beats) {
       for (const beat of this.beats.collect(head)) {
-        // Count-in clicks (sec < 0) only while the Count-in setting is on.
-        if (beat.sec < 0 && audio.countIn === false) continue
-        this.metronome.click(origin + beat.sec / rate, beat.accent, audio.metronomeVolume)
+        // Count-in clicks (sec < 0) only while the Count-in setting is on;
+        // the bar's own beats only while the metronome is.
+        if (beat.sec < 0 ? audio.countIn === false : !audio.metronome) continue
+        this.metronomeUsed = true
+        engine.metronome().click(origin + beat.sec / rate, beat.accent, audio.metronomeVolume)
       }
     } else {
       // Keep the beat cursor level with the playhead while the click is off,

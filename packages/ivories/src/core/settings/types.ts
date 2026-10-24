@@ -1,3 +1,4 @@
+import type { TemplateRef } from '../template/types'
 import type { DisplayMode, ScoreDocument, TempoSetting, Voice } from '../model/types'
 
 export type ThemeName = 'classic' | 'outline' | 'contrast' | 'transparent'
@@ -45,20 +46,30 @@ export interface TextSettings {
   style: TextStyle
 }
 
+/** The metronome's sound (pepperscore/audio's metronome voices). Spelled out here so this module stays import-free. */
+export type MetronomeVoiceName = 'woodblock' | 'drum-machine' | 'click'
+
 export interface AudioSettings {
   masterVolume: number    // 0-1
   metronome: boolean
   metronomeVolume: number // 0-1
-  /** The one-bar count-in (numbers on stage, and clicks when the metronome is
-      on). Optional so settings, profiles and scenes saved before it existed
-      stay valid; absent means on. The lead-in bar itself always plays. */
+  /** Seeds the provider's count-in: true (or absent) is one bar, the default; false
+      is Off (0 bars). The provider's own control (`countIn` prop, the Transport's
+      select, setCountIn) is 0, 1 or 2 bars and wins over this. While on, the count
+      shows on stage and its clicks sound, with the metronome off too. Optional so
+      settings, profiles and scenes saved before it existed stay valid. With Off a
+      silent beat still runs first. */
   countIn?: boolean
+  /** The metronome and count-in sound. Optional like countIn (older saves stay valid); absent means 'woodblock'. */
+  metronomeVoice?: MetronomeVoiceName
 }
 
 export interface ThemeSettings {
   name: ThemeName
   /** Flat matte colour for keyed workflows (§13.2). `null` = use the theme token. */
   stageBgOverride: string | null
+  /** A built-in template id or an inline template object. Wins over `name` when set. */
+  template?: TemplateRef
 }
 
 export interface Settings {

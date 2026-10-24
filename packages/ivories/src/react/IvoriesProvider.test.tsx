@@ -121,12 +121,14 @@ describe('IvoriesProvider with host clocks (spec §3.1, §9)', () => {
     expect(engine.play).not.toHaveBeenCalled()
     unmount()
 
-    const engine2 = fakeEngine()
+    // An engine whose time moves, so the lead-in before t = 0 elapses.
+    const engine2 = fakeEngine({ get currentTime() { return performance.now() / 1000 } })
     const ref = createRef<IvoriesHandle>()
-    render(<IvoriesProvider ref={ref} score={scoreDoc()} engine={engine2}><span /></IvoriesProvider>)
+    // countIn 0: only the one-beat silent pre-roll runs before the first note.
+    render(<IvoriesProvider ref={ref} score={scoreDoc()} engine={engine2} countIn={0}><span /></IvoriesProvider>)
     await waitFor(() => expect(ref.current).not.toBeNull())
     act(() => ref.current!.play())
-    await waitFor(() => expect(engine2.play).toHaveBeenCalled())
+    await waitFor(() => expect(engine2.play).toHaveBeenCalled(), { timeout: 2000 })
   })
 
   it('a MediaClock playing past the score end is not paused by the driver', async () => {

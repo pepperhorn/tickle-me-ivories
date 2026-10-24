@@ -3,7 +3,7 @@
  *
  * pepperscore 0.2 is not published (R9), so the default `npm run test:e2e` skips this
  * spec: the studio resolves a missing pepperscore to a module that throws and <Notation>
- * shows "...needs pepperscore 0.2...". To run it for real against a local build:
+ * shows "...needs pepperscore 0.3 or later...". To run it for real against a local build:
  *
  *   (cd /path/to/pepperscore-clock && npm run build && npm pack -w pepperscore)
  *   PEPPERSCORE_TARBALL=/path/to/pepperscore-0.2.0.tgz npm run test:e2e:notation
@@ -27,7 +27,7 @@ test('notation and falling keys stay in sync after a seek (spec §9)', async ({ 
   if (await alert.isVisible()) {
     const text = (await alert.textContent()) ?? ''
     // test:e2e:notation sets PEPPERSCORE_REQUIRED: there a missing pepperscore is a failure.
-    test.skip(!process.env.PEPPERSCORE_REQUIRED && /pepperscore 0\.2/.test(text), 'pepperscore 0.2 is not installed (R9)')
+    test.skip(!process.env.PEPPERSCORE_REQUIRED && /pepperscore 0\.3 or later/.test(text), 'pepperscore 0.2 is not installed (R9)')
     throw new Error(`notation failed for another reason: ${text}`)
   }
 

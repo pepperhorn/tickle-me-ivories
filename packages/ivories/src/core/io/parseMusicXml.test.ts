@@ -463,3 +463,26 @@ describe('the MuseScore 4-shaped fixture', () => {
     expect(unpackMxl(zip)).toBe(xml)
   })
 })
+
+describe('voice instruments from the score parts (GM program, piano default)', () => {
+  const withInstrument = (mi: string) => `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Solo</part-name><score-instrument id="P1-I1"><instrument-name>x</instrument-name></score-instrument>${mi}</score-part></part-list>
+  <part id="P1">${m(DIV1, n('C', 4, 4))}</part>
+</score-partwise>`
+  const parse = (xml: string) => parseMusicXml(xml, 'x.musicxml', SCALE_1)
+
+  it('maps <midi-program> (1-based) to the GM sound', () => {
+    expect(parse(withInstrument('<midi-instrument id="P1-I1"><midi-channel>1</midi-channel><midi-program>41</midi-program></midi-instrument>')).voices[0].instrument).toBe('violin')
+    expect(parse(withInstrument('<midi-instrument id="P1-I1"><midi-program>1</midi-program></midi-instrument>')).voices[0].instrument).toBe('acoustic_grand_piano')
+  })
+
+  it('is the piano without a program, or with a bad one', () => {
+    expect(one(m(DIV1, n('C', 4, 4))).voices[0].instrument).toBe('acoustic_grand_piano')
+    expect(parse(withInstrument('<midi-instrument id="P1-I1"><midi-program>200</midi-program></midi-instrument>')).voices[0].instrument).toBe('acoustic_grand_piano')
+  })
+
+  it('is the drum kit for a channel-10 part', () => {
+    expect(parse(withInstrument('<midi-instrument id="P1-I1"><midi-channel>10</midi-channel><midi-program>1</midi-program></midi-instrument>')).voices[0].instrument).toBe('drums')
+  })
+})
