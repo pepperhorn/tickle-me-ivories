@@ -3,7 +3,7 @@ import type { Aspect, CameraFit, Corner, IvoriesView, Layout, SlotSource } from 
 
 type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
-const VIEWS: readonly IvoriesView[] = ['keyboard', 'falling', 'rising', 'notation', 'endless']
+const VIEWS: readonly IvoriesView[] = ['keyboard', 'falling', 'rising', 'notation', 'endless', 'fretboard']
 const CORNERS: readonly Corner[] = ['tl', 'tr', 'bl', 'br']
 const ASPECTS: readonly Aspect[] = ['free', '16:9', '9:16']
 const FILL_RE = /^(transparent|#[0-9a-f]{3}|#[0-9a-f]{4}|#[0-9a-f]{6}|#[0-9a-f]{8}|(rgb|rgba|hsl|hsla)\([0-9.,%\s/+-]{1,60}\))$/i
@@ -23,6 +23,19 @@ export function validSource(u: unknown, o: { keepDeviceId: boolean }): SlotSourc
     // Only the roll views have an orientation; anything else is dropped, the slot kept (R-V).
     if ((view === 'falling' || view === 'rising') && (u.orientation === 'vertical' || u.orientation === 'horizontal')) {
       out.orientation = u.orientation
+    }
+    if (view === 'fretboard' && u.fretboard !== undefined) {
+      if (!isObj(u.fretboard)) return null
+      const f = u.fretboard
+      if (f.instrument !== undefined && !['guitar', 'bass4', 'bass5'].includes(f.instrument as string)) return null
+      if (f.headstock !== undefined && !['strat', 'tele', 'precision', 'violin'].includes(f.headstock as string)) return null
+      if (f.noteLabels !== undefined && f.noteLabels !== 'note' && f.noteLabels !== 'fret') return null
+      if (f.appearance !== undefined && f.appearance !== 'dark' && f.appearance !== 'light') return null
+      if (f.frets !== undefined && f.frets !== 12 && f.frets !== 24) return null
+      out.fretboard = {}
+      for (const key of ['instrument', 'headstock', 'noteLabels', 'appearance', 'frets'] as const) {
+        if (f[key] !== undefined) Object.assign(out.fretboard, { [key]: f[key] })
+      }
     }
     return out
   }

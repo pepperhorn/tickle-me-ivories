@@ -19,7 +19,9 @@ function alteration(key: KeyContext): number {
 
 /**
  * The key's own seven spellings win; anything outside the scale follows the key
- * signature's direction. Note.chroma returns NaN for an unparseable name, and
+ * signature's direction, except that ambiguous pitch class 10 prefers Bb over
+ * A#. Explicit scale spellings (e.g. A# in B major) still win.
+ * Note.chroma returns NaN for an unparseable name, and
  * `NaN === chroma` is false for every chroma, so junk is skipped without a guard
  * that would have to be written `Number.isInteger(...)` to work at all.
  */
@@ -28,6 +30,7 @@ export function pitchClassName(midi: number, key: KeyContext = DEFAULT_KEY): str
   for (const n of scaleNames(key)) {
     if (Note.chroma(n) === chroma) return n
   }
+  if (chroma === 10) return 'Bb'
   return Midi.midiToNoteName(midi, { sharps: alteration(key) >= 0, pitchClass: true })
 }
 

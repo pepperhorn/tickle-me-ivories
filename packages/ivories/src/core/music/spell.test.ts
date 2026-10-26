@@ -15,10 +15,15 @@ describe('pitchClassName', () => {
     expect(pitchClassName(63, K('E', 'major'))).toBe('D#')
   })
 
-  it('uses the key signature even for notes outside the scale', () => {
-    // Bb is not in E major; the key has sharps, so the fallback spells sharps.
-    expect(pitchClassName(70, K('E', 'major'))).toBe('A#')
+  it('prefers Bb over A# for ambiguous notes, including in sharp keys', () => {
+    expect(pitchClassName(70)).toBe('Bb')
+    expect(pitchClassName(70, K('E', 'major'))).toBe('Bb')
     expect(pitchClassName(70, K('Ab', 'major'))).toBe('Bb')
+    expect(spellPitch(58)).toBe('Bb3')
+  })
+
+  it('preserves A# when it belongs to the key scale', () => {
+    expect(pitchClassName(70, K('B', 'major'))).toBe('A#')
   })
 
   it('handles a minor key from its natural scale', () => {

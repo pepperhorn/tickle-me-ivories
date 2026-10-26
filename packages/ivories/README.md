@@ -50,7 +50,7 @@ Play from the top (0:00, or after the score has ended) starts with a count-in be
 
 ## Note names on the bars
 
-Falling and rising note bars carry their note name by default: the pitch class without octave or MIDI number, spelled as written in a MusicXML score ("F♯", "B♭"), else by the key signature (flats in a flat key), else with sharps. `noteBarLabels` on `<FallingKeys>`, `<RisingKeys>`, `<Ivories>` and in `Stage` `viewProps`: `'pitch'` (default), `'pitch-octave'` ("F♯4") or `'none'`. The text is white Poppins 600 over a dark translucent outline, centred, sized to the bar's width (up to 20px), and left off a bar too narrow or too short to read (black keys on a full 88-key roll in a small box, very short notes). Load Poppins on the page as for the rest of the UI.
+Falling and rising note bars carry their note name by default: the pitch class without octave or MIDI number, spelled as written in a MusicXML score ("F♯", "B♭"), else by the key signature (flats in a flat key), else with sharps, except B♭ is preferred over A♯. `noteBarLabels` on `<FallingKeys>`, `<RisingKeys>`, `<Ivories>` and in `Stage` `viewProps`: `'pitch'` (default), `'pitch-octave'` ("F♯4") or `'none'`. The text is white Poppins 600 over a dark translucent outline, centred, sized to the bar's width (up to 20px), and left off a bar too narrow or too short to read (black keys on a full 88-key roll in a small box, very short notes). Load Poppins on the page as for the rest of the UI.
 
 `noteBarLabelStyle` (same views, and `Stage` `viewProps`) restyles the names: `format` (`'pitch'`, `'pitch-octave'`, `'solfege'` ("Do", "Re"), `'solfege-octave'`), `accidentals` (`'glyph'` or `'ascii'`), `show`, and `font` (`family`, `weight`, `scale`, `color`, `strokeColor`, `strokeWidth`, `case`). It beats the template's `labels`, and `noteBarLabels="none"` hides them. A font other than Poppins is loaded from Google Fonts on demand; the labels draw in `sans-serif` until it is ready, then switch once. An unsafe family or colour is dropped.
 
@@ -355,3 +355,105 @@ Contextual classes for overrides and tests: `ivories-transport-play` (with `ivor
 ## SSR
 
 Modules import without touching `window`. Canvas, audio, MIDI, camera and pepperscore are only touched in effects, so it works under SSR frameworks. In Astro, hydrate on the client: `<Ivories client:visible view="falling" scoreUrl="/a.mid" height={420} />`.
+
+## Guitar and bass fretboards
+
+In Studio, open a score (or **Play live**), then choose **Fretboard** from a
+slot's source menu. The adjacent controls select Guitar / Bass / Bass 5,
+headstock, Note letters / Fret numbers, dark rosewood / light maple, and 12 / 24
+frets. These options persist in local and shared scenes, including split/PIP.
+
+```tsx
+import { Fretboard, FretboardDiagram, IvoriesProvider, Stage } from 'ivories'
+import 'ivories/style.css'
+
+// Follows the existing provider's score, transport and live-note feed.
+<IvoriesProvider score={score}>
+  <Fretboard instrument="guitar" headstock="tele" noteLabels="note" input="midi" />
+</IvoriesProvider>
+
+// Self-contained, using the same source props as Keyboard.
+<Fretboard midi={bytes} instrument="bass4" headstock="violin" appearance="light" />
+
+// Pure SVG for static cards or an external host's pitches; no provider needed.
+<FretboardDiagram pitches={[40, 47, 52]} instrument="guitar" className="my-fretboard" />
+
+<Stage layout={{ kind: 'single', main: { kind: 'ivories', view: 'fretboard',
+  fretboard: { instrument: 'bass5', headstock: 'precision', noteLabels: 'fret', frets: 24 }
+} }} />
+```
+
+`Fretboard` and `FretboardDiagram` accept `height`, `className`, `style`, and
+`theme`. `Fretboard` also accepts existing provider/source props and `template`;
+stage/background theme tokens are reused. The original SVG silhouettes are
+Strat/Tele-inspired (six inline tuners), P-Bass-inspired (four/five inline), or
+Beatle/violin-bass-inspired (2+2, or 3+2 for bass5). Incompatible headstocks fall
+back to Strat for guitar and Precision for bass. No brand artwork or logos.
+
+The display is **exact pitch, all positions**, including open strings. A single
+sounding pitch can appear on multiple strings; these are alternative locations,
+not an optimised or simultaneously playable fingering. No octave shift,
+reduction, pitch-class expansion or audio adaptation occurs. Pitches outside
+the visible range are listed explicitly. Default labels prefer B♭ over A♯;
+other chromatic notes use sharps. Across the library, explicit source-score
+spellings and key-scale spellings take precedence over this default preference.
+Live notes use a separate colour. High strings are at the top; internal physical
+string indices are zero-based low to high, matching Chordl. Standard open MIDI
+values: guitar `[40,45,50,55,59,64]`, bass4 `[28,33,38,43]`, bass5
+`[23,28,33,38,43]`. Pure helpers and option types are exported from `ivories/core`.
+
+The neck uses equal-tempered fret distances and progressively thicker lower
+strings. Small slots scroll instead of shrinking note letters below readability;
+focus the fretboard region to scroll with a keyboard. Give standalone views a
+height or let their content establish one. At 24 frets the view is wider.
+
+Custom CSS belongs after the library CSS, outside its `ivories` cascade layer:
+
+```css
+.ivories.my-fretboard {
+  --ivories-stage-bg: #101825;
+  --ivories-ink: #eef5ff;
+  --ivories-ink-dim: #b2bfd4;
+  --ivories-fretboard-neck: #26364b;
+  --ivories-fretboard-headstock: #c3d3eb;
+  --ivories-fretboard-nut: #ffffff;
+  --ivories-fretboard-fret: #91a6c3;
+  --ivories-fretboard-string: #dbe7f8;
+  --ivories-fretboard-inlay: #718cac;
+  --ivories-fretboard-note: #b1d6ff;
+  --ivories-fretboard-live-note: #ffd580;
+  --ivories-fretboard-label: #102137;
+  --ivories-fretboard-note-stroke: #ffffff;
+  --ivories-fretboard-hardware: #dde9f8;
+  --ivories-fretboard-outline: #60748e;
+  --ivories-fretboard-fret-width: 1.5;
+  --ivories-fretboard-note-stroke-width: 2;
+  --ivories-fretboard-label-weight: 600;
+}
+.ivories.my-fretboard .ivories-fretboard-inlay circle { r: 4px; }
+.ivories.my-fretboard .ivories-fretboard-note circle { stroke-dasharray: 2 1; }
+```
+
+SVG classes expose wood, neck, nut, frets, strings, inlays, tuners, note circles,
+labels, and tuning badges. `data-instrument`, `data-appearance`, `data-headstock`,
+`data-string`, `data-fret`, `data-midi`, and `data-live` provide targeted hooks.
+Fretboard-specific styling is CSS, not a new block in the piano template JSON
+schema. Scene decoding allowlists the fretboard options; arbitrary CSS is not
+serialized into shared scenes.
+
+The Tele option includes a cropped upper body with a single cutaway, pickguard,
+and neck pickup, plus strings routed to six individual tuning posts. Its SVG
+gradients and masks use unique IDs so split views can use different skins.
+Additional CSS tokens are `--ivories-fretboard-body`,
+`--ivories-fretboard-body-edge`, `--ivories-fretboard-pickguard`,
+`--ivories-fretboard-pickguard-edge`, and `--ivories-fretboard-burst-opacity`
+(set to `0` for a solid finish). Hardware uses `--ivories-fretboard-hardware`.
+For example:
+
+```css
+.ivories.my-fretboard {
+  --ivories-fretboard-body: #e5b967;
+  --ivories-fretboard-pickguard: #151713;
+  --ivories-fretboard-burst-opacity: 0;
+}
+```

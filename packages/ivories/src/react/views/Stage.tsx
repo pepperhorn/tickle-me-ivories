@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent, Ref, RefObject } from 'react'
+import { Fretboard } from './Fretboard'
 import { Keyboard } from './Keyboard'
 import { FallingKeys } from './FallingKeys'
 import { RisingKeys } from './RisingKeys'
@@ -86,6 +87,7 @@ function SlotContent({ source, viewProps, registry }: { source: SlotSource; view
   if (source.kind === 'camera') return <CameraSlot source={source} registry={registry} />
   const v = viewProps ?? {}
   switch (source.view) {
+    case 'fretboard': return <Fretboard {...source.fretboard} input={v.input} />
     case 'keyboard': return <Keyboard labels={v.labels} range={v.range} input={v.input} onLayout={v.onLayout} />
     case 'falling': return <FallingKeys labels={v.labels} range={v.range} lookahead={v.lookahead} input={v.input} onLayout={v.onLayout} orientation={source.orientation} noteBarLabels={v.noteBarLabels} noteBarLabelStyle={v.noteBarLabelStyle} />
     case 'rising': return <RisingKeys labels={v.labels} range={v.range} visibleBeats={v.visibleBeats} input={v.input} onLayout={v.onLayout} orientation={source.orientation} noteBarLabels={v.noteBarLabels} noteBarLabelStyle={v.noteBarLabelStyle} />

@@ -15,15 +15,16 @@ describe('noteBarLabel (user ruling 2026-10-22)', () => {
     expect(noteBarLabel({ pitch: 69 }, C, 'pitch')).toBe('A')
   })
 
-  it('without a spelling: sharps in C (and with no key), flats in a flat key, the key own spellings first', () => {
+  it('prefers Bb for ambiguous notes, otherwise follows the key spelling', () => {
     expect(noteBarLabel({ pitch: 66 }, C, 'pitch')).toBe('F♯')
-    expect(noteBarLabel({ pitch: 70 }, C, 'pitch')).toBe('A♯')
+    expect(noteBarLabel({ pitch: 70 }, C, 'pitch')).toBe('B♭')
     expect(noteBarLabel({ pitch: 70 }, F, 'pitch')).toBe('B♭')
     expect(noteBarLabel({ pitch: 66 }, D, 'pitch')).toBe('F♯')
   })
 
   it('the score spelling wins when MusicXML gave one', () => {
     expect(noteBarLabel({ pitch: 70, spelling: 'Bb' }, C, 'pitch')).toBe('B♭')
+    expect(noteBarLabel({ pitch: 70, spelling: 'A#' }, C, 'pitch')).toBe('A♯')
     expect(noteBarLabel({ pitch: 66, spelling: 'Gb' }, D, 'pitch')).toBe('G♭')
     expect(noteBarLabel({ pitch: 60, spelling: 'B#' }, C, 'pitch')).toBe('B♯')
     // A spelling that does not match the pitch (corrupt data) is ignored.
@@ -46,7 +47,8 @@ describe('noteBarLabel (user ruling 2026-10-22)', () => {
   it('the cache returns the same label per note and resets on a key or mode change', () => {
     const cache = new NoteBarLabelCache()
     const n = { id: 1, pitch: 70, startTicks: 0, durTicks: 1, startSec: 0, endSec: 1, velocity: 90, voiceId: 'v' } as NoteEvent
-    expect(cache.get(n, C, 'pitch')).toBe('A♯')
+    expect(cache.get(n, C, 'pitch')).toBe('B♭')
+    expect(cache.get(n, { tonic: 'B', scale: 'major' }, 'pitch')).toBe('A♯')
     expect(cache.get(n, F, 'pitch')).toBe('B♭')
     expect(cache.get(n, F, 'pitch-octave')).toBe('B♭4')
     expect(cache.get(n, F, 'none')).toBeNull()

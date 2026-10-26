@@ -34,3 +34,6 @@ export { Stage } from './react/views/Stage'
 export type { StageProps, StageHandle, StageSlotViewProps } from './react/views/Stage'
 export type { ExternalClock } from './react/notation/externalClock'
 export type { PepperScoreClockHandle } from './react/notation/loadPepperscore'
+
+export { Fretboard, FretboardDiagram } from './react/views/Fretboard'
+export type { FretboardProps, FretboardDiagramProps } from './react/views/Fretboard'

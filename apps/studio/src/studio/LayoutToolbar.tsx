@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useCameraStream } from 'ivories'
-import { listVideoInputs, slotsOf, sourceAt } from 'ivories/core'
-import type { Aspect, CameraFit, Corner, IvoriesView, LayoutAction, LayoutKind, Orientation, SlotName, SlotSource } from 'ivories/core'
+import { headstockFor, listVideoInputs, slotsOf, sourceAt } from 'ivories/core'
+import type { Aspect, CameraFit, Corner, FretboardOptions, IvoriesView, LayoutAction, LayoutKind, Orientation, SlotName, SlotSource } from 'ivories/core'
 import { useStudioStage } from './stageStore'
 import { useTransport } from '../transport/useTransport'
 import { LiveBpmField } from './LiveBpmField'
@@ -13,7 +13,7 @@ const SLOT_LABEL: Record<SlotName, string> = { main: 'Main', top: 'Top', bottom:
 // Only transparent or hex fills: validFill refuses named colours.
 const MASKS: Record<string, string> = { 'mask-transparent': 'transparent', 'mask-green': '#00b140', 'mask-blue': '#0047bb' }
 const SOURCE_OPTIONS: [string, string][] = [
-  ['falling', 'Falling keys'], ['rising', 'Rising notes'], ['keyboard', 'Keyboard'], ['notation', 'Notation'], ['endless', 'Endless notation'],
+  ['falling', 'Falling keys'], ['rising', 'Rising notes'], ['keyboard', 'Keyboard'], ['fretboard', 'Fretboard'], ['notation', 'Notation'], ['endless', 'Endless notation'],
   ['webcam', 'Webcam'], ['mask-transparent', 'Mask (transparent)'], ['mask-green', 'Mask (green)'], ['mask-blue', 'Mask (blue)'],
 ]
 const SELECT = 'rounded-md border border-[var(--line)] bg-[var(--panel)] px-2 py-1 text-xs text-[var(--ink)]'
@@ -128,11 +128,14 @@ export function LayoutToolbar() {
         const s = sourceAt(layout, slot)!
         const label = SLOT_LABEL[slot]
         return (
-          <span key={slot} className="slot-source-group flex items-center gap-1">
+          <span key={slot} className="slot-source-group flex flex-wrap items-center gap-1">
             <select aria-label={`${label} source`} className={`slot-source-select ${SELECT}`} value={valueOf(s)}
               onChange={(e) => setSource(slot, e.target.value)}>
               {SOURCE_OPTIONS.map(([v, text]) => <option key={v} className="slot-source-option" value={v}>{text}</option>)}
             </select>
+            {s.kind === 'ivories' && s.view === 'fretboard' && (
+              <FretboardControls label={label} value={s.fretboard ?? {}} onChange={(fretboard) => dispatch({ type: 'setSource', slot, source: { ...s, fretboard } })} />
+            )}
             {/* Falling is vertical only (horizontal is deprecated): the horizontal roll is rising's. */}
             {s.kind === 'ivories' && s.view === 'rising' && (
               <select aria-label={`${label} orientation`} className={`slot-orientation-select ${SELECT}`} value={s.orientation ?? 'vertical'}
@@ -149,4 +152,34 @@ export function LayoutToolbar() {
       })}
     </div>
   )
+}
+
+function FretboardControls({ label, value, onChange }: { label: string; value: FretboardOptions; onChange(value: FretboardOptions): void }) {
+  const instrument = value.instrument ?? 'guitar'
+  const guitar = instrument === 'guitar'
+  return <>
+    <select className={`slot-instrument-select ${SELECT}`} aria-label={`${label} instrument`} value={instrument}
+      onChange={(e) => onChange({ ...value, instrument: e.target.value as FretboardOptions['instrument'], headstock: e.target.value === 'guitar' ? 'strat' : 'precision' })}>
+      <option className="slot-instrument-option" value="guitar">Guitar · E A D G B E</option>
+      <option className="slot-instrument-option" value="bass4">Bass · E A D G</option>
+      <option className="slot-instrument-option" value="bass5">Bass 5 · B E A D G</option>
+    </select>
+    <select className={`slot-headstock-select ${SELECT}`} aria-label={`${label} headstock`} value={headstockFor(instrument, value.headstock)}
+      onChange={(e) => onChange({ ...value, headstock: e.target.value as FretboardOptions['headstock'] })}>
+      {guitar ? <><option className="slot-headstock-option" value="strat">Strat-inspired</option><option className="slot-headstock-option" value="tele">Tele-inspired</option></>
+        : <><option className="slot-headstock-option" value="precision">P-Bass-inspired</option><option className="slot-headstock-option" value="violin">Beatle / violin-inspired</option></>}
+    </select>
+    <select className={`slot-note-labels-select ${SELECT}`} aria-label={`${label} note labels`} value={value.noteLabels ?? 'note'}
+      onChange={(e) => onChange({ ...value, noteLabels: e.target.value as FretboardOptions['noteLabels'] })}>
+      <option className="slot-note-labels-option" value="note">Note letters</option><option className="slot-note-labels-option" value="fret">Fret numbers</option>
+    </select>
+    <select className={`slot-appearance-select ${SELECT}`} aria-label={`${label} fretboard appearance`} value={value.appearance ?? 'dark'}
+      onChange={(e) => onChange({ ...value, appearance: e.target.value as FretboardOptions['appearance'] })}>
+      <option className="slot-appearance-option" value="dark">Dark · rosewood</option><option className="slot-appearance-option" value="light">Light · maple</option>
+    </select>
+    <select className={`slot-frets-select ${SELECT}`} aria-label={`${label} frets`} value={value.frets ?? 12}
+      onChange={(e) => onChange({ ...value, frets: Number(e.target.value) as 12 | 24 })}>
+      <option className="slot-frets-option" value="12">12 frets</option><option className="slot-frets-option" value="24">24 frets</option>
+    </select>
+  </>
 }
