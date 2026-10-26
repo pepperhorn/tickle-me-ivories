@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tele — realistic proportions</title>
+<style>
+  :root { color-scheme:dark; --background:#141918; --foreground:#e9eee9; --muted-foreground:#acb8b1; --border:#38433e; --radius:12px; --font-sans:system-ui,sans-serif; }
+  body { margin:0; color:var(--foreground); font:14px var(--font-sans); background:transparent; }
+  #tele-study { --wood:#e8c581; --wood-light:#f5e3b4; --wood-dark:#b67e36; --grain:#9b692f; --finish:#d5a340; --finish-light:#f2d07a; --finish-dark:#a5732b; --guard:#20231e; --metal-dark:#59615c; --metal-light:#faf9ed; --note:#c5edb8; --note-ink:#142315; }
+  #tele-study[data-finish="blue"] { --finish:#587f83; --finish-light:#9cbabd; --finish-dark:#29494e; --guard:#ece6d5; }
+  .header,.controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .header { justify-content:space-between; padding-block:4px 14px; }
+  .header strong { font-size:16px; font-weight:500; }.header span,.caption { color:var(--muted-foreground); font-size:12px; }
+  .stage { padding:16px; border-radius:var(--radius); background:radial-gradient(ellipse at 65% 45%,#29332d,#171d19 75%); }
+  .stage svg { width:100%; display:block; height:auto; aspect-ratio:1480 / 460; overflow:visible; }
+  .controls { padding-top:14px; }
+  button,select { font:inherit; color:var(--foreground); border:1px solid var(--border); background:transparent; border-radius:7px; padding:7px 10px; }
+  select option { background:var(--background); }button[aria-pressed="true"] { background:var(--foreground); color:var(--background); }
+  button:focus-visible,select:focus-visible { outline:2px solid var(--note); outline-offset:3px; }
+  .caption { margin:12px 0 0; line-height:1.6; }.caption a { color:inherit; }
+  .strings { fill:none; stroke-linecap:round; }.fret { stroke:url(#steel); stroke-width:2.2; }.fret-shadow { stroke:#42331b; stroke-opacity:.25; stroke-width:4; }
+  .inlay { fill:#473b27; }.grain { fill:none; stroke:var(--grain); stroke-width:.65; opacity:.23; }
+  .marker circle { fill:var(--note); stroke:#f8fff3; stroke-width:1.2; }.marker text { fill:var(--note-ink); font:500 15px system-ui,sans-serif; text-anchor:middle; dominant-baseline:central; }
+  .fret-label { fill:#bac3b7; font:14px system-ui,sans-serif; text-anchor:middle; }
+  @media(max-width:520px) { .header { align-items:flex-start; flex-direction:column; gap:4px; }.stage { padding:16px 4px; }.stage svg { min-height:170px; }.controls { gap:7px; }button,select { min-height:44px; }#tele-study:not([data-detail="true"]) .marker,#tele-study:not([data-detail="true"]) .fret-label { display:none; } }
+</style>
+</head>
+<body>
+<main id="tele-study" data-finish="blonde">
+  <div class="header"><strong>Tele · realistic proportions</strong><span>Design study · source playback unchanged</span></div>
+  <div class="stage">
+    <svg id="guitar" viewBox="0 0 1480 460" role="img" aria-label="Original Tele-inspired guitar design: slender maple headstock, tapered neck, single-cutaway body, chrome hardware and circular C-major note labels.">
+      <defs>
+        <linearGradient id="maple" x1="0" y1="0" x2="0.1" y2="1"><stop stop-color="var(--wood-dark)"/><stop offset=".08" stop-color="var(--wood-light)"/><stop offset=".4" stop-color="var(--wood)"/><stop offset=".83" stop-color="var(--wood-light)"/><stop offset="1" stop-color="var(--wood-dark)"/></linearGradient>
+        <linearGradient id="lacquer" x1="0" y1="0" x2=".7" y2="1"><stop stop-color="var(--finish-light)"/><stop offset=".4" stop-color="var(--finish)"/><stop offset=".8" stop-color="var(--finish)"/><stop offset="1" stop-color="var(--finish-dark)"/></linearGradient>
+        <linearGradient id="steel"><stop stop-color="#444d48"/><stop offset=".18" stop-color="#b3beb7"/><stop offset=".4" stop-color="#fffdf4"/><stop offset=".54" stop-color="#7e8881"/><stop offset=".8" stop-color="#e7ebe2"/><stop offset="1" stop-color="#515b54"/></linearGradient>
+        <linearGradient id="pickup-steel"><stop stop-color="#535e59"/><stop offset=".2" stop-color="#d5dcd5"/><stop offset=".38" stop-color="#ffffff"/><stop offset=".52" stop-color="#a1aaa4"/><stop offset=".9" stop-color="#f9f8ec"/><stop offset="1" stop-color="#5e6962"/></linearGradient>
+        <filter id="depth" x="-10%" y="-20%" width="125%" height="150%"><feDropShadow dx="0" dy="7" stdDeviation="6" flood-color="#030a04" flood-opacity=".5"/></filter>
+        <filter id="note-shadow" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity=".6"/></filter>
+        <path id="head-shape" d="M315 175 C288 175 280 168 265 160 C244 149 222 146 205 149 C188 152 175 166 160 165 C146 164 136 153 122 151 C101 148 78 155 66 168 C53 182 57 201 72 208 C85 215 103 214 126 221 L266 260 C289 265 290 246 315 245 Z"/>
+        <path id="neck-shape" d="M315 175 L1125 162 L1125 258 L315 245 Z"/>
+        <path id="body-shape" d="M1107 173 C1135 158 1142 121 1114 105 C1091 92 1058 94 1036 78 C1018 65 1015 44 1038 36 C1113 10 1192 58 1265 63 C1350 69 1401 18 1470 29 C1537 40 1572 99 1576 201 C1580 305 1561 383 1518 412 C1456 454 1380 391 1325 386 C1252 378 1223 417 1146 429 C1080 439 1036 414 1044 362 C1049 320 1080 280 1117 257 Z"/>
+        <clipPath id="head-clip"><use href="#head-shape"/></clipPath>
+        <clipPath id="neck-clip"><use href="#neck-shape"/></clipPath>
+        <clipPath id="body-clip"><use href="#body-shape"/></clipPath>
+      </defs>
+      <g filter="url(#depth)">
+        <use href="#body-shape" fill="url(#lacquer)" stroke="var(--finish-dark)" stroke-width="4"/>
+        <g clip-path="url(#body-clip)"><g id="body-grain" class="grain" opacity=".12"></g>
+          <path d="M1098 183 C1127 165 1157 117 1122 99 C1091 83 1063 86 1040 68 C1122 34 1199 80 1261 82 C1314 84 1351 65 1401 55 L1401 284 Q1379 296 1351 300 C1271 302 1227 330 1160 359 C1124 373 1105 362 1105 337 C1107 311 1123 286 1134 263 L1134 180 Z" fill="var(--guard)" stroke="#c4bfa7" stroke-width="2"/>
+          <path d="M1041 42 C1126 17 1196 65 1265 70 C1352 80 1403 26 1470 36" fill="none" stroke="#fff4cc" stroke-width="2" opacity=".7"/>
+          <path d="M1051 363 C1050 409 1088 435 1148 420 C1235 399 1257 374 1325 378" fill="none" stroke="#6b4018" stroke-width="3" opacity=".23"/>
+          <rect x="1153" y="174" width="25" height="75" rx="12" fill="url(#pickup-steel)" stroke="#4f574e" stroke-width="2"/>
+          <path d="M1159 183 L1159 236" stroke="#fff" stroke-opacity=".8" stroke-width="2"/>
+          <g id="guard-screws"></g>
+          <rect x="1309" y="166" width="82" height="94" rx="3" fill="url(#steel)" stroke="#737d73" stroke-width="2"/>
+          <path d="M1330 242 L1368 180" stroke="#252a24" stroke-width="20" stroke-linecap="round"/>
+          <g id="bridge"></g>
+          <rect x="1290" y="318" width="143" height="24" rx="12" fill="url(#steel)" stroke="#4d564d"/>
+          <g id="knobs"></g>
+        </g>
+        <g id="keys"></g>
+        <use href="#head-shape" fill="url(#maple)" stroke="#ae813c" stroke-width="2"/>
+        <g clip-path="url(#head-clip)" id="head-grain" class="grain"></g>
+        <path d="M69 174 Q90 150 120 156 C138 156 143 171 160 170 C180 171 186 155 206 154 C243 143 277 181 314 180" fill="none" stroke="#fff1c3" stroke-opacity=".7" stroke-width="2"/>
+        <use href="#neck-shape" fill="url(#maple)" stroke="#aa7b38" stroke-width="2"/>
+        <g id="neck-grain" clip-path="url(#neck-clip)" class="grain"></g>
+        <path d="M316 177 L1124 164" stroke="#fff0c3" stroke-opacity=".9" stroke-width="2"/>
+        <path d="M316 243 L1124 256" stroke="#9a6a27" stroke-opacity=".6" stroke-width="2"/>
+        <g id="frets"></g><g id="inlays"></g>
+        <rect x="312" y="174" width="7" height="72" rx="1.2" fill="#e6dfc4" stroke="#958c72"/>
+        <path d="M313 176 V244" stroke="#fffdf0" stroke-width="2"/>
+        <ellipse cx="335" cy="210" rx="13" ry="6" fill="#7c5125"/>
+        <ellipse cx="335" cy="210" rx="7.5" ry="3.6" fill="#332e21"/>
+        <g id="strings"></g><g id="posts"></g>
+        <path d="M218 195 v11 M213 197 h10" fill="none" stroke="url(#steel)" stroke-width="3" stroke-linecap="round"/>
+      </g>
+      <g id="note-markers" filter="url(#note-shadow)"></g><g id="fret-labels"></g>
+    </svg>
+  </div>
+  <div class="controls">
+    <label>Finish <select id="finish"><option value="blonde">Butterscotch</option><option value="blue">Muted blue</option></select></label>
+    <button id="labels" type="button" aria-pressed="false">Show fret numbers</button>
+    <button id="zoom" type="button" aria-pressed="false">Neck detail</button>
+  </div>
+  <p class="caption">Original vector design study · <a href="https://www.fender.com/products/standard-telecaster/" target="_blank" rel="noreferrer">Fender reference</a> · note markers are an illustrative C-major grip, not live playback.</p>
+</main>
+<script>
+(()=>{
+  const root=document.getElementById('tele-study'),svg=document.getElementById('guitar');
+  const q=id=>document.getElementById(id),ns='http://www.w3.org/2000/svg';
+  const add=(id,tag,attrs)=>{const e=document.createElementNS(ns,tag);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,v);q(id).appendChild(e);return e;};
+  const fretX=f=>315+1120*(1-Math.pow(2,-f/12));
+  const w=x=>70+(x-315)*26/810,cy=210;
+  const sy=(x,k)=>cy+(k/5-.5)*(w(x)-12);
+  const screw=(id,x,y,r=2)=>{add(id,'circle',{cx:x,cy:y,r,fill:'url(#steel)',stroke:'#586052','stroke-width':.7});add(id,'path',{d:`M${x-r*.6} ${y}h${r*1.2}`,stroke:'#454d45','stroke-width':.7});};
+  for(let i=0;i<24;i++){
+    let y=150+i*4.4;
+    add('head-grain','path',{d:`M50 ${y} C108 ${y-13} 175 ${y+18} 320 ${y+12}`});
+    add('neck-grain','path',{d:`M310 ${y} C520 ${y-4} 780 ${y+8} 1140 ${y-3}`});
+  }
+  for(let i=0;i<24;i++)add('body-grain','path',{d:`M1000 ${30+i*17} C1140 ${i*17-10} 1260 ${i*17+30} 1570 ${i*17+8}`});
+  for(let f=1;f<=21;f++){
+    const x=fretX(f),a=cy-w(x)/2,b=cy+w(x)/2;
+    add('frets','path',{d:`M${x+1.6} ${a}V${b}`,class:'fret-shadow'});
+    add('frets','path',{d:`M${x} ${a}V${b}`,class:'fret'});
+    if([3,5,7,9,12,15,17,19,21].includes(f)){
+      const c=(fretX(f-1)+x)/2;
+      for(const y of f===12?[cy-19,cy+19]:[cy])add('inlays','circle',{cx:c,cy:y,r:4,class:'inlay'});
+    }
+    if(f<=12){const e=add('fret-labels','text',{x:(fretX(f-1)+x)/2,y:286,class:'fret-label'});e.textContent=f;}
+  }
+  const posts=Array.from({length:6},(_,k)=>({x:85+k*34,y:190+k*9.2}));
+  posts.forEach((p,k)=>{
+    add('keys','path',{d:`M${p.x} ${p.y+12}l-4 19`,stroke:'url(#steel)','stroke-width':5});
+    add('keys','rect',{x:p.x-15,y:p.y+27,width:24,height:15,rx:6,fill:'url(#steel)',stroke:'#6d7467','stroke-width':1,transform:`rotate(15 ${p.x} ${p.y+30})`});
+    add('posts','circle',{cx:p.x,cy:p.y,r:7,fill:'url(#steel)',stroke:'#7e806d','stroke-width':1});
+    add('posts','circle',{cx:p.x,cy:p.y,r:3.8,fill:'url(#pickup-steel)',stroke:'#5e6659','stroke-width':.7});
+    add('posts','path',{d:`M${p.x-2.5} ${p.y}h5`,stroke:'#5d6355','stroke-width':1});
+    const y=sy(315,k),end=1355;
+    add('strings','path',{d:`M${p.x} ${p.y}L315 ${y}L${end} ${sy(end,k)}`,class:'strings',stroke:k<3?'#eeeae0':'#c4c0aa','stroke-width':.65+k*.22});
+    if(k>=3)add('strings','path',{d:`M315 ${y}L${end} ${sy(end,k)}`,class:'strings',stroke:'#737967','stroke-width':.35,'stroke-dasharray':'1.2 .8',opacity:.8});
+    add('bridge','rect',{x:1344,y:177+k*13,width:21,height:9,rx:1,fill:'url(#steel)',stroke:'#646c5e','stroke-width':.6});
+  });
+  [[1040,59],[1137,132],[1165,265],[1171,345],[1323,81],[1385,277]].forEach(([x,y])=>screw('guard-screws',x,y,2.6));
+  [1311,1407].forEach(x=>{add('knobs','circle',{cx:x,cy:330,r:11,fill:'url(#steel)',stroke:'#6c7467','stroke-width':1});add('knobs','circle',{cx:x,cy:330,r:7.5,fill:'url(#pickup-steel)',stroke:'#b7b9a5','stroke-width':.6});});
+  add('knobs','path',{d:'M1358 329h22',stroke:'#20271e','stroke-width':5,'stroke-linecap':'round'});
+  const notes=[{f:0,k:0,n:'E'},{f:1,k:1,n:'C'},{f:0,k:2,n:'G'},{f:2,k:3,n:'E'},{f:3,k:4,n:'C'}];
+  for(const note of notes){const x=note.f===0?300:(fretX(note.f-1)+fretX(note.f))/2;const y=sy(Math.max(315,x),note.k);const g=add('note-markers','g',{class:'marker'});const c=document.createElementNS(ns,'circle');c.setAttribute('cx',x);c.setAttribute('cy',y);c.setAttribute('r',11);g.appendChild(c);const t=document.createElementNS(ns,'text');t.setAttribute('x',x);t.setAttribute('y',y);t.dataset.note=note.n;t.dataset.fret=note.f;t.textContent=note.n;g.appendChild(t);}
+  q('finish').addEventListener('change',e=>root.dataset.finish=e.target.value);
+  q('labels').addEventListener('click',e=>{const on=e.target.getAttribute('aria-pressed')!=='true';e.target.setAttribute('aria-pressed',on);e.target.textContent=on?'Show note letters':'Show fret numbers';root.querySelectorAll('.marker text').forEach(t=>t.textContent=on?t.dataset.fret:t.dataset.note);});
+  const setView=()=>{const on=root.dataset.detail==='true',width=Math.min(835,Math.max(330,root.clientWidth));svg.setAttribute('viewBox',on?`275 135 ${width} 180`:'0 0 1480 460');svg.style.aspectRatio=on?`${width} / 240`:'1480 / 460';};
+  q('zoom').addEventListener('click',e=>{const on=e.target.getAttribute('aria-pressed')!=='true';e.target.setAttribute('aria-pressed',on);e.target.textContent=on?'Whole instrument':'Neck detail';root.dataset.detail=on;setView();});
+  window.addEventListener('resize',setView);
+  console.log('Tele design study ready:',root.querySelectorAll('.marker').length,'notes,',posts.length,'tuners.');
+})();
+</script>
+</body>
+</html>
