@@ -11,3 +11,6 @@ apps/studio/public/tickle.config.json
 apps/studio/public/plugins/
 deploy/local-plugin/
 .superpowers/
+
+# Isolated agent worktrees
+.worktrees/
