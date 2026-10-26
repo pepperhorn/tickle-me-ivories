@@ -69,3 +69,7 @@ export * from './template/palette'
 export * from './template/builtins'
 export * from './template/decode'
 export * from './template/resolve'
+
+export { FRETBOARD_TUNINGS, exactPitchPositions, fretBoundary, fretNoteName, headstockFor } from './fretboard/model'
+export type { FrettedInstrument, HeadstockStyle, FretboardOptions } from './fretboard/types'
+export type { FretPosition } from './fretboard/model'

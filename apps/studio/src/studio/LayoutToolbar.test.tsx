@@ -51,7 +51,7 @@ describe('LayoutToolbar (spec §6)', () => {
   it('mask fills are only transparent or hex colours (validFill refuses names)', () => {
     render(<LayoutToolbar />)
     const values = [...screen.getByLabelText('Main source').querySelectorAll('option')].map((o) => o.value)
-    expect(values).toEqual(['falling', 'rising', 'keyboard', 'notation', 'endless', 'webcam', 'mask-transparent', 'mask-green', 'mask-blue'])
+    expect(values).toEqual(['falling', 'rising', 'keyboard', 'fretboard', 'notation', 'endless', 'webcam', 'mask-transparent', 'mask-green', 'mask-blue'])
     for (const v of ['mask-transparent', 'mask-green', 'mask-blue']) {
       fireEvent.change(screen.getByLabelText('Main source'), { target: { value: v } })
       const main = useStudioStage.getState().layout
@@ -152,4 +152,16 @@ describe('LayoutToolbar (spec §6)', () => {
       useTransport.setState({ score })
     }
   })
+})
+
+it('selects and preserves fretboard options in the stage layout', () => {
+  render(<LayoutToolbar />)
+  fireEvent.change(screen.getByLabelText('Main source'), { target: { value: 'fretboard' } })
+  fireEvent.change(screen.getByLabelText('Main instrument'), { target: { value: 'bass5' } })
+  fireEvent.change(screen.getByLabelText('Main headstock'), { target: { value: 'violin' } })
+  fireEvent.change(screen.getByLabelText('Main note labels'), { target: { value: 'fret' } })
+  fireEvent.change(screen.getByLabelText('Main fretboard appearance'), { target: { value: 'light' } })
+  fireEvent.change(screen.getByLabelText('Main frets'), { target: { value: '24' } })
+  expect(useStudioStage.getState().layout).toEqual({ kind: 'single', main: { kind: 'ivories', view: 'fretboard',
+    fretboard: { instrument: 'bass5', headstock: 'violin', noteLabels: 'fret', appearance: 'light', frets: 24 } } })
 })

@@ -59,10 +59,10 @@ describe('platform/types.ts stays runtime-free (preflight F4)', () => {
     expect(forbidden).toEqual([])
   })
 
-  it('resolves only through settings/types.ts, model/types.ts, layout/types.ts, template/types.ts and platform/errors.ts', () => {
+  it('resolves only through settings/types.ts, model/types.ts, layout/types.ts, fretboard/types.ts, template/types.ts and platform/errors.ts', () => {
     const { visited } = walk(join(srcRoot, 'platform', 'types.ts'))
     const relative = [...visited].map((f) => f.slice(srcRoot.length + 1))
-    const allowed = ['layout/types.ts', 'model/types.ts', 'platform/errors.ts', 'platform/types.ts', 'settings/types.ts', 'template/types.ts']
+    const allowed = ['fretboard/types.ts', 'layout/types.ts', 'model/types.ts', 'platform/errors.ts', 'platform/types.ts', 'settings/types.ts', 'template/types.ts']
     expect(relative.sort()).toEqual(allowed.sort())
   })
 })

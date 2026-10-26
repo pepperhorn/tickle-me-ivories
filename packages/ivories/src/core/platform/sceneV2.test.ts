@@ -119,3 +119,14 @@ describe('viewForMode (R7)', () => {
     expect(defaultLayoutFor('roll')).toEqual({ kind: 'single', main: { kind: 'ivories', view: viewForMode('roll') } })
   })
 })
+
+ it('round-trips all fretboard options through local and shared scenes', () => {
+   const layout: Layout = { kind: 'single', main: { kind: 'ivories', view: 'fretboard',
+     fretboard: { instrument: 'bass5', headstock: 'violin', noteLabels: 'fret', appearance: 'light', frets: 24 } } }
+   const scene = sceneFromState({ song, profile: profile(), layout })
+   expect(decodeScene(JSON.stringify(scene)).layout).toEqual(layout)
+   expect(decodeScene(JSON.stringify(sceneForShare(scene)), { shared: true }).layout).toEqual(layout)
+   for (const patch of [{ instrument: 'piano' }, { headstock: 'logo' }, { noteLabels: 'html' }, { appearance: 'url(x)' }, { frets: 10000 }]) {
+     expect(() => decodeScene({ ...scene, layout: { kind: 'single', main: { kind: 'ivories', view: 'fretboard', fretboard: patch } } })).toThrow(/layout/)
+   }
+ })
